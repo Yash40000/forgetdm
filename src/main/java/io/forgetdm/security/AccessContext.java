@@ -1,6 +1,7 @@
 package io.forgetdm.security;
 
 import java.util.Optional;
+import java.util.function.Supplier;
 
 public final class AccessContext {
     private static final ThreadLocal<AccessPrincipal> CURRENT = new ThreadLocal<>();
@@ -26,5 +27,18 @@ public final class AccessContext {
     static void clear() {
         CURRENT.remove();
         TOKEN.remove();
+    }
+
+    public static <T> T callAs(AccessPrincipal principal, String token, Supplier<T> work) {
+        AccessPrincipal previous = CURRENT.get();
+        String previousToken = TOKEN.get();
+        try {
+            if (principal == null) CURRENT.remove(); else CURRENT.set(principal);
+            if (token == null) TOKEN.remove(); else TOKEN.set(token);
+            return work.get();
+        } finally {
+            if (previous == null) CURRENT.remove(); else CURRENT.set(previous);
+            if (previousToken == null) TOKEN.remove(); else TOKEN.set(previousToken);
+        }
     }
 }

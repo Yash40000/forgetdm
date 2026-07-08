@@ -5,12 +5,14 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/discovery")
 public class DiscoveryController {
     private final DiscoveryService svc;
-    public DiscoveryController(DiscoveryService svc) { this.svc = svc; }
+    private final DiscoveryJobService jobs;
+    public DiscoveryController(DiscoveryService svc, DiscoveryJobService jobs) { this.svc = svc; this.jobs = jobs; }
 
     @PostMapping("/scan/{dataSourceId}")
     public List<ClassificationEntity> scan(@PathVariable Long dataSourceId,
@@ -22,6 +24,27 @@ public class DiscoveryController {
         return svc.scan(dataSourceId, schema, types.isEmpty() ? null : types);
     }
 
+    @PostMapping("/scan-jobs/{dataSourceId}")
+    public DiscoveryJobService.JobSnapshot startScanJob(@PathVariable Long dataSourceId,
+                                                        @RequestParam(required = false) String schema,
+                                                        @RequestBody(required = false) Map<String, Object> body) {
+        java.util.Set<String> types = new java.util.HashSet<>();
+        if (body != null && body.get("piiTypes") instanceof List<?> list)
+            for (Object o : list) if (o != null) types.add(String.valueOf(o));
+        return jobs.start(dataSourceId, schema, types);
+    }
+
+    @GetMapping("/scan-jobs")
+    public List<DiscoveryJobService.JobSnapshot> scanJobs(@RequestParam(required = false) Long dataSourceId,
+                                                          @RequestParam(required = false) String schema) {
+        return jobs.list(dataSourceId, schema);
+    }
+
+    @GetMapping("/scan-jobs/{jobId}")
+    public DiscoveryJobService.JobSnapshot scanJob(@PathVariable String jobId) {
+        return jobs.get(jobId);
+    }
+
     /** Built-in + custom PII types the user can target on the Scan Source page. */
     @GetMapping("/pii-types")
     public List<String> piiTypes() {
@@ -31,29 +54,33 @@ public class DiscoveryController {
     @GetMapping("/results/{dataSourceId}")
     public List<ClassificationEntity> results(@PathVariable Long dataSourceId,
                                               @RequestParam(required = false) String schema,
-                                              @RequestParam(required = false) String tableFilter) {
-        return svc.results(dataSourceId, schema, tableFilter);
+                                              @RequestParam(required = false) String tableFilter,
+                                              @RequestParam(required = false) List<String> piiTypes) {
+        return svc.results(dataSourceId, schema, tableFilter, typeSet(piiTypes));
     }
 
     @PostMapping("/approve-all/{dataSourceId}")
     public Map<String, Object> approveAll(@PathVariable Long dataSourceId,
                                           @RequestParam(required = false) String schema,
-                                          @RequestParam(required = false) String tableFilter) {
-        return Map.of("count", svc.approveAll(dataSourceId, schema, tableFilter));
+                                          @RequestParam(required = false) String tableFilter,
+                                          @RequestParam(required = false) List<String> piiTypes) {
+        return Map.of("count", svc.approveAll(dataSourceId, schema, tableFilter, typeSet(piiTypes)));
     }
 
     @PostMapping("/reject-all/{dataSourceId}")
     public Map<String, Object> rejectAll(@PathVariable Long dataSourceId,
                                          @RequestParam(required = false) String schema,
-                                         @RequestParam(required = false) String tableFilter) {
-        return Map.of("count", svc.rejectAll(dataSourceId, schema, tableFilter));
+                                         @RequestParam(required = false) String tableFilter,
+                                         @RequestParam(required = false) List<String> piiTypes) {
+        return Map.of("count", svc.rejectAll(dataSourceId, schema, tableFilter, typeSet(piiTypes)));
     }
 
     @GetMapping("/table-columns/{dataSourceId}")
     public List<Map<String, Object>> tableColumns(@PathVariable Long dataSourceId,
                                                   @RequestParam(required = false) String schema,
-                                                  @RequestParam String table) {
-        return svc.tableColumns(dataSourceId, schema, table);
+                                                  @RequestParam String table,
+                                                  @RequestParam(required = false) List<String> piiTypes) {
+        return svc.tableColumns(dataSourceId, schema, table, typeSet(piiTypes));
     }
 
     @PostMapping("/manual/{dataSourceId}")
@@ -64,8 +91,9 @@ public class DiscoveryController {
 
     @GetMapping("/graph/{dataSourceId}")
     public Map<String, Object> graph(@PathVariable Long dataSourceId,
-                                     @RequestParam(required = false) String schema) {
-        return svc.graph(dataSourceId, schema);
+                                     @RequestParam(required = false) String schema,
+                                     @RequestParam(required = false) List<String> piiTypes) {
+        return svc.graph(dataSourceId, schema, typeSet(piiTypes));
     }
 
     @PatchMapping("/classifications/{id}")
@@ -82,5 +110,15 @@ public class DiscoveryController {
                                               @RequestParam(required = false) String schema,
                                               @RequestBody Map<String, String> body) {
         return svc.generatePolicy(dataSourceId, schema, body.getOrDefault("name", "policy-ds-" + dataSourceId));
+    }
+
+    private static Set<String> typeSet(List<String> raw) {
+        java.util.Set<String> out = new java.util.HashSet<>();
+        if (raw == null) return out;
+        for (String item : raw) {
+            if (item == null) continue;
+            for (String part : item.split(",")) if (!part.isBlank()) out.add(part.trim());
+        }
+        return out;
     }
 }

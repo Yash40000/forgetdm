@@ -18,6 +18,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.util.Optional;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -160,6 +161,62 @@ class BusinessEntityEnterpriseServiceTest {
     }
 
     @Test
+    void approvedSubsetPlanFansOutAcrossMemberDataScopeBlueprints() {
+        approveRun();
+        BusinessEntityDefinitionEntity entity = new BusinessEntityDefinitionEntity();
+        entity.setId(1L);
+        entity.setName("Customer 360");
+        entity.setDomain("Retail Banking");
+        entity.setRootTable("customers");
+        entity.setBusinessKeyColumns("customer_id");
+        entity.setPrimaryDatasetId(201L);
+
+        BusinessEntityMemberEntity customer = member(11L, 101L, "customers", "customer_id", "customer");
+        customer.setSystemName("Core Banking");
+        customer.setDatasetId(201L);
+        BusinessEntityMemberEntity card = member(12L, 103L, "cards", "card_id", "card");
+        card.setSystemName("Card Platform");
+        card.setDatasetId(202L);
+        when(entities.getDetail(1L)).thenReturn(new BusinessEntityService.BusinessEntityDetail(entity,
+                List.of(customer, card), null, Map.of(101L, "core-db2", 103L, "cards-oracle")));
+        when(dataSources.findAllById(any())).thenReturn(List.of(source(101L, "DB2UDB"), source(103L, "ORACLE")));
+        when(datasets.findById(202L)).thenReturn(Optional.of(dataset(202L, 103L, 104L, "Cards Scope")));
+        when(dataSources.findById(104L)).thenReturn(Optional.of(source(104L, "ORACLE")));
+
+        AtomicLong ids = new AtomicLong(800L);
+        when(provisioning.submit(any(ProvisionJobEntity.class))).thenAnswer(inv -> {
+            ProvisionJobEntity job = inv.getArgument(0);
+            ReflectionTestUtils.setField(job, "id", ids.getAndIncrement());
+            job.setStatus("PENDING");
+            job.setApprovalStatus("NOT_REQUIRED");
+            return job;
+        });
+
+        Map<String, Object> plan = service.createExecutionPlan(1L,
+                new BusinessEntityEnterpriseService.ExecutionPlanRequest("Customer multi-app release",
+                        "SUBSET_MASK", "PROD", "UAT", "APPROVED_RUN_READY", null, null));
+        Map<String, Object> launch = service.launchExecutionPlan(((Number) plan.get("id")).longValue(),
+                new BusinessEntityEnterpriseService.LaunchRequest(null, null, null, "seed1",
+                        "REPLACE", "DELETE", 100, null, 99L, "SINGLE", null, null));
+
+        assertEquals("DATASCOPE_FANOUT", launch.get("engine"));
+        assertEquals(2, ((List<?>) launch.get("runs")).size());
+        var captor = org.mockito.ArgumentCaptor.forClass(ProvisionJobEntity.class);
+        verify(provisioning, times(2)).submit(captor.capture());
+        List<ProvisionJobEntity> jobs = captor.getAllValues();
+        assertEquals(List.of(201L, 202L), jobs.stream().map(ProvisionJobEntity::getDatasetId).toList());
+        assertEquals(List.of(102L, 104L), jobs.stream().map(ProvisionJobEntity::getTargetId).toList());
+        assertTrue(jobs.get(0).getSpecJson().contains("\"fanOutRunId\""));
+        assertTrue(jobs.get(1).getSpecJson().contains("\"Card Platform\""));
+        Integer runRows = jdbc.queryForObject("SELECT COUNT(*) FROM be_execution_plan_runs WHERE execution_plan_id = ?",
+                Integer.class, plan.get("id"));
+        assertEquals(3, runRows);
+        Integer parentRows = jdbc.queryForObject("SELECT COUNT(*) FROM be_execution_plan_runs WHERE engine = 'DATASCOPE_FANOUT'",
+                Integer.class);
+        assertEquals(1, parentRows);
+    }
+
+    @Test
     void approvedLookalikePlanStartsSyntheticJobAndRecordsRun() {
         approveRun();
         Map<String, Object> lookalike = service.createLookalikeProfile(1L,
@@ -214,11 +271,15 @@ class BusinessEntityEnterpriseServiceTest {
     }
 
     private DataSetDefinitionEntity dataset(Long id) {
+        return dataset(id, 101L, 102L, "Customer Scope");
+    }
+
+    private DataSetDefinitionEntity dataset(Long id, Long sourceId, Long targetId, String name) {
         DataSetDefinitionEntity def = new DataSetDefinitionEntity();
         ReflectionTestUtils.setField(def, "id", id);
-        def.setName("Customer Scope");
-        def.setDataSourceId(101L);
-        def.setTargetDataSourceId(102L);
+        def.setName(name);
+        def.setDataSourceId(sourceId);
+        def.setTargetDataSourceId(targetId);
         def.setPolicyId(301L);
         def.setSchemaName("public");
         def.setTargetSchemaName("uat");

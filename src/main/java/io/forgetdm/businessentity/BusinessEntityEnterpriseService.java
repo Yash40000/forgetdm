@@ -41,6 +41,14 @@ public class BusinessEntityEnterpriseService {
     private final NativeLoadRegistry loaders;
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
 
+    private record DataScopeFanOutSlice(String sliceKey,
+                                        String label,
+                                        DataSetDefinitionEntity dataset,
+                                        Long targetDataSourceId,
+                                        DataSourceEntity target,
+                                        NativeLoadStrategy strategy,
+                                        List<BusinessEntityMemberEntity> members) {}
+
     public BusinessEntityEnterpriseService(JdbcTemplate jdbc,
                                            BusinessEntityService entities,
                                            DataSourceRepository dataSources,
@@ -110,7 +118,7 @@ public class BusinessEntityEnterpriseService {
         out.put("executionPlans", rows("""
                 SELECT id, name, operation_type AS "operationType", source_environment AS "sourceEnvironment",
                        target_environment AS "targetEnvironment", mode, status, approved_request_id AS "approvedRequestId",
-                       created_by AS "createdBy", updated_at AS "updatedAt"
+                       plan_json AS "planJson", created_by AS "createdBy", updated_at AS "updatedAt"
                   FROM be_entity_execution_plans WHERE entity_id = ? ORDER BY created_at DESC
                 """, entityId));
         out.put("operationalPackages", rows("""
@@ -133,8 +141,9 @@ public class BusinessEntityEnterpriseService {
                 """, entityId));
         out.put("executionRuns", rows("""
                 SELECT id, execution_plan_id AS "executionPlanId", engine, engine_run_id AS "engineRunId",
-                       engine_status AS "engineStatus", status, created_by AS "createdBy", created_at AS "createdAt",
-                       updated_at AS "updatedAt"
+                       engine_status AS "engineStatus", status, launch_result_json AS "launchResultJson",
+                       loader_strategy_json AS "loaderStrategyJson", created_by AS "createdBy",
+                       created_at AS "createdAt", updated_at AS "updatedAt"
                   FROM be_execution_plan_runs WHERE entity_id = ? ORDER BY created_at DESC
                 """, entityId));
         out.put("loaderStrategies", loaderStrategies(detail));
@@ -287,6 +296,9 @@ public class BusinessEntityEnterpriseService {
         plan.put("issuePackageId", request == null ? null : request.issuePackageId());
         plan.put("lookalikeProfileId", request == null ? null : request.lookalikeProfileId());
         plan.put("members", detail.members().stream().map(this::memberPlan).toList());
+        plan.put("applicationSlices", isDataScopeOperation(operation)
+                ? dataScopeFanOutPlan(detail, null, false).stream().map(this::slicePlan).toList()
+                : List.of());
         plan.put("executionOrder", detail.members().stream().map(BusinessEntityMemberEntity::getLogicalRole).toList());
         Map<String, Object> validation = new LinkedHashMap<>();
         validation.put("requiresApproval", approved == null);
@@ -470,18 +482,59 @@ public class BusinessEntityEnterpriseService {
     private Map<String, Object> launchDataScopePlan(BusinessEntityService.BusinessEntityDetail detail,
                                                     Map<String, Object> plan,
                                                     LaunchRequest request) {
-        Long datasetId = detail.entity().getPrimaryDatasetId();
-        if (datasetId == null) {
-            throw ApiException.bad("This Business Entity needs a primary DataScope blueprint before a subset/mask launch.");
+        List<DataScopeFanOutSlice> slices = dataScopeFanOutPlan(detail, request, true);
+        if (slices.size() > 1) {
+            return launchDataScopeFanOut(detail, plan, request, slices);
         }
-        DataSetDefinitionEntity def = datasets.findById(datasetId)
-                .orElseThrow(() -> ApiException.notFound("Primary DataScope blueprint " + datasetId + " not found"));
-        Long targetId = firstNonNull(request == null ? null : request.targetDataSourceId(), def.getTargetDataSourceId());
-        if (targetId == null) throw ApiException.bad("Choose a target data source before launching this plan.");
-        DataSourceEntity target = dataSources.findById(targetId)
-                .orElseThrow(() -> ApiException.notFound("Target data source " + targetId + " not found"));
-        NativeLoadStrategy strategy = loaders.strategyFor(target);
+        return launchDataScopeSlice(detail, plan, request, slices.get(0), null, 1, 1, "DATASCOPE");
+    }
 
+    private Map<String, Object> launchDataScopeFanOut(BusinessEntityService.BusinessEntityDetail detail,
+                                                      Map<String, Object> plan,
+                                                      LaunchRequest request,
+                                                      List<DataScopeFanOutSlice> slices) {
+        String fanOutId = "be-" + detail.entity().getId() + "-plan-" + plan.get("id") + "-" + Instant.now().toEpochMilli();
+        List<Map<String, Object>> childRuns = new ArrayList<>();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("engine", "DATASCOPE_FANOUT");
+        result.put("runId", fanOutId);
+        result.put("fanOut", true);
+        result.put("sliceCount", slices.size());
+        result.put("slices", slices.stream().map(this::slicePlan).toList());
+        try {
+            for (int i = 0; i < slices.size(); i++) {
+                childRuns.add(launchDataScopeSlice(detail, plan, request, slices.get(i), fanOutId, i + 1, slices.size(), "DATASCOPE"));
+            }
+            result.put("runs", childRuns);
+            result.put("status", aggregateFanOutStatus(childRuns));
+            result.put("message", "Submitted " + childRuns.size() + " DataScope application slice run(s).");
+            recordExecutionRun(detail.entity().getId(), num(plan.get("id")), "DATASCOPE_FANOUT",
+                    fanOutId, String.valueOf(result.get("status")), request, result, fanOutLoaderEvidence(slices, childRuns));
+            jdbc.update("UPDATE be_entity_execution_plans SET updated_at = ? WHERE id = ?", ts(Instant.now()), plan.get("id"));
+            audit.log("system", "BUSINESS_ENTITY_EXECUTION_PLAN_FANOUT_LAUNCH",
+                    "plan=" + plan.get("id") + " fanOut=" + fanOutId + " slices=" + slices.size());
+            return result;
+        } catch (RuntimeException ex) {
+            result.put("runs", childRuns);
+            result.put("status", "FAILED");
+            result.put("message", "Fan-out launch failed after " + childRuns.size() + " submitted slice(s): " + ex.getMessage());
+            recordExecutionRun(detail.entity().getId(), num(plan.get("id")), "DATASCOPE_FANOUT",
+                    fanOutId, "FAILED", request, result, fanOutLoaderEvidence(slices, childRuns));
+            throw ex;
+        }
+    }
+
+    private Map<String, Object> launchDataScopeSlice(BusinessEntityService.BusinessEntityDetail detail,
+                                                     Map<String, Object> plan,
+                                                     LaunchRequest request,
+                                                     DataScopeFanOutSlice slice,
+                                                     String fanOutId,
+                                                     int sliceNo,
+                                                     int sliceCount,
+                                                     String engineName) {
+        DataSetDefinitionEntity def = slice.dataset();
+        DataSourceEntity target = slice.target();
+        NativeLoadStrategy strategy = slice.strategy();
         Map<String, Object> spec = new LinkedHashMap<>();
         spec.put("driverTable", blankToDefault(def.getDriverTable(), detail.entity().getRootTable()));
         spec.put("filter", blankToDefault(request == null ? null : request.filter(), def.getDriverFilter()));
@@ -497,33 +550,47 @@ public class BusinessEntityEnterpriseService {
         spec.put("batchSize", "POSTGRES_COPY".equals(strategy.strategy()) ? 50000 : 10000);
         spec.put("businessEntityId", detail.entity().getId());
         spec.put("executionPlanId", plan.get("id"));
+        spec.put("applicationSlice", slice.sliceKey());
+        spec.put("applicationSliceLabel", slice.label());
+        spec.put("applicationSliceNo", sliceNo);
+        spec.put("applicationSliceCount", sliceCount);
+        spec.put("applicationSliceMembers", slice.members().stream().map(this::memberPlan).toList());
+        if (fanOutId != null) spec.put("fanOutRunId", fanOutId);
         spec.put("loaderStrategy", strategy.strategy());
-        spec.put("effectiveLoaderStrategy", strategy.nativeAvailable() ? strategy.fallback() : strategy.fallback());
+        spec.put("effectiveLoaderStrategy", strategy.nativeAvailable() ? strategy.strategy() : strategy.fallback());
         spec.put("nativeLoader", loaders.asMap(strategy));
 
         ProvisionJobEntity job = new ProvisionJobEntity();
-        job.setName(safe((String) plan.get("name")) + " DataScope run");
+        String suffix = sliceCount > 1 ? " / " + slice.label() + " (" + sliceNo + "/" + sliceCount + ")" : "";
+        job.setName(safe((String) plan.get("name")) + " DataScope run" + suffix);
         job.setJobType("SUBSET_MASK");
         job.setSourceId(def.getDataSourceId());
-        job.setTargetId(targetId);
+        job.setTargetId(slice.targetDataSourceId());
         job.setPolicyId(firstNonNull(request == null ? null : request.policyId(), def.getPolicyId()));
-        job.setDatasetId(datasetId);
+        job.setDatasetId(def.getId());
         job.setSpecJson(writeJson(spec));
 
         ProvisionJobEntity submitted = provisioning.submit(job);
         Map<String, Object> result = new LinkedHashMap<>();
-        result.put("engine", "DATASCOPE");
+        result.put("engine", engineName);
         result.put("runId", submitted.getId());
         result.put("status", submitted.getStatus());
         result.put("approvalStatus", submitted.getApprovalStatus());
         result.put("message", submitted.getMessage());
+        result.put("fanOutRunId", fanOutId);
+        result.put("sliceNo", sliceNo);
+        result.put("sliceCount", sliceCount);
+        result.put("slice", slicePlan(slice));
+        result.put("sourceDataSourceId", def.getDataSourceId());
+        result.put("targetDataSourceId", slice.targetDataSourceId());
+        result.put("targetDataSourceName", target.getName());
         result.put("loaderStrategy", loaders.asMap(strategy));
         recordExecutionRun(detail.entity().getId(), num(plan.get("id")), "DATASCOPE",
                 submitted.getId() == null ? null : String.valueOf(submitted.getId()), submitted.getStatus(),
                 request, result, strategy);
         jdbc.update("UPDATE be_entity_execution_plans SET updated_at = ? WHERE id = ?", ts(Instant.now()), plan.get("id"));
         audit.log("system", "BUSINESS_ENTITY_EXECUTION_PLAN_LAUNCH",
-                "plan=" + plan.get("id") + " engine=DATASCOPE run=" + submitted.getId());
+                "plan=" + plan.get("id") + " engine=DATASCOPE slice=" + slice.sliceKey() + " run=" + submitted.getId());
         return result;
     }
 
@@ -609,8 +676,141 @@ public class BusinessEntityEnterpriseService {
         return out;
     }
 
+    private List<DataScopeFanOutSlice> dataScopeFanOutPlan(BusinessEntityService.BusinessEntityDetail detail,
+                                                           LaunchRequest request,
+                                                           boolean requireTarget) {
+        Map<Long, List<BusinessEntityMemberEntity>> byDataset = new LinkedHashMap<>();
+        Long primaryDatasetId = detail.entity().getPrimaryDatasetId();
+        for (BusinessEntityMemberEntity member : detail.members()) {
+            if (!member.isIncludeInSubset()) continue;
+            Long datasetId = firstNonNull(member.getDatasetId(), primaryDatasetId);
+            if (datasetId == null) continue;
+            byDataset.computeIfAbsent(datasetId, k -> new ArrayList<>()).add(member);
+        }
+        if (byDataset.isEmpty() && primaryDatasetId != null) {
+            byDataset.put(primaryDatasetId, List.of());
+        }
+        if (byDataset.isEmpty()) {
+            throw ApiException.bad("This Business Entity needs at least one DataScope blueprint before a subset/mask launch.");
+        }
+
+        List<DataScopeFanOutSlice> slices = new ArrayList<>();
+        for (Map.Entry<Long, List<BusinessEntityMemberEntity>> entry : byDataset.entrySet()) {
+            Long datasetId = entry.getKey();
+            DataSetDefinitionEntity def = datasets.findById(datasetId)
+                    .orElseThrow(() -> ApiException.notFound("DataScope blueprint " + datasetId + " not found"));
+            Long targetId = firstNonNull(request == null ? null : request.targetDataSourceId(), def.getTargetDataSourceId());
+            if (targetId == null) {
+                if (!requireTarget) {
+                    NativeLoadStrategy strategy = loaders.strategyFor(null);
+                    slices.add(new DataScopeFanOutSlice(
+                            "dataset-" + datasetId + "-target-unresolved",
+                            sliceLabel(def, entry.getValue()),
+                            def,
+                            null,
+                            null,
+                            strategy,
+                            List.copyOf(entry.getValue())));
+                    continue;
+                }
+                throw ApiException.bad("Choose a target data source, or configure target DB on DataScope blueprint '" + def.getName() + "'.");
+            }
+            DataSourceEntity target = dataSources.findById(targetId)
+                    .orElseThrow(() -> ApiException.notFound("Target data source " + targetId + " not found"));
+            NativeLoadStrategy strategy = loaders.strategyFor(target);
+            String label = sliceLabel(def, entry.getValue());
+            slices.add(new DataScopeFanOutSlice(
+                    "dataset-" + datasetId + "-target-" + targetId,
+                    label,
+                    def,
+                    targetId,
+                    target,
+                    strategy,
+                    List.copyOf(entry.getValue())));
+        }
+        return slices;
+    }
+
+    private Map<String, Object> slicePlan(DataScopeFanOutSlice slice) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        DataSetDefinitionEntity def = slice.dataset();
+        row.put("sliceKey", slice.sliceKey());
+        row.put("label", slice.label());
+        row.put("datasetId", def.getId());
+        row.put("datasetName", def.getName());
+        row.put("sourceDataSourceId", def.getDataSourceId());
+        row.put("sourceSchema", def.getSchemaName());
+        row.put("targetDataSourceId", slice.targetDataSourceId());
+        row.put("targetDataSourceName", slice.target() == null ? null : slice.target().getName());
+        row.put("targetSchema", def.getTargetSchemaName());
+        row.put("driverTable", def.getDriverTable());
+        row.put("memberCount", slice.members().size());
+        row.put("members", slice.members().stream().map(m -> {
+            Map<String, Object> member = new LinkedHashMap<>();
+            member.put("memberId", m.getId());
+            member.put("role", safe(m.getLogicalRole()));
+            member.put("table", safe(m.getTableName()));
+            member.put("system", safe(m.getSystemName()));
+            return member;
+        }).toList());
+        row.put("loaderStrategy", loaders.asMap(slice.strategy()));
+        return row;
+    }
+
+    private Map<String, Object> fanOutLoaderEvidence(List<DataScopeFanOutSlice> slices,
+                                                     List<Map<String, Object>> childRuns) {
+        Map<String, Object> evidence = new LinkedHashMap<>();
+        evidence.put("fanOut", true);
+        evidence.put("sliceCount", slices.size());
+        evidence.put("slices", slices.stream().map(this::slicePlan).toList());
+        evidence.put("childRuns", childRuns.stream().map(r -> {
+            Map<String, Object> child = new LinkedHashMap<>();
+            child.put("runId", r.get("runId"));
+            child.put("status", r.get("status"));
+            child.put("sliceNo", r.get("sliceNo"));
+            child.put("slice", r.get("slice"));
+            return child;
+        }).toList());
+        return evidence;
+    }
+
+    private String aggregateFanOutStatus(List<Map<String, Object>> childRuns) {
+        if (childRuns.isEmpty()) return "FAILED";
+        boolean approval = false;
+        for (Map<String, Object> child : childRuns) {
+            String status = safe(String.valueOf(child.get("status"))).toUpperCase(Locale.ROOT);
+            String approvalStatus = safe(String.valueOf(child.get("approvalStatus"))).toUpperCase(Locale.ROOT);
+            if (Set.of("FAILED", "CANCELED", "REJECTED").contains(status) || "REJECTED".equals(approvalStatus)) return "FAILED";
+            if (status.contains("APPROVAL") || approvalStatus.contains("APPROVAL") || "PENDING_APPROVAL".equals(approvalStatus)) {
+                approval = true;
+            }
+        }
+        return approval ? "AWAITING_APPROVAL" : "SUBMITTED";
+    }
+
+    private String sliceLabel(DataSetDefinitionEntity def, List<BusinessEntityMemberEntity> members) {
+        String system = members == null ? null : members.stream()
+                .map(BusinessEntityMemberEntity::getSystemName)
+                .filter(s -> s != null && !s.isBlank())
+                .findFirst().orElse(null);
+        String base = blank(system);
+        if (base == null) base = blank(def.getName());
+        if (base == null) base = "DataScope " + def.getId();
+        return base;
+    }
+
+    private static boolean isDataScopeOperation(String operation) {
+        String op = safe(operation).toUpperCase(Locale.ROOT);
+        return "SUBSET_MASK".equals(op) || "ISSUE_RECREATE".equals(op);
+    }
+
     private void recordExecutionRun(Long entityId, Long planId, String engine, String engineRunId, String engineStatus,
                                     LaunchRequest request, Map<String, Object> result, NativeLoadStrategy strategy) {
+        recordExecutionRun(entityId, planId, engine, engineRunId, engineStatus, request, result, loaders.asMap(strategy));
+    }
+
+    private void recordExecutionRun(Long entityId, Long planId, String engine, String engineRunId, String engineStatus,
+                                    LaunchRequest request, Map<String, Object> result, Map<String, Object> loaderEvidence) {
         long id = insert("""
                 INSERT INTO be_execution_plan_runs(entity_id, execution_plan_id, engine, engine_run_id,
                     engine_status, status, launch_request_json, launch_result_json, loader_strategy_json,
@@ -618,7 +818,7 @@ public class BusinessEntityEnterpriseService {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 entityId, planId, engine, blank(engineRunId), blank(engineStatus), runStatus(engineStatus),
-                writeJson(request == null ? Map.of() : request), writeJson(result), writeJson(loaders.asMap(strategy)),
+                writeJson(request == null ? Map.of() : request), writeJson(result), writeJson(loaderEvidence == null ? Map.of() : loaderEvidence),
                 currentUsername(), ts(Instant.now()));
         audit.log("system", "BUSINESS_ENTITY_EXECUTION_RUN_RECORDED", "runRecord=" + id + " plan=" + planId);
     }
@@ -742,9 +942,20 @@ public class BusinessEntityEnterpriseService {
     }
 
     private Map<String, Object> memberPlan(BusinessEntityMemberEntity m) {
-        return Map.of("memberId", m.getId(), "role", m.getLogicalRole(), "table", m.getTableName(),
-                "dataSourceId", String.valueOf(m.getDataSourceId()), "schema", safe(m.getSchemaName()),
-                "keyColumns", safe(m.getKeyColumns()), "joinToRole", safe(m.getJoinToRole()));
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("memberId", m.getId());
+        row.put("role", safe(m.getLogicalRole()));
+        row.put("systemName", safe(m.getSystemName()));
+        row.put("table", safe(m.getTableName()));
+        row.put("tableAlias", safe(m.getTableAlias()));
+        row.put("dataSourceId", m.getDataSourceId());
+        row.put("schema", safe(m.getSchemaName()));
+        row.put("datasetId", m.getDatasetId());
+        row.put("keyColumns", safe(m.getKeyColumns()));
+        row.put("joinToRole", safe(m.getJoinToRole()));
+        row.put("includeInSubset", m.isIncludeInSubset());
+        row.put("includeInSynthetic", m.isIncludeInSynthetic());
+        return row;
     }
 
     private Long latestApprovedRequest(Long entityId, String operation) {

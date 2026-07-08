@@ -74,6 +74,7 @@ public class ZoweTransport implements MainframeTransport {
                 ((c.getUsername() == null ? "" : c.getUsername()) + ":" +
                  (c.getPassword() == null ? "" : c.getPassword())).getBytes(StandardCharsets.UTF_8));
         return HttpRequest.newBuilder(URI.create(url))
+                .timeout(java.time.Duration.ofSeconds(45))
                 .header("Authorization", "Basic " + auth)
                 .header("X-CSRF-ZOSMF-HEADER", "true");
     }

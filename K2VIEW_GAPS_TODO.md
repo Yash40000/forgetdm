@@ -20,6 +20,8 @@ Captured as the follow-up list after adding the first Business Entity Model slic
 
 ## Future Hardening
 
+- [ ] Add a K2View-style logical Micro-Database / Entity Capsule layer: persist each business entity instance (for example Customer 360 / CUST-10025) as a governed reusable store with canonical identity, cross-system keys, table fragments, relationships, source watermarks, masking/synthetic versions, lineage, reservations, access grants, and provisioning history. Prefer shared physical tables such as `be_entity_instances`, `be_entity_fragments`, `be_entity_versions`, `be_entity_watermarks`, `be_entity_access_grants`, and `be_entity_lineage_events` rather than a real database per customer/account. DataScope, Synthetic, Freshness, Governance, and Provisioning should hydrate from and provision out of these capsules.
 - [ ] Extend DataScope masked-row loads to stage already-masked files and invoke the same native-loader executors where the target database/client supports safe bulk ingest.
 - [ ] Add native-loader integration tests against real Oracle, SQL Server, DB2, Snowflake, and MySQL containers/environments in CI.
 - [ ] Add promotion approval dashboards and retention-expiry review workflows for package artifacts.
+- [ ] Add DB2 UDB as an optional ForgeTDM control/backend database while keeping PostgreSQL as the default. Use a deployment profile/config choice per client, DB2 JDBC driver, DB2 Hibernate/Flyway setup, DB2-specific migrations, and a small backend SQL dialect layer for raw queries (`LIMIT` vs `FETCH FIRST`, identity columns, text/json columns, upsert syntax). One ForgeTDM instance should use one backend at a time.

@@ -28,6 +28,16 @@ import java.util.regex.Pattern;
 @Service
 public class DiscoveryService {
 
+    public interface ScanProgress {
+        default void schemaResolved(String schemaName) {}
+        default void tablesDiscovered(List<String> tableNames) {}
+        default void tableStarted(String tableName, int tableIndex, int totalTables) {}
+        default void tableColumns(String tableName, int totalColumns) {}
+        default void columnScanned(String tableName, String columnName, int scannedColumns, int totalColumns) {}
+        default void findingDiscovered(String tableName, String columnName, String piiType) {}
+        default void tableCompleted(String tableName, int findingsForTable) {}
+    }
+
     private final ClassificationRepository classifications;
     private final DataSourceService dataSources;
     private final ConnectionFactory connections;
@@ -63,8 +73,15 @@ public class DiscoveryService {
      */
     @Transactional
     public List<ClassificationEntity> scan(Long dataSourceId, String schemaName, Set<String> selectedTypes) {
+        return scan(dataSourceId, schemaName, selectedTypes, null);
+    }
+
+    @Transactional
+    public List<ClassificationEntity> scan(Long dataSourceId, String schemaName, Set<String> selectedTypes,
+                                           ScanProgress progress) {
         DataSourceEntity ds = dataSources.get(dataSourceId);
         List<ClassificationEntity> found = new ArrayList<>();
+        ScanProgress scanProgress = progress == null ? new ScanProgress() {} : progress;
 
         // Effective patterns = built-in, overlaid with the current user's custom patterns (user > group > global),
         // then narrowed to the user's selected PII types if any were chosen on the Scan Source page.
@@ -83,6 +100,7 @@ public class DiscoveryService {
 
         try (Connection c = connections.openPooled(ds)) {
             String schema = DataSourceService.normalizeSchema(c, schemaName);
+            scanProgress.schemaResolved(schema);
             // Preserve human decisions across re-scans: keep APPROVED / REJECTED / manual classifications,
             // refresh only the machine SUGGESTED ones. (A re-scan must not wipe an analyst's review work.)
             List<ClassificationEntity> existing = classifications.findByDataSourceIdAndSchemaName(dataSourceId, schema);
@@ -90,7 +108,10 @@ public class DiscoveryService {
             List<ClassificationEntity> stale = new ArrayList<>();
             for (ClassificationEntity e : existing) {
                 if ("SUGGESTED".equals(e.getStatus())) stale.add(e);
-                else { locked.add(colKey(e.getTableName(), e.getColumnName())); found.add(e); }
+                else {
+                    locked.add(colKey(e.getTableName(), e.getColumnName()));
+                    if (selected.isEmpty() || selected.contains(normalizeType(e.getPiiType()))) found.add(e);
+                }
             }
             classifications.deleteAll(stale);
             // Flush the deletes NOW. Otherwise Hibernate orders the fresh INSERTs below before these
@@ -100,35 +121,53 @@ public class DiscoveryService {
 
             List<String> tables = new ArrayList<>();
             try (ResultSet rs = c.getMetaData().getTables(null, schema, "%", new String[]{"TABLE"})) {
-                while (rs.next()) tables.add(rs.getString("TABLE_NAME"));
+                while (rs.next()) {
+                    String table = rs.getString("TABLE_NAME");
+                    if (!table.toLowerCase().startsWith("flyway_")) tables.add(table);
+                }
             }
+            scanProgress.tablesDiscovered(List.copyOf(tables));
+            int tableIndex = 0;
             for (String table : tables) {
-                if (table.toLowerCase().startsWith("flyway_")) continue;
+                tableIndex++;
+                scanProgress.tableStarted(table, tableIndex, tables.size());
                 Map<String, String> colTypes = new LinkedHashMap<>();
                 try (ResultSet rs = c.getMetaData().getColumns(null, schema, table, "%")) {
                     while (rs.next()) colTypes.put(rs.getString("COLUMN_NAME"), rs.getString("TYPE_NAME"));
                 }
+                scanProgress.tableColumns(table, colTypes.size());
+                int scannedColumns = 0;
+                int tableFindings = 0;
                 for (Map.Entry<String, String> col : colTypes.entrySet()) {
-                    if (locked.contains(colKey(table, col.getKey()))) continue;   // analyst already decided this column
+                    scannedColumns++;
+                    if (locked.contains(colKey(table, col.getKey()))) {
+                        scanProgress.columnScanned(table, col.getKey(), scannedColumns, colTypes.size());
+                        continue;   // analyst already decided this column
+                    }
                     Scored scored = classify(c, schema, table, col.getKey(), col.getValue(), nameHints, valueHints);
-                    if (scored == null) continue;
-                    ClassificationEntity e = new ClassificationEntity();
-                    e.setDataSourceId(dataSourceId);
-                    e.setSchemaName(schema);
-                    e.setTableName(table);
-                    e.setColumnName(col.getKey());
-                    e.setDataType(col.getValue());
-                    e.setPiiType(scored.piiType);
-                    e.setConfidence(Math.round(scored.confidence * 100.0) / 100.0);
-                    // Never assign a masker that is incompatible with the column's data type
-                    // (e.g. a name/text function on a BIGINT or a DATE column).
-                    String fn = typeSafeFunction(suggested.getOrDefault(scored.piiType, "FORMAT_PRESERVE"), col.getValue());
-                    e.setSuggestedFunction(fn);
-                    e.setSuggestedParam1(defaultParam1(fn, scored.piiType));
-                    e.setSuggestedParam2(defaultParam2(fn, scored.piiType));
-                    e.setSampleValue(scored.sample);
-                    found.add(classifications.save(e));
+                    if (scored != null) {
+                        ClassificationEntity e = new ClassificationEntity();
+                        e.setDataSourceId(dataSourceId);
+                        e.setSchemaName(schema);
+                        e.setTableName(table);
+                        e.setColumnName(col.getKey());
+                        e.setDataType(col.getValue());
+                        e.setPiiType(scored.piiType);
+                        e.setConfidence(Math.round(scored.confidence * 100.0) / 100.0);
+                        // Never assign a masker that is incompatible with the column's data type
+                        // (e.g. a name/text function on a BIGINT or a DATE column).
+                        String fn = typeSafeFunction(suggested.getOrDefault(scored.piiType, "FORMAT_PRESERVE"), col.getValue());
+                        e.setSuggestedFunction(fn);
+                        e.setSuggestedParam1(defaultParam1(fn, scored.piiType));
+                        e.setSuggestedParam2(defaultParam2(fn, scored.piiType));
+                        e.setSampleValue(scored.sample);
+                        found.add(classifications.save(e));
+                        tableFindings++;
+                        scanProgress.findingDiscovered(table, col.getKey(), scored.piiType);
+                    }
+                    scanProgress.columnScanned(table, col.getKey(), scannedColumns, colTypes.size());
                 }
+                scanProgress.tableCompleted(table, tableFindings);
             }
         } catch (ApiException e) { throw e; }
         catch (Exception e) { throw ApiException.bad("Discovery scan failed: " + e.getMessage()); }
@@ -312,6 +351,27 @@ public class DiscoveryService {
         return rows.size();
     }
 
+    public List<ClassificationEntity> results(Long dataSourceId, String schemaName, String tableFilter,
+                                              Set<String> piiTypes) {
+        List<ClassificationEntity> rows = results(dataSourceId, schemaName, tableFilter);
+        Set<String> types = normalizeTypes(piiTypes);
+        if (types.isEmpty()) return rows;
+        return rows.stream()
+                .filter(r -> types.contains(normalizeType(r.getPiiType())))
+                .toList();
+    }
+
+    @Transactional
+    public int approveAll(Long dataSourceId, String schemaName, String tableFilter, Set<String> piiTypes) {
+        List<ClassificationEntity> rows = results(dataSourceId, schemaName, tableFilter, piiTypes);
+        rows.forEach(r -> r.setStatus("APPROVED"));
+        classifications.saveAll(rows);
+        audit.log("system", "CLASSIFICATIONS_APPROVED",
+                "datasource=" + dataSourceId + " schema=" + schemaName + " tableFilter=" + tableFilter +
+                        " piiTypes=" + normalizeTypes(piiTypes) + " count=" + rows.size());
+        return rows.size();
+    }
+
     @Transactional
     public int rejectAll(Long dataSourceId, String schemaName, String tableFilter) {
         List<ClassificationEntity> rows = results(dataSourceId, schemaName, tableFilter);
@@ -322,13 +382,33 @@ public class DiscoveryService {
         return rows.size();
     }
 
+    @Transactional
+    public int rejectAll(Long dataSourceId, String schemaName, String tableFilter, Set<String> piiTypes) {
+        List<ClassificationEntity> rows = results(dataSourceId, schemaName, tableFilter, piiTypes);
+        rows.forEach(r -> r.setStatus("REJECTED"));
+        classifications.saveAll(rows);
+        audit.log("system", "CLASSIFICATIONS_REJECTED",
+                "datasource=" + dataSourceId + " schema=" + schemaName + " tableFilter=" + tableFilter +
+                        " piiTypes=" + normalizeTypes(piiTypes) + " count=" + rows.size());
+        return rows.size();
+    }
+
     public List<Map<String, Object>> tableColumns(Long dataSourceId, String schemaName, String table) {
+        return tableColumns(dataSourceId, schemaName, table, null);
+    }
+
+    public List<Map<String, Object>> tableColumns(Long dataSourceId, String schemaName, String table, Set<String> piiTypes) {
         DataSourceEntity ds = dataSources.get(dataSourceId);
         try (Connection c = connections.openPooled(ds)) {
             String schema = DataSourceService.normalizeSchema(c, schemaName);
+            Set<String> types = normalizeTypes(piiTypes);
             Map<String, ClassificationEntity> existing = new LinkedHashMap<>();
             classifications.findByDataSourceIdAndSchemaNameAndTableName(dataSourceId, schema, table)
-                    .forEach(cl -> existing.put(columnKey(cl.getColumnName()), cl));
+                    .forEach(cl -> {
+                        if (types.isEmpty() || types.contains(normalizeType(cl.getPiiType()))) {
+                            existing.put(columnKey(cl.getColumnName()), cl);
+                        }
+                    });
 
             List<Map<String, Object>> out = new ArrayList<>();
             try (ResultSet rs = c.getMetaData().getColumns(null, schema, table, "%")) {
@@ -419,10 +499,14 @@ public class DiscoveryService {
      * This is what lets a user applying a rule on t1 see that child t2 also carries a name field.
      */
     public Map<String, Object> graph(Long dataSourceId, String schemaName) {
+        return graph(dataSourceId, schemaName, null);
+    }
+
+    public Map<String, Object> graph(Long dataSourceId, String schemaName, Set<String> piiTypes) {
         DataSourceEntity ds = dataSources.get(dataSourceId);
         try (Connection c = connections.openPooled(ds)) {
             String schema = DataSourceService.normalizeSchema(c, schemaName);
-            List<ClassificationEntity> findings = results(dataSourceId, schema);
+            List<ClassificationEntity> findings = results(dataSourceId, schema, null, piiTypes);
             Map<String, List<Map<String, Object>>> piiByTable = new LinkedHashMap<>();
             for (ClassificationEntity f : findings) {
                 Map<String, Object> col = new LinkedHashMap<>();
@@ -603,8 +687,12 @@ public class DiscoveryService {
     private static Set<String> normalizeTypes(Set<String> types) {
         if (types == null) return Set.of();
         Set<String> out = new HashSet<>();
-        for (String t : types) if (t != null && !t.isBlank()) out.add(t.trim().toUpperCase(Locale.ROOT));
+        for (String t : types) if (t != null && !t.isBlank()) out.add(normalizeType(t));
         return out;
+    }
+
+    private static String normalizeType(String type) {
+        return type == null ? "" : type.trim().toUpperCase(Locale.ROOT);
     }
 
     /** All scannable PII types (built-in + the current user's custom types) for the Scan Source selector. */

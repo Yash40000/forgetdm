@@ -139,9 +139,9 @@
     <button class="small" onclick="dsOpenAdd()">+ Add connection</button>
   </div>
 
-  <div id="native-loader-panel" class="card"></div>
+  <div id="native-loader-panel" class="card" data-tab-label="Native Loader Health"></div>
 
-  <div id="ds-form" class="card ds-form hidden">
+  <div id="ds-form" class="card ds-form hidden" data-tab-label="Add/Edit Connection">
     <div class="row push"><h3 id="ds-form-title">Add connection</h3><button class="ghost small" onclick="dsCloseForm()">Close</button></div>
     <div class="row">
       <div><label>Name</label><input id="ds-name" placeholder="bank-prod-replica"></div>
@@ -227,7 +227,12 @@
   </div>
   <p class="sub tight">The scan samples column names and values, then lands on the Findings &amp; Masking tab where you review results, assign masking rules, and approve.</p>
   </div>
-  <div class="card" id="disc-results-card" data-tab-label="2. Findings &amp; Masking"><div class="card-head"><h3>Findings &amp; masking rules</h3><span class="pill info">review, assign, approve</span></div>
+  <div class="card" id="disc-live-card" data-tab-label="2. Live Progress"><div class="card-head"><h3>Live discovery progress</h3><span id="disc-live-status" class="pill dim">no active scan</span></div>
+    <div id="disc-live-panel" class="disc-live-panel">
+      <div class="empty">Start a PII scan to watch table-by-table progress here.</div>
+    </div>
+  </div>
+  <div class="card" id="disc-results-card" data-tab-label="3. Findings &amp; Masking"><div class="card-head"><h3>Findings &amp; masking rules</h3><span class="pill info">review, assign, approve</span></div>
     <div class="tabs">
       <button class="tab-btn active" data-tab="disc-tab-findings" onclick="showDiscTab('disc-tab-findings')">Findings</button>
       <button class="tab-btn" data-tab="disc-tab-er" onclick="showDiscTab('disc-tab-er')">ER Traversal</button>
@@ -266,7 +271,7 @@
       </div>
     </div>
   </div>
-  <div class="card" id="disc-policy-card" data-tab-label="3. Generate Policy"><div class="card-head"><h3>Generate masking policy</h3><span id="disc-policy-count" class="pill dim">select context</span></div>
+  <div class="card" id="disc-policy-card" data-tab-label="4. Generate Policy"><div class="card-head"><h3>Generate masking policy</h3><span id="disc-policy-count" class="pill dim">select context</span></div>
     <div class="row">
       <div><label>New policy name</label><input id="disc-policy-name" placeholder="bank-pii-policy"></div>
       <button onclick="genPolicy()">Generate Policy from Approved</button>
@@ -1259,6 +1264,11 @@
       <div class="grow"><label>Description</label><input id="be-from-desc" placeholder="Optional context"></div>
       <button onclick="createBusinessEntityFromDataset()">Create from DataScope</button>
       <button class="ghost" onclick="resetBusinessEntityForm()">New blank</button>
+    </div>
+    <div class="be-flow-guide">
+      <div><b>1. Model</b><span>Define the business object and its tables.</span></div>
+      <div><b>2. Govern</b><span>Capture snapshots, reservations, approvals, and evidence.</span></div>
+      <div><b>3. Execute</b><span>Launch DataScope or Synthetic through one business-level plan.</span></div>
     </div>
     <div class="be-workspace">
       <div class="be-panel">

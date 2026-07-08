@@ -179,7 +179,8 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const js = s => JSON.stringify(String(s ?? ''));
 const pill = (txt, kind) => `<span class="pill ${kind}">${esc(txt)}</span>`;
 const statusPill = s => pill(s, { COMPLETED:'good', PASS:'good', ACTIVE:'good', APPROVED:'good',
-  RUNNING:'info', PENDING:'dim', CANCEL_REQUESTED:'warn', CANCELED:'dim', SUGGESTED:'dim', NOT_PII:'dim', WARN:'warn', EXPIRED:'warn',
+  FRESH:'good', RUNNING:'info', PENDING:'dim', CANCEL_REQUESTED:'warn', CANCELED:'dim', SUGGESTED:'dim', NOT_PII:'dim', WARN:'warn', EXPIRED:'warn',
+  PARTIAL:'warn', STALE:'warn', UNKNOWN:'dim', NEVER_CHECKED:'dim', HEARTBEAT:'info',
   AWAITING_APPROVAL:'warn',
   FAILED:'bad', FAIL:'bad', REJECTED:'bad', RELEASED:'dim' }[s] || 'info');
 
@@ -208,7 +209,7 @@ function directCards(page) {
 }
 
 function visibleTabCards(page) {
-  return directCards(page).filter(card => card.style.display !== 'none');
+  return directCards(page).filter(card => card.style.display !== 'none' && !card.classList.contains('hidden'));
 }
 
 function cardTabKey(card, index) {
@@ -224,7 +225,13 @@ function ensurePageTabs(page) {
   const pageId = tabbedPageId(page);
   if (!PAGE_TABS.has(pageId)) return;
   const cards = visibleTabCards(page);
-  if (cards.length < 2) return;
+  if (cards.length < 2) {
+    page.dataset.usePageTabs = 'false';
+    page.classList.remove('with-page-tabs');
+    page.querySelector(':scope > .page-tab-strip')?.remove();
+    directCards(page).forEach(card => card.classList.remove('page-tab-panel', 'page-tab-hidden'));
+    return;
+  }
   page.dataset.usePageTabs = 'true';
   page.classList.add('with-page-tabs');
   cards.forEach((card, i) => {
@@ -243,7 +250,7 @@ function ensurePageTabs(page) {
   const available = cards.map(card => card.dataset.tabKey);
   const stored = localStorage.getItem('forgetdm.pageTab.' + pageId);
   const current = available.includes(stored) ? stored : available[0];
-  strip.innerHTML = cards.map(card => `<button type="button" class="page-tab-btn" data-page-tab="${esc(card.dataset.tabKey)}">${esc(cardTabLabel(card))}</button>`).join('');
+  strip.innerHTML = cards.map((card, i) => `<button type="button" class="page-tab-btn" data-page-tab="${esc(card.dataset.tabKey)}">${esc(cardTabLabel(card, i))}</button>`).join('');
   strip.querySelectorAll('.page-tab-btn').forEach(btn => {
     btn.onclick = () => activatePageTab(pageId, btn.dataset.pageTab, true);
   });
@@ -371,8 +378,11 @@ let tableMapState = { targetTables: [], addSourceTables: [] };
 let columnMapState = { profileIdx: null, sourceColumns: [], targetColumns: [], rows: [], policyRules: [] };
 let adCustomPks = [], adUserRels = [], adRelationships = [], adTraversalRules = [];
 let businessEntities = [], selectedBusinessEntityId = null, businessEntityDetail = null;
-let businessEntitySnapshots = [], businessEntityReservations = [];
+let businessEntitySnapshots = [], businessEntityReservations = [], businessEntityIdentities = [], businessEntityIdentityResolve = null;
+let businessEntitySyncPolicies = [], businessEntitySyncRun = null, selectedBusinessEntitySyncPolicyId = null;
 let businessEntityEnterprise = { issuePackages: [], lookalikeProfiles: [], catalogAssets: [], governanceRequests: [], executionPlans: [], operationalPackages: [], packageVersions: [], packagePromotions: [], executionRuns: [], loaderStrategies: [] };
+let businessEntityFlows = [], businessEntityFlowDraft = null, selectedBusinessEntityFlowId = null, selectedBusinessEntityFlowNodeKey = null, businessEntityFlowDebugRun = null, businessEntityFlowValidation = null;
+let businessEntityActiveTab = localStorage.getItem('forgetdm.be.tab') || 'model';
 let adPiiCoverage = null, adDrift = null;   // pre-provision guardrails: PII masking coverage + schema drift
 let adDirty = false;   // staged-but-unsaved DataScope edits (profiles grid, custom PKs) — guards blueprint switches
 let relCanvasColumns = {};        // tableName → [colName, ...]
@@ -735,6 +745,8 @@ function dsOpenAdd() {
   $('ds-save-btn').textContent = 'Add connection';
   $('ds-form-status').textContent = '';
   $('ds-form').classList.remove('hidden');
+  refreshPageTabs('datasources');
+  activatePageTab('datasources', 'ds-form', true);
   $('ds-name').focus();
 }
 
@@ -748,10 +760,16 @@ function dsEdit(id) {
   $('ds-save-btn').textContent = 'Save changes';
   $('ds-form-status').textContent = '';
   $('ds-form').classList.remove('hidden');
+  refreshPageTabs('datasources');
+  activatePageTab('datasources', 'ds-form', true);
   $('ds-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-function dsCloseForm() { $('ds-form').classList.add('hidden'); }
+function dsCloseForm() {
+  $('ds-form').classList.add('hidden');
+  refreshPageTabs('datasources');
+  activatePageTab('datasources', 'native-loader-panel', true);
+}
 
 function dsApplyTemplate(onlyIfEmpty) {
   const url = $('ds-url');
@@ -902,10 +920,13 @@ function qDownloadCsv() {
 }
 
 /* ---------- discovery ---------- */
+let discProgressTimer = null, discActiveJobId = null, discLatestJob = null, discResultTypeScope = new Set();
+
 async function loadDiscovery() {
   await refreshShared();
   await loadPiiTypeScope();
   if ($('disc-ds')?.value) await loadDiscoverySchemas();
+  else renderDiscoveryProgress(null);
 }
 
 async function loadDiscoverySchemas() {
@@ -915,14 +936,16 @@ async function loadDiscoverySchemas() {
   setOptionsPreserve('disc-table-filter', '<option value="">All tables</option>');
   $('disc-column-review').innerHTML = '<div class="empty">Pick a single table above to review every column, including ones not flagged as PII.</div>';
   $('disc-policy-list').innerHTML = '<div class="empty">Select a data source and schema.</div>';
-  if (!ds) return;
+  if (!ds) { renderDiscoveryProgress(null); return; }
   await fillSchemaSelect(ds, 'disc-schema');
   await loadDiscoveryContext();
 }
 
 async function loadDiscoveryContext() {
+  discResultTypeScope = new Set();
   erGraph = null; erSelected = null;
   await loadDiscoveryTables();
+  await refreshDiscoveryProgress();
   await Promise.all([loadFindings(), loadContextPolicies()]);
   if ($('disc-tab-er')?.classList.contains('active')) await renderERTraversal();
 }
@@ -956,14 +979,154 @@ async function runScan() {
   const ds = $('disc-ds').value; if (!ds) return toast('Register a data source first', 'err');
   const schema = $('disc-schema').value; if (!schema) return toast('Select a schema first', 'err');
   const piiTypes = [...discSelectedTypes];
+  discResultTypeScope = new Set(piiTypes);
+  erGraph = null;
   toast(piiTypes.length ? `Scanning for ${piiTypes.length} selected PII type(s)…` : 'Scanning. This samples metadata and values.');
   try {
-    await api.post(`/api/discovery/scan/${ds}?schema=${encodeURIComponent(schema)}`, { piiTypes });
-    toast('Scan complete - review findings and masking rules', 'ok');
-    await loadDiscoveryContext();
-    activatePageTab('discovery', 'disc-results-card', true);
+    const job = await api.post(`/api/discovery/scan-jobs/${ds}?schema=${encodeURIComponent(schema)}`, { piiTypes });
+    discActiveJobId = job.jobId;
+    discLatestJob = job;
+    renderDiscoveryProgress(job);
+    activatePageTab('discovery', 'disc-live-card', true);
+    startDiscoveryProgressPolling(job.jobId);
+    toast('Discovery scan started. Live progress is open.', 'ok');
   }
   catch (e) { toast(e.message, 'err'); }
+}
+
+function discJobLive(job) {
+  return job && (job.status === 'PENDING' || job.status === 'RUNNING');
+}
+
+function discStatusClass(status) {
+  return ({ COMPLETED: 'good', RUNNING: 'info', PENDING: 'dim', FAILED: 'bad' }[status] || 'info');
+}
+
+function discJobTime(ts) {
+  if (!ts) return '';
+  try { return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }); }
+  catch { return ''; }
+}
+
+function startDiscoveryProgressPolling(jobId) {
+  if (!jobId) return;
+  if (discProgressTimer) clearInterval(discProgressTimer);
+  discProgressTimer = setInterval(() => pollDiscoveryProgress(jobId), 1400);
+  pollDiscoveryProgress(jobId).catch(e => toast(e.message, 'err'));
+}
+
+function stopDiscoveryProgressPolling() {
+  if (discProgressTimer) clearInterval(discProgressTimer);
+  discProgressTimer = null;
+}
+
+async function pollDiscoveryProgress(jobId) {
+  if (!jobId) return;
+  try {
+    const job = await api.get(`/api/discovery/scan-jobs/${encodeURIComponent(jobId)}`);
+    discLatestJob = job;
+    renderDiscoveryProgress(job);
+    if (!discJobLive(job)) {
+      stopDiscoveryProgressPolling();
+      if (discActiveJobId === job.jobId) discActiveJobId = null;
+      if (job.status === 'COMPLETED') {
+        await loadDiscoveryTables();
+        await Promise.all([loadFindings(), loadContextPolicies()]);
+        if ($('disc-tab-er')?.classList.contains('active')) await renderERTraversal();
+        toast('Discovery scan complete - findings are refreshed.', 'ok');
+      }
+    }
+  } catch (e) {
+    stopDiscoveryProgressPolling();
+    throw e;
+  }
+}
+
+async function refreshDiscoveryProgress() {
+  const ds = $('disc-ds')?.value;
+  const schema = $('disc-schema')?.value;
+  if (!ds) { renderDiscoveryProgress(null); return; }
+  try {
+    const jobs = await api.get(`/api/discovery/scan-jobs?dataSourceId=${encodeURIComponent(ds)}${schema ? '&schema=' + encodeURIComponent(schema) : ''}`);
+    let job = discActiveJobId ? jobs.find(j => j.jobId === discActiveJobId) : null;
+    if (!job) job = jobs[0] || null;
+    if (job) { discResultTypeScope = new Set(job.selectedTypes || []); erGraph = null; }
+    discLatestJob = job;
+    renderDiscoveryProgress(job);
+    if (discJobLive(job)) {
+      discActiveJobId = job.jobId;
+      if (!discProgressTimer) startDiscoveryProgressPolling(job.jobId);
+    }
+  } catch (e) {
+    const panel = $('disc-live-panel');
+    if (panel) panel.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+  }
+}
+
+function renderDiscoveryProgress(job) {
+  const panel = $('disc-live-panel');
+  const badge = $('disc-live-status');
+  if (!panel) return;
+  if (!job) {
+    if (badge) { badge.className = 'pill dim'; badge.textContent = 'no active scan'; }
+    panel.innerHTML = '<div class="empty">Start a PII scan to watch table-by-table progress here.</div>';
+    return;
+  }
+  const status = job.status || 'PENDING';
+  if (badge) { badge.className = 'pill ' + discStatusClass(status); badge.textContent = status; }
+  const tables = job.tables || [];
+  const percent = Math.max(0, Math.min(100, Math.round(job.percent || 0)));
+  const completed = job.completedTables || 0;
+  const total = job.totalTables || tables.length || 0;
+  const current = job.currentTable
+    ? `<span>Now scanning <b>${esc(job.currentTable)}</b>${job.currentColumn ? '.' + esc(job.currentColumn) : ''}</span>`
+    : '<span>No table currently active</span>';
+  const typeText = (job.selectedTypes || []).length ? `${job.selectedTypes.length} selected PII type(s)` : 'all PII types';
+  const tableHtml = tables.length ? `<div class="disc-live-grid">` + tables.map(t => {
+    const tp = Math.max(0, Math.min(100, Math.round(t.percent || 0)));
+    const cols = t.totalColumns ? `${t.scannedColumns || 0}/${t.totalColumns} columns` : 'reading columns';
+    return `<div class="disc-live-table ${esc((t.status || '').toLowerCase())}">
+      <div class="disc-live-table-top"><b title="${esc(t.tableName)}">${esc(t.tableName)}</b>${statusPill(t.status || 'PENDING')}</div>
+      <div class="disc-live-bar"><i style="width:${tp}%"></i></div>
+      <div class="disc-live-table-meta"><span>${tp}%</span><span>${esc(cols)}</span><span>${t.findings || 0} finding(s)</span></div>
+      ${t.currentColumn ? `<div class="disc-live-current">Column: ${esc(t.currentColumn)}</div>` : ''}
+    </div>`;
+  }).join('') + `</div>` : '<div class="empty">Preparing table list...</div>';
+  const doneAction = status === 'COMPLETED'
+    ? `<button class="small" onclick="activatePageTab('discovery','disc-results-card',true); loadFindings(); loadColumnReview();">Review findings</button>`
+    : '';
+  panel.innerHTML = `<div class="disc-live-summary">
+      <div class="disc-live-score"><b>${percent}%</b><span>complete</span></div>
+      <div class="disc-live-detail">
+        <div class="disc-live-msg">${esc(job.message || status)}</div>
+        <div class="disc-live-meta">
+          <span>${completed}/${total} table(s)</span>
+          <span>${job.findings || 0} finding(s)</span>
+          <span>${esc(typeText)}</span>
+          <span>Started ${esc(discJobTime(job.startedAt))}</span>
+          ${job.finishedAt ? `<span>Finished ${esc(discJobTime(job.finishedAt))}</span>` : ''}
+        </div>
+        <div class="disc-live-currentline">${current}</div>
+        ${job.error ? `<div class="disc-live-error">${esc(job.error)}</div>` : ''}
+      </div>
+      <div class="disc-live-actions">${doneAction}</div>
+    </div>
+    <div class="disc-live-overall"><i style="width:${percent}%"></i></div>
+    ${tableHtml}`;
+}
+
+function discTypeParams(types) {
+  const list = [...(types || [])].filter(Boolean).sort();
+  return list.map(t => '&piiTypes=' + encodeURIComponent(t)).join('');
+}
+
+function discResultTypeParams() {
+  return discTypeParams(discResultTypeScope);
+}
+
+function discActionTypeParams() {
+  const selectedFilter = $('disc-type-filter')?.value;
+  return selectedFilter ? discTypeParams(new Set([selectedFilter])) : discTypeParams(discResultTypeScope);
 }
 
 /* ---------- PII type scope + custom regex patterns ---------- */
@@ -1185,7 +1348,7 @@ async function loadFindings() {
   const schema = $('disc-schema').value; if (!schema) return;
   if (!functionsList.length) await loadFunctions();
   await loadScriptNames();   // keep the SCRIPT-param picker current for the findings table
-  discFindings = await api.get(`/api/discovery/results/${ds}?schema=${encodeURIComponent(schema)}`);
+  discFindings = await api.get(`/api/discovery/results/${ds}?schema=${encodeURIComponent(schema)}${discResultTypeParams()}`);
   renderFindings();
 }
 
@@ -1243,7 +1406,7 @@ async function approveVisibleFindings() {
   if (!ds || !schema) return toast('Select a data source and schema first', 'err');
   const tableFilter = $('disc-table-filter')?.value?.trim() || '';
   try {
-    const r = await api.post(`/api/discovery/approve-all/${ds}?schema=${encodeURIComponent(schema)}${tableFilter ? '&tableFilter=' + encodeURIComponent(tableFilter) : ''}`);
+    const r = await api.post(`/api/discovery/approve-all/${ds}?schema=${encodeURIComponent(schema)}${tableFilter ? '&tableFilter=' + encodeURIComponent(tableFilter) : ''}${discActionTypeParams()}`);
     toast(`${r.count || 0} visible finding(s) approved`, 'ok');
     await loadFindings();
     await loadColumnReview();
@@ -1255,7 +1418,7 @@ async function rejectVisibleFindings() {
   if (!ds || !schema) return toast('Select a data source and schema first', 'err');
   const tableFilter = $('disc-table-filter')?.value?.trim() || '';
   try {
-    const r = await api.post(`/api/discovery/reject-all/${ds}?schema=${encodeURIComponent(schema)}${tableFilter ? '&tableFilter=' + encodeURIComponent(tableFilter) : ''}`);
+    const r = await api.post(`/api/discovery/reject-all/${ds}?schema=${encodeURIComponent(schema)}${tableFilter ? '&tableFilter=' + encodeURIComponent(tableFilter) : ''}${discActionTypeParams()}`);
     toast(`${r.count || 0} visible finding(s) rejected`, 'ok');
     await loadFindings();
     await loadColumnReview();
@@ -1270,7 +1433,7 @@ async function loadColumnReview() {
   if (!table) { panel.innerHTML = '<div class="empty">Pick a single table above to review every column, including ones not flagged as PII.</div>'; return; }
   if (!functionsList.length) await loadFunctions();
   try {
-    const rows = await api.get(`/api/discovery/table-columns/${ds}?schema=${encodeURIComponent(schema)}&table=${encodeURIComponent(table)}`);
+    const rows = await api.get(`/api/discovery/table-columns/${ds}?schema=${encodeURIComponent(schema)}&table=${encodeURIComponent(table)}${discResultTypeParams()}`);
     const detected = rows.filter(r => r.classificationId).length;
     panel.classList.remove('empty');
     panel.innerHTML = `<div class="review-summary">${esc(table)}: ${detected} discovered/manual PII column(s), ${rows.length - detected} not flagged.</div>
@@ -1512,7 +1675,7 @@ async function renderERTraversal() {
   const ds = $('disc-ds').value, schema = $('disc-schema').value;
   const canvas = $('er-canvas');
   if (!ds || !schema) { canvas.innerHTML = '<div class="empty">Select a data source and schema first.</div>'; return; }
-  if (!erGraph) erGraph = await api.get(`/api/discovery/graph/${ds}?schema=${encodeURIComponent(schema)}`);
+  if (!erGraph) erGraph = await api.get(`/api/discovery/graph/${ds}?schema=${encodeURIComponent(schema)}${discResultTypeParams()}`);
   drawERDiagram();
   renderTraversalOrder();
   renderTraversalCycles();
@@ -5495,12 +5658,20 @@ function renderBusinessEntities() {
 async function selectBusinessEntity(id, showToast = false) {
   selectedBusinessEntityId = id;
   try {
-    [businessEntityDetail, businessEntitySnapshots, businessEntityReservations, businessEntityEnterprise] = await Promise.all([
+    [businessEntityDetail, businessEntitySnapshots, businessEntityReservations, businessEntityEnterprise, businessEntityFlows, businessEntityIdentities, businessEntitySyncPolicies] = await Promise.all([
       api.get('/api/business-entities/' + id),
       api.get('/api/business-entities/' + id + '/snapshots'),
       api.get('/api/business-entities/' + id + '/reservations'),
-      api.get('/api/business-entities/' + id + '/enterprise')
+      api.get('/api/business-entities/' + id + '/enterprise'),
+      api.get('/api/business-entities/' + id + '/flows'),
+      api.get('/api/business-entities/' + id + '/identities'),
+      api.get('/api/business-entities/' + id + '/sync-policies')
     ]);
+    selectedBusinessEntitySyncPolicyId = businessEntitySyncPolicies.some(p => String(p.id) === String(selectedBusinessEntitySyncPolicyId))
+      ? selectedBusinessEntitySyncPolicyId
+      : (businessEntitySyncPolicies[0]?.id || null);
+    businessEntitySyncRun = null;
+    await hydrateBusinessEntityFlowDraft();
     try { virtualDbs = await api.get('/api/virtualization/vdbs'); } catch {}
     renderBusinessEntities();
     renderBusinessEntityDetail();
@@ -5508,8 +5679,40 @@ async function selectBusinessEntity(id, showToast = false) {
   } catch (e) { toast(e.message, 'err'); }
 }
 
+async function hydrateBusinessEntityFlowDraft() {
+  businessEntityFlowDebugRun = null;
+  businessEntityFlowValidation = null;
+  if (!selectedBusinessEntityId) {
+    businessEntityFlowDraft = null;
+    selectedBusinessEntityFlowId = null;
+    return;
+  }
+  if (businessEntityFlows.length) {
+    const existing = businessEntityFlows.find(f => String(f.id) === String(selectedBusinessEntityFlowId)) || businessEntityFlows[0];
+    selectedBusinessEntityFlowId = existing.id;
+    businessEntityFlowDraft = beFlowToDraft(existing);
+    selectedBusinessEntityFlowNodeKey = businessEntityFlowDraft.nodes?.[0]?.key || null;
+    try {
+      const runs = await api.get('/api/business-entities/flows/' + existing.id + '/debug-runs');
+      businessEntityFlowDebugRun = runs?.[0] || null;
+    } catch {}
+    return;
+  }
+  try {
+    const starter = await api.get('/api/business-entities/' + selectedBusinessEntityId + '/flows/starter');
+    businessEntityFlowDraft = beFlowToDraft(starter);
+    selectedBusinessEntityFlowId = null;
+    selectedBusinessEntityFlowNodeKey = businessEntityFlowDraft.nodes?.[0]?.key || null;
+  } catch {
+    businessEntityFlowDraft = null;
+    selectedBusinessEntityFlowId = null;
+  }
+}
+
 function resetBusinessEntityForm(updateList = true) {
   selectedBusinessEntityId = null;
+  businessEntityActiveTab = 'model';
+  localStorage.setItem('forgetdm.be.tab', businessEntityActiveTab);
   businessEntityDetail = {
     entity: { status: 'ACTIVE' },
     members: [],
@@ -5518,8 +5721,32 @@ function resetBusinessEntityForm(updateList = true) {
   };
   businessEntitySnapshots = [];
   businessEntityReservations = [];
+  businessEntityIdentities = [];
+  businessEntityIdentityResolve = null;
+  businessEntitySyncPolicies = [];
+  businessEntitySyncRun = null;
+  selectedBusinessEntitySyncPolicyId = null;
   businessEntityEnterprise = { issuePackages: [], lookalikeProfiles: [], catalogAssets: [], governanceRequests: [], executionPlans: [], operationalPackages: [], packageVersions: [], packagePromotions: [], executionRuns: [], loaderStrategies: [] };
+  businessEntityFlows = [];
+  businessEntityFlowDraft = null;
+  selectedBusinessEntityFlowId = null;
+  selectedBusinessEntityFlowNodeKey = null;
+  businessEntityFlowDebugRun = null;
+  businessEntityFlowValidation = null;
   if (updateList) renderBusinessEntities();
+  renderBusinessEntityDetail();
+}
+
+function rememberBusinessEntityDraft() {
+  if (!businessEntityDetail || !$('be-name')) return;
+  businessEntityDetail.entity = { ...(businessEntityDetail.entity || {}), ...collectBusinessEntityDefinition() };
+  businessEntityDetail.members = collectBusinessEntityMembers();
+}
+
+function setBusinessEntityTab(tab) {
+  rememberBusinessEntityDraft();
+  businessEntityActiveTab = tab || 'model';
+  localStorage.setItem('forgetdm.be.tab', businessEntityActiveTab);
   renderBusinessEntityDetail();
 }
 
@@ -5529,16 +5756,73 @@ function renderBusinessEntityDetail() {
   const detail = businessEntityDetail || { entity: { status: 'ACTIVE' }, members: [] };
   const e = detail.entity || { status: 'ACTIVE' };
   const members = detail.members || [];
+  if (!e.id && businessEntityActiveTab !== 'model') businessEntityActiveTab = 'model';
   el.innerHTML = `
     <div class="be-editor-head">
       <div>
-        <h3>${e.id ? 'Edit Business Entity' : 'New Business Entity'}</h3>
-        <p class="sub tight">${e.id ? 'Manage logical shape and participating tables.' : 'Define the entity header, then add member tables.'}</p>
+        <h3>${esc(e.name || (e.id ? 'Business Entity' : 'New Business Entity'))}</h3>
+        <p class="sub tight">${businessEntitySubtitle(e, members)}</p>
       </div>
       <div class="be-actions">
         ${e.id ? `<button class="ghost danger" onclick="deleteBusinessEntity(${e.id})">Delete</button>` : ''}
-        <button onclick="saveBusinessEntity()">Save Entity</button>
+        ${businessEntityActiveTab === 'model' ? '<button onclick="saveBusinessEntity()">Save Entity</button>' : ''}
       </div>
+    </div>
+    ${renderBusinessEntityTabs(e, members)}
+    <div class="be-tab-pane">${renderBusinessEntityActivePane(e, members)}</div>`;
+}
+
+function businessEntitySubtitle(e, members) {
+  const parts = [];
+  if (e.domain) parts.push(e.domain);
+  parts.push(`${members.length} member table${members.length === 1 ? '' : 's'}`);
+  if (e.primaryDatasetId) parts.push(`DataScope: ${datasetName(e.primaryDatasetId)}`);
+  return parts.join(' / ') || 'Model a reusable business object, then drive DataScope or Synthetic from it.';
+}
+
+function renderBusinessEntityTabs(e, members) {
+  const ent = businessEntityEnterprise || {};
+  const tabs = [
+    ['model', 'Model', `${members.length} table${members.length === 1 ? '' : 's'}`],
+    ['identity', 'Identity', `${businessEntityIdentities.length} key${businessEntityIdentities.length === 1 ? '' : 's'}`],
+    ['freshness', 'Freshness', `${businessEntitySyncPolicies.length} polic${businessEntitySyncPolicies.length === 1 ? 'y' : 'ies'}`],
+    ['time', 'Time & Reserve', `${businessEntitySnapshots.length} snap / ${businessEntityReservations.filter(r => r.status === 'ACTIVE').length} active`],
+    ['data', 'Build Data', `${(ent.issuePackages || []).length + (ent.lookalikeProfiles || []).length} item${((ent.issuePackages || []).length + (ent.lookalikeProfiles || []).length) === 1 ? '' : 's'}`],
+    ['governance', 'Governance', `${(ent.governanceRequests || []).filter(r => r.status === 'PENDING').length} pending`],
+    ['flow', 'Flow Studio', `${businessEntityFlows.length || (businessEntityFlowDraft ? 1 : 0)} flow${(businessEntityFlows.length || (businessEntityFlowDraft ? 1 : 0)) === 1 ? '' : 's'}`],
+    ['run', 'Run & Packages', `${(ent.executionPlans || []).length} plan${(ent.executionPlans || []).length === 1 ? '' : 's'}`],
+    ['evidence', 'Evidence', `${(ent.executionRuns || []).length} run${(ent.executionRuns || []).length === 1 ? '' : 's'}`]
+  ];
+  const locked = !e.id;
+  return `<div class="be-tabs">${tabs.map(([id, label, meta]) => {
+    const disabled = locked && id !== 'model';
+    return `<button type="button" class="be-tab ${businessEntityActiveTab === id ? 'active' : ''}" ${disabled ? 'disabled' : `onclick="setBusinessEntityTab('${id}')"`}>
+      <b>${esc(label)}</b><span>${esc(disabled ? 'save entity first' : meta)}</span>
+    </button>`;
+  }).join('')}</div>`;
+}
+
+function renderBusinessEntityActivePane(e, members) {
+  if (!e.id && businessEntityActiveTab !== 'model') return renderBusinessEntityModelPane(e, members);
+  switch (businessEntityActiveTab) {
+    case 'identity': return renderBusinessEntityIdentityPane();
+    case 'freshness': return renderBusinessEntityFreshnessPane();
+    case 'time': return renderBusinessEntityTimePane(e);
+    case 'data': return renderBusinessEntityDataPane();
+    case 'governance': return renderBusinessEntityGovernancePane();
+    case 'flow': return renderBusinessEntityFlowPane();
+    case 'run': return renderBusinessEntityRunPane();
+    case 'evidence': return renderBusinessEntityEvidencePane();
+    case 'model':
+    default: return renderBusinessEntityModelPane(e, members);
+  }
+}
+
+function renderBusinessEntityModelPane(e, members) {
+  return `
+    <div class="be-test-card">
+      <b>What to test here</b>
+      <span>Start from a DataScope blueprint when you already know the tables. Use New blank when you want to manually define a business object across systems.</span>
     </div>
     <div class="be-form-grid">
       <div><label>Name</label><input id="be-name" value="${esc(e.name || '')}" placeholder="Customer 360"></div>
@@ -5560,7 +5844,245 @@ function renderBusinessEntityDetail() {
       </div>
     </div>
     <div id="be-members">${renderBusinessEntityMembers(members)}</div>`;
-  el.innerHTML += renderBusinessEntityOps(e);
+}
+
+function renderBusinessEntityIdentityPane() {
+  const members = businessEntityDetail?.members || [];
+  const linkRows = members.length ? members.slice(0, 4) : [{ logicalRole: 'customer', tableName: businessEntityDetail?.entity?.rootTable || 'customers', keyColumns: businessEntityDetail?.entity?.businessKeyColumns || 'customer_id' }];
+  return `<div class="be-ops">
+    <div class="be-test-card">
+      <b>Cross-application identity crosswalk</b>
+      <span>Store the real mapping from one canonical business key to DB2, Oracle, CRM, and other application identifiers. Resolve from any system key back to the full Business Entity identity.</span>
+    </div>
+    <div class="be-op-card">
+      <div class="be-members-head">
+        <div><h3>Create / update identity</h3><p class="sub tight">Example: CUST-10025 -> DB2 customer_id -> Oracle card ref -> CRM party id.</p></div>
+        <button onclick="saveBusinessEntityIdentity()">Save crosswalk</button>
+      </div>
+      <div class="be-form-grid">
+        <div><label>Canonical key</label><input id="be-id-canonical" placeholder="CUST-10025"></div>
+        <div><label>Identity type</label><select id="be-id-type"><option>CUSTOMER</option><option>ACCOUNT</option><option>PARTY</option><option>HOUSEHOLD</option><option>BUSINESS_ENTITY</option></select></div>
+        <div><label>Status</label><select id="be-id-status"><option>ACTIVE</option><option>REVIEW</option><option>RETIRED</option></select></div>
+        <div><label>Confidence</label><input id="be-id-confidence" type="number" min="0" max="1" step=".01" value="1"></div>
+      </div>
+      <div class="be-identity-link-grid">
+        ${linkRows.map((m, idx) => renderBusinessEntityIdentityLinkInput(m, idx)).join('')}
+      </div>
+    </div>
+    <div class="be-op-card">
+      <div class="be-members-head">
+        <div><h3>Resolve any system key</h3><p class="sub tight">Look up by DB2 customer id, Oracle card ref, CRM party id, or another app key.</p></div>
+        <button class="ghost" onclick="resolveBusinessEntityIdentity()">Resolve</button>
+      </div>
+      <div class="be-op-form compact">
+        <div><label>Member / system</label><select id="be-id-res-member">${businessEntityMemberOptions()}</select></div>
+        <div><label>External id</label><input id="be-id-res-external" placeholder="customer_id=10025 or 10025"></div>
+        <button class="ghost" onclick="loadBusinessEntityIdentities()">Refresh</button>
+      </div>
+      ${renderBusinessEntityIdentityResolve()}
+    </div>
+    <div class="be-op-card">
+      <div class="be-members-head">
+        <div><h3>Stored crosswalks</h3><p class="sub tight">${businessEntityIdentities.length} canonical identity record${businessEntityIdentities.length === 1 ? '' : 's'}.</p></div>
+        <input id="be-id-search" placeholder="Search canonical, DB2, Oracle, CRM..." onkeydown="if(event.key==='Enter') loadBusinessEntityIdentities()">
+      </div>
+      <div id="be-identity-list">${renderBusinessEntityIdentityList()}</div>
+    </div>
+  </div>`;
+}
+
+function renderBusinessEntityIdentityLinkInput(m, idx) {
+  const role = m.logicalRole || '';
+  const system = m.systemName || dataSourceName(m.dataSourceId) || '';
+  const cols = m.keyColumns || '';
+  return `<div class="be-identity-link-row" data-id-link-row="${idx}">
+    <div>
+      <b>${esc(system || role || 'System ' + (idx + 1))}</b>
+      <span>${esc(role || '-')} / ${esc(m.tableName || '-')}</span>
+    </div>
+    <input class="be-id-link-member" type="hidden" value="${esc(m.id || '')}">
+    <input class="be-id-link-system" value="${esc(system)}" placeholder="DB2 / Oracle / CRM">
+    <input class="be-id-link-table" value="${esc(m.tableName || '')}" placeholder="table">
+    <input class="be-id-link-role" value="${esc(role)}" placeholder="role">
+    <input class="be-id-link-cols" value="${esc(cols)}" placeholder="key columns">
+    <input class="be-id-link-external" placeholder="${esc(cols ? cols.split(',')[0].trim() + '=10025' : 'external id')}">
+    <input class="be-id-link-rule" placeholder="match rule / source">
+  </div>`;
+}
+
+function renderBusinessEntityIdentityResolve() {
+  const r = businessEntityIdentityResolve;
+  if (!r) return '<div class="empty small-empty">No resolve result yet.</div>';
+  if (!r.matched) return `<div class="warnings">${esc(r.message || 'No match found')}</div>`;
+  const c = r.crosswalk || {};
+  return `<div class="be-rb-panel">
+    <b>Matched ${esc(c.canonicalKey || '-')}</b>
+    <div class="be-card-meta">${(c.links || []).length} linked system identifier${(c.links || []).length === 1 ? '' : 's'}</div>
+    ${renderBusinessEntityIdentityLinks(c.links || [])}
+  </div>`;
+}
+
+function renderBusinessEntityIdentityList() {
+  if (!businessEntityIdentities.length) return '<div class="empty">No identity crosswalks yet.</div>';
+  return `<div class="be-op-list">` + businessEntityIdentities.map(c => `
+    <div class="be-op-row">
+      <div>
+        <b>${esc(c.canonicalKey)}</b> ${statusPill(c.status || 'ACTIVE')}
+        <div class="be-card-meta">${esc(c.identityType || 'IDENTITY')} / confidence ${esc(c.confidence ?? '-')} / ${(c.links || []).length} system link${(c.links || []).length === 1 ? '' : 's'}</div>
+        ${renderBusinessEntityIdentityLinks(c.links || [])}
+      </div>
+      <div class="be-actions">
+        <button class="ghost small danger" onclick="deleteBusinessEntityIdentity(${c.id})">Delete</button>
+      </div>
+    </div>`).join('') + '</div>';
+}
+
+function renderBusinessEntityIdentityLinks(links) {
+  if (!links.length) return '<div class="empty small-empty">No linked system identifiers.</div>';
+  return `<div class="be-identity-chipset">` + links.map(l => `
+    <span class="be-identity-chip">
+      <b>${esc(l.systemName || dataSourceName(l.dataSourceId) || l.logicalRole || 'System')}</b>
+      ${esc(l.tableName || '-')}: <code>${esc(l.externalId || '')}</code>
+      <button title="Delete link" onclick="event.stopPropagation(); deleteBusinessEntityIdentityLink(${l.id})">x</button>
+    </span>`).join('') + '</div>';
+}
+
+function renderBusinessEntityFreshnessPane() {
+  const policy = currentBusinessEntitySyncPolicy();
+  return `<div class="be-ops">
+    <div class="be-test-card">
+      <b>Freshness and source sync policy</b>
+      <span>Define how current each application slice must be. ForgeTDM can read source watermarks directly through JDBC, or accept heartbeat watermarks from CDC, file, mainframe, or scheduler jobs.</span>
+    </div>
+    <div class="be-op-card">
+      <div class="be-members-head">
+        <div><h3>Entity freshness policy</h3><p class="sub tight">Use polling for JDBC sources, scheduled for overnight refresh, and heartbeat/real-time when an external feed reports the latest watermark.</p></div>
+        <div class="be-actions">
+          ${businessEntitySyncPolicies.length ? `<select id="be-sync-policy-select" onchange="selectBusinessEntitySyncPolicy(this.value)">${businessEntitySyncPolicies.map(p => `<option value="${p.id}"${String(p.id) === String(policy.id || '') ? ' selected' : ''}>${esc(p.name)} (#${p.id})</option>`).join('')}</select>` : ''}
+          <button class="ghost small" onclick="newBusinessEntitySyncPolicy()">New</button>
+          <button onclick="saveBusinessEntitySyncPolicy()">Save policy</button>
+          <button class="ghost" onclick="checkBusinessEntitySyncPolicy(${policy.id ? js(policy.id) : ''})">Check now</button>
+        </div>
+      </div>
+      <div class="be-form-grid">
+        <input id="be-sync-id" type="hidden" value="${esc(policy.id || '')}">
+        <div><label>Name</label><input id="be-sync-name" value="${esc(policy.name || '')}" placeholder="${esc((businessEntityDetail?.entity?.name || 'Entity') + ' freshness')}"></div>
+        <div><label>Mode</label><select id="be-sync-mode">${['POLLING','REALTIME','SCHEDULED','ON_DEMAND'].map(s => `<option value="${s}"${(policy.syncMode || 'POLLING') === s ? ' selected' : ''}>${s}</option>`).join('')}</select></div>
+        <div><label>Status</label><select id="be-sync-status">${['ACTIVE','DRAFT','PAUSED','RETIRED'].map(s => `<option value="${s}"${(policy.status || 'ACTIVE') === s ? ' selected' : ''}>${s}</option>`).join('')}</select></div>
+        <div><label>Max lag seconds</label><input id="be-sync-lag" type="number" min="1" value="${esc(policy.maxLagSeconds || 900)}"></div>
+        <div><label>Schedule cron</label><input id="be-sync-cron" value="${esc(policy.scheduleCron || '')}" placeholder="optional, e.g. 0 */5 * * * *"></div>
+        <div><label>Strategy</label><select id="be-sync-strategy">${['FRESHNESS_CHECK','REFRESH_BEFORE_RUN','CDC_HEARTBEAT','HYBRID'].map(s => `<option value="${s}"${(policy.syncStrategy || 'FRESHNESS_CHECK') === s ? ' selected' : ''}>${s}</option>`).join('')}</select></div>
+        <div><label>Auto check</label><label class="check tight"><input id="be-sync-auto" type="checkbox" ${policy.autoRefreshEnabled ? 'checked' : ''}> run when due</label></div>
+        <div class="grow"><label>Notes</label><input id="be-sync-notes" value="${esc(policy.notes || '')}" placeholder="SLA, source owner, CDC topic, runbook"></div>
+      </div>
+      <div class="be-members-head">
+        <div><h3>Source/application watermarks</h3><p class="sub tight">Each row is one physical application participant in the Business Entity freshness decision.</p></div>
+        <button class="ghost small" onclick="addBusinessEntitySyncMember()">Add source/table</button>
+      </div>
+      <div class="be-sync-member-list" id="be-sync-members">
+        ${(policy.members || []).map((m, idx) => renderBusinessEntitySyncMemberInput(m, idx)).join('') || '<div class="empty">No source members yet. Add Business Entity members first, or add a manual source/table.</div>'}
+      </div>
+    </div>
+    <div class="be-mini-grid">
+      <div><b>Saved policies</b>${renderBusinessEntitySyncPolicyList()}</div>
+      <div><b>Latest check result</b>${renderBusinessEntitySyncRun()}</div>
+    </div>
+  </div>`;
+}
+
+function currentBusinessEntitySyncPolicy() {
+  const existing = (businessEntitySyncPolicies || []).find(p => String(p.id) === String(selectedBusinessEntitySyncPolicyId));
+  if (existing) return existing;
+  const members = (businessEntityDetail?.members || []).filter(m => m.includeInSubset !== false).map(m => ({
+    memberId: m.id,
+    systemName: m.systemName || dataSourceName(m.dataSourceId) || m.logicalRole || '',
+    dataSourceId: m.dataSourceId || null,
+    schemaName: m.schemaName || '',
+    tableName: m.tableName || '',
+    logicalRole: m.logicalRole || '',
+    keyColumns: m.keyColumns || '',
+    watermarkColumn: '',
+    maxLagSeconds: 900,
+    syncMode: 'POLLING',
+    queryFilter: ''
+  }));
+  return {
+    id: null,
+    name: (businessEntityDetail?.entity?.name || 'Business Entity') + ' freshness',
+    syncMode: 'POLLING',
+    status: 'ACTIVE',
+    maxLagSeconds: 900,
+    scheduleCron: '',
+    syncStrategy: 'FRESHNESS_CHECK',
+    autoRefreshEnabled: true,
+    notes: '',
+    members
+  };
+}
+
+function renderBusinessEntitySyncMemberInput(m, idx) {
+  const status = m.lastStatus || 'NEVER_CHECKED';
+  const meta = [
+    m.lastSourceWatermark ? 'watermark ' + m.lastSourceWatermark : '',
+    m.lastCheckedAt ? 'checked ' + new Date(m.lastCheckedAt).toLocaleString() : '',
+    m.lastMessage || ''
+  ].filter(Boolean).join(' / ');
+  return `<div class="be-sync-member-row" data-be-sync-member="${idx}">
+    <div>
+      <label>Member</label>
+      <select class="be-sync-member" onchange="applyBusinessEntitySyncMember(${idx}, this.value)">${businessEntityMemberOptions(m.memberId)}</select>
+      <div class="be-card-meta">${statusPill(status)}${meta ? ' ' + esc(meta) : ''}</div>
+    </div>
+    <div><label>System</label><input class="be-sync-system" value="${esc(m.systemName || '')}" placeholder="Core DB2 / Cards Oracle"></div>
+    <div><label>Source DB</label><select class="be-sync-source">${beDataSourceOptions(m.dataSourceId)}</select></div>
+    <div><label>Schema</label><input class="be-sync-schema" value="${esc(m.schemaName || '')}" placeholder="optional"></div>
+    <div><label>Table</label><input class="be-sync-table" value="${esc(m.tableName || '')}" placeholder="customers"></div>
+    <div><label>Keys</label><input class="be-sync-keys" value="${esc(m.keyColumns || '')}" placeholder="customer_id"></div>
+    <div><label>Watermark</label><input class="be-sync-watermark" value="${esc(m.watermarkColumn || '')}" placeholder="updated_at"></div>
+    <div><label>SLA seconds</label><input class="be-sync-member-lag" type="number" min="1" value="${esc(m.maxLagSeconds || '')}" placeholder="policy default"></div>
+    <div><label>Mode</label><select class="be-sync-member-mode">${['POLLING','REALTIME','SCHEDULED','ON_DEMAND','HEARTBEAT'].map(s => `<option value="${s}"${(m.syncMode || 'POLLING') === s ? ' selected' : ''}>${s}</option>`).join('')}</select></div>
+    <div class="grow"><label>Filter</label><input class="be-sync-filter" value="${esc(m.queryFilter || '')}" placeholder="region = 'US'"></div>
+    <button class="ghost small danger" onclick="removeBusinessEntitySyncMember(this)">Remove</button>
+  </div>`;
+}
+
+function renderBusinessEntitySyncPolicyList() {
+  if (!businessEntitySyncPolicies.length) return '<div class="empty small-empty">No freshness policies saved yet.</div>';
+  return `<div class="be-op-list compact-list">` + businessEntitySyncPolicies.map(p => {
+    const latest = (p.runs || [])[0];
+    const memberStatuses = (p.members || []).map(m => m.lastStatus || 'NEVER_CHECKED');
+    const stale = memberStatuses.filter(s => ['STALE','FAILED','UNKNOWN'].includes(String(s).toUpperCase())).length;
+    return `<div class="be-op-row compact-row">
+      <div>
+        <b>${esc(p.name)}</b> ${statusPill(latest?.status || p.status || 'ACTIVE')}
+        <div class="be-card-meta">${esc(p.syncMode || 'POLLING')} / max lag ${esc(p.maxLagSeconds || '-')}s / ${p.autoRefreshEnabled ? 'auto check on' : 'manual'} / ${esc((p.members || []).length)} member(s)</div>
+        <div class="be-card-meta">${stale ? stale + ' member(s) need attention' : 'No stale evidence recorded'}</div>
+        <div class="be-actions">
+          <button class="ghost small" onclick="selectBusinessEntitySyncPolicy(${p.id})">Edit</button>
+          <button class="ghost small" onclick="checkBusinessEntitySyncPolicy(${p.id})">Check now</button>
+          <button class="ghost small danger" onclick="deleteBusinessEntitySyncPolicy(${p.id})">Delete</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('') + '</div>';
+}
+
+function renderBusinessEntitySyncRun() {
+  const run = businessEntitySyncRun || (currentBusinessEntitySyncPolicy().runs || [])[0];
+  if (!run) return '<div class="empty small-empty">No freshness check run yet.</div>';
+  const result = run.result || beJson(run.resultJson) || {};
+  const members = result.members || [];
+  const rows = members.length ? members.map(m => `<div class="be-sync-run-row">
+    <div><b>${esc(m.systemName || m.tableName || 'member')}</b><span>${esc(m.tableName || '')}${m.watermarkColumn ? ' / ' + esc(m.watermarkColumn) : ''}</span></div>
+    ${statusPill(m.status || 'UNKNOWN')}
+    <span>${esc(m.lagSeconds == null ? '-' : m.lagSeconds + 's lag')}</span>
+    <span>${esc(m.message || '')}</span>
+  </div>`).join('') : '<div class="empty small-empty">No member evidence captured in this run.</div>';
+  return `<div class="be-rb-panel">
+    <b>${esc(result.policyName || currentBusinessEntitySyncPolicy().name || 'Freshness check')}</b> ${statusPill(run.status || result.status || 'UNKNOWN')}
+    <div class="be-card-meta">run #${esc(run.id || '-')} / ${esc(run.runType || 'FRESHNESS_CHECK')} / ${esc(run.completedAt ? new Date(run.completedAt).toLocaleString() : '')}</div>
+    <div class="be-sync-run-list">${rows}</div>
+  </div>`;
 }
 
 function renderBusinessEntityMembers(members) {
@@ -5590,6 +6112,420 @@ function renderBusinessEntityMembers(members) {
         </div>
       </div>`).join('')}
     </div>`;
+}
+
+function renderBusinessEntityTimePane(entity) {
+  return `<div class="be-ops">
+    <div class="be-test-card">
+      <b>How to test this tab</b>
+      <span>Create an Evidence-only snapshot first. Then create a short reservation with count 1 and release it. Physical snapshot rollback needs Virtualization snapshots to exist.</span>
+    </div>
+    <div class="be-op-card">
+      <div class="be-members-head">
+        <div><h3>Snapshots & rollback</h3><p class="sub tight">Capture a point-in-time entity bookmark. Physical mode links to Virtualization snapshots for VDB rollback.</p></div>
+        <span class="pill info">${businessEntitySnapshots.length} snapshot${businessEntitySnapshots.length === 1 ? '' : 's'}</span>
+      </div>
+      <div class="be-op-form">
+        <div><label>Name</label><input id="be-snap-name" placeholder="${esc(entity.name || 'Entity')} baseline"></div>
+        <div><label>Mode</label><select id="be-snap-mode"><option value="EVIDENCE_ONLY">Evidence only</option><option value="PHYSICAL_SNAPSHOT">Physical snapshot</option></select></div>
+        <div><label>Retention days</label><input id="be-snap-retention" type="number" min="0" placeholder="optional"></div>
+        <div class="grow"><label>Filter / evidence criteria</label><input id="be-snap-criteria" placeholder="status = 'ACTIVE'"></div>
+        <div class="grow"><label>Note</label><input id="be-snap-note" placeholder="Why this point matters"></div>
+        <button onclick="createBusinessEntitySnapshot()">Create snapshot</button>
+      </div>
+      <div id="be-snapshot-list">${renderBusinessEntitySnapshots()}</div>
+    </div>
+    <div class="be-op-card">
+      <div class="be-members-head">
+        <div><h3>Entity reservations</h3><p class="sub tight">Reserve complete business objects with TTL, conflict checks, and member-table key evidence.</p></div>
+        <span class="pill warn">${businessEntityReservations.filter(r => r.status === 'ACTIVE').length} active</span>
+      </div>
+      <div class="be-op-form">
+        <div><label>Name</label><input id="be-res-name" placeholder="QA cycle reservation"></div>
+        <div><label>Count</label><input id="be-res-count" type="number" min="1" value="1"></div>
+        <div><label>TTL hours</label><input id="be-res-ttl" type="number" min="1" value="24"></div>
+        <div><label>Environment</label><input id="be-res-env" placeholder="UAT"></div>
+        <div class="grow"><label>Criteria</label><input id="be-res-criteria" placeholder="region = 'US'"></div>
+        <div class="grow"><label>Purpose</label><input id="be-res-purpose" placeholder="Test cycle / defect / team"></div>
+        <button onclick="createBusinessEntityReservation()">Reserve entity</button>
+      </div>
+      <div id="be-reservation-list">${renderBusinessEntityReservations()}</div>
+    </div>
+  </div>`;
+}
+
+function renderBusinessEntityDataPane() {
+  const e = businessEntityEnterprise || {};
+  return `<div class="be-ops">
+    <div class="be-test-card">
+      <b>How this uses DataScope and Synthetic</b>
+      <span>Business Entity does not replace those pages. It stores the business object and creates packages/plans that later call DataScope subset-mask or Synthetic look-alike generation.</span>
+      <div class="be-actions"><button class="ghost small" onclick="goTo('datasets')">Open DataScope</button><button class="ghost small" onclick="goTo('synthetic')">Open Synthetic</button></div>
+    </div>
+    <div class="be-op-card">
+      <div class="be-members-head">
+        <div><h3>Production issue recreation</h3><p class="sub tight">Capture the defect context and produce a replayable, privacy-safe data package.</p></div>
+        <span class="pill info">${(e.issuePackages || []).length} package${(e.issuePackages || []).length === 1 ? '' : 's'}</span>
+      </div>
+      <div class="be-op-form">
+        <div><label>Issue key</label><input id="be-issue-key" placeholder="INC-12345"></div>
+        <div><label>Severity</label><select id="be-issue-sev"><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option><option>LOW</option></select></div>
+        <div><label>Mode</label><select id="be-issue-mode"><option value="MASKED_SUBSET">Masked subset</option><option value="SYNTHETIC_REPLAY">Synthetic replay</option><option value="HYBRID">Hybrid</option></select></div>
+        <div class="grow"><label>Title</label><input id="be-issue-title" placeholder="Payment fails for active customer"></div>
+        <div><label>Target env</label><input id="be-issue-target" placeholder="UAT"></div>
+        <button onclick="createBusinessEntityIssuePackage()">Create package</button>
+      </div>
+      ${enterpriseRows(e.issuePackages, r => `<b>${esc(r.issueKey)}</b> ${esc(r.title || '')}<div class="be-card-meta">${esc(r.recreationMode)} / ${esc(r.privacyAction)} / ${esc(r.status)} / ${esc(r.approvalStatus)}</div>`)}
+    </div>
+    <div class="be-op-card">
+      <div class="be-members-head">
+        <div><h3>AI-assisted look-alike planning</h3><p class="sub tight">Generate a metadata-only synthetic plan. No raw source values are stored in the profile.</p></div>
+        <span class="pill info">${(e.lookalikeProfiles || []).length} profile${(e.lookalikeProfiles || []).length === 1 ? '' : 's'}</span>
+      </div>
+      <div class="be-op-form">
+        <div><label>Name</label><input id="be-look-name" placeholder="Customer UAT look-alike"></div>
+        <div><label>Rows</label><input id="be-look-rows" type="number" min="1" value="1000"></div>
+        <div><label>Privacy</label><select id="be-look-privacy"><option value="NO_RAW_VALUES">No raw values</option><option value="BANKING_SAFE_PROFILE">Banking safe profile</option></select></div>
+        <div class="grow"><label>Objective</label><input id="be-look-objective" placeholder="Maintain account/customer shape for UAT"></div>
+        <button onclick="createBusinessEntityLookalike()">Create plan</button>
+      </div>
+      ${enterpriseRows(e.lookalikeProfiles, r => `<b>${esc(r.name)}</b><div class="be-card-meta">${esc(r.privacyMode)} / ${r.rowGoal || 0} rows / ${esc(r.status)}</div>`)}
+    </div>
+  </div>`;
+}
+
+function renderBusinessEntityGovernancePane() {
+  const e = businessEntityEnterprise || {};
+  return `<div class="be-ops">
+    <div class="be-test-card">
+      <b>How to test this tab</b>
+      <span>Click Sync catalog, then create a governance request. You can approve or reject the pending request from the list below to verify maker-checker evidence.</span>
+    </div>
+    <div class="be-op-card">
+      <div class="be-members-head">
+        <div><h3>Catalog & governance</h3><p class="sub tight">Publish lineage/certification metadata and enforce maker-checker sign-off for releases.</p></div>
+        <button class="ghost small" onclick="syncBusinessEntityCatalog()">Sync catalog</button>
+      </div>
+      <div class="be-op-form">
+        <div><label>Object type</label><select id="be-gov-type"><option>BUSINESS_ENTITY</option><option>ISSUE_PACKAGE</option><option>EXECUTION_PLAN</option><option>OPERATIONAL_PACKAGE</option></select></div>
+        <div><label>Action</label><select id="be-gov-action"><option>RELEASE</option><option>RUN</option><option>EXPORT</option><option>PROMOTE</option></select></div>
+        <div><label>Risk</label><select id="be-gov-risk"><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option><option>LOW</option></select></div>
+        <div><label>Reviewer</label><input id="be-gov-reviewer" placeholder="checker username"></div>
+        <div class="grow"><label>Comments</label><input id="be-gov-comments" placeholder="Release reason and evidence"></div>
+        <button onclick="createBusinessEntityGovernance()">Request approval</button>
+      </div>
+      <div class="be-mini-grid">
+        <div><b>Catalog</b>${enterpriseRows(e.catalogAssets, r => `${esc(r.assetType)} / <b>${esc(r.displayName)}</b><div class="be-card-meta">${esc(r.certificationStatus)} / score ${esc(r.qualityScore ?? '')}</div>`)}</div>
+        <div><b>Approvals</b>${enterpriseRows(e.governanceRequests, r => `<b>${esc(r.action)}</b> ${statusPill(r.status)}<div class="be-card-meta">${esc(r.objectType)} / risk ${esc(r.riskLevel)} / reviewer ${esc(r.reviewer || '-')}</div><div class="be-actions">${r.status === 'PENDING' ? `<button class="ghost small" onclick="decideBusinessEntityGovernance(${r.id}, 'approve')">Approve</button><button class="ghost small danger" onclick="decideBusinessEntityGovernance(${r.id}, 'reject')">Reject</button>` : ''}</div>`)}</div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderBusinessEntityFlowPane() {
+  if (!businessEntityFlowDraft) {
+    return `<div class="be-ops"><div class="empty">No flow loaded for this Business Entity yet.</div></div>`;
+  }
+  const f = businessEntityFlowDraft;
+  return `<div class="be-ops">
+    <div class="be-test-card">
+      <b>How to use Flow Studio</b>
+      <span>Build the enterprise run as a visual flow, save it, then use Debug dry-run to step through approvals, loops, fan-out, exception routes, and two-phase commit without changing target data.</span>
+    </div>
+    <div class="be-flow-studio">
+      <div class="be-flow-side">
+        <div class="be-flow-panel">
+          <div class="be-members-head">
+            <div><h3>Saved flows</h3><p class="sub tight">Reusable orchestration per Business Entity.</p></div>
+            <button class="ghost small" onclick="newBusinessEntityFlow()">New</button>
+          </div>
+          <select id="be-flow-select" onchange="selectBusinessEntityFlow(this.value)">
+            ${businessEntityFlows.length ? businessEntityFlows.map(flow => `<option value="${flow.id}"${String(flow.id) === String(selectedBusinessEntityFlowId) ? ' selected' : ''}>${esc(flow.name)} v${esc(flow.versionNo || 1)}</option>`).join('') : '<option value="">Unsaved starter flow</option>'}
+          </select>
+          <div class="be-flow-form">
+            <label>Name</label><input id="be-flow-name" value="${esc(f.name || '')}" placeholder="Customer enterprise flow">
+            <label>Description</label><textarea id="be-flow-desc" placeholder="What this orchestration controls">${esc(f.description || '')}</textarea>
+            <label>Status</label><select id="be-flow-status">${['DRAFT','ACTIVE','RETIRED'].map(s => `<option value="${s}"${(f.status || 'DRAFT') === s ? ' selected' : ''}>${s}</option>`).join('')}</select>
+          </div>
+          <div class="be-actions">
+            <button onclick="saveBusinessEntityFlow()">Save flow</button>
+            ${f.id ? `<button class="ghost" onclick="validateBusinessEntityFlow()">Validate</button><button class="ghost" onclick="publishBusinessEntityFlow()">Publish</button>` : ''}
+            ${f.id ? `<button class="ghost danger" onclick="deleteBusinessEntityFlow()">Delete</button>` : ''}
+          </div>
+          ${renderBusinessEntityFlowValidation()}
+        </div>
+        ${renderBusinessEntityFlowPalette()}
+      </div>
+      <div class="be-flow-main">
+        ${renderBusinessEntityFlowCanvas()}
+      </div>
+      <div class="be-flow-side">
+        ${renderBusinessEntityFlowInspector()}
+        ${renderBusinessEntityFlowDebugger()}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderBusinessEntityFlowPalette() {
+  const items = [
+    ['TRANSFORM', 'Reusable transform', 'Policy/function step from the shared library'],
+    ['LOOP', 'Loop', 'Repeat over slices, members, or reserved keys'],
+    ['EXCEPTION_HANDLER', 'Exception handler', 'Route failures to rollback/evidence'],
+    ['TWO_PHASE_COMMIT', 'Two-phase commit', 'Prepare/commit/rollback coordination'],
+    ['SYNTHETIC_LOOKALIKE', 'Synthetic step', 'Generate look-alike data when needed']
+  ];
+  return `<div class="be-flow-panel">
+    <h3>Step palette</h3>
+    <p class="sub tight">Add no-code building blocks to the graph.</p>
+    <div class="be-flow-palette">
+      ${items.map(([type, label, desc]) => `<button type="button" onclick="addBusinessEntityFlowStep('${type}')"><b>${esc(label)}</b><span>${esc(desc)}</span></button>`).join('')}
+    </div>
+    <div class="be-flow-library">
+      <b>Reusable transformations</b>
+      <button class="ghost small" onclick="addBusinessEntityFlowStep('TRANSFORM','Format-preserving masking',{transformationName:'FORMAT_PRESERVE', reusable:true})">Format preserve</button>
+      <button class="ghost small" onclick="addBusinessEntityFlowStep('TRANSFORM','Eligibility filter',{transformationName:'ELIGIBILITY_FILTER', reusable:true})">Eligibility filter</button>
+      <button class="ghost small" onclick="addBusinessEntityFlowStep('TRANSFORM','Cross-system key hash',{transformationName:'KEY_HASH', reusable:true})">Key hash</button>
+    </div>
+  </div>`;
+}
+
+function renderBusinessEntityFlowCanvas() {
+  const flow = businessEntityFlowDraft || {};
+  const nodes = flow.nodes || [];
+  const edges = flow.edges || [];
+  const events = new Map((businessEntityFlowDebugRun?.events || []).map(e => [String(e.stepKey), e]));
+  const byKey = new Map(nodes.map(n => [String(n.key), n]));
+  const width = Math.max(980, ...nodes.map(n => Number(n.x || 0) + 230));
+  const height = Math.max(560, ...nodes.map(n => Number(n.y || 0) + 130));
+  const lines = edges.map((e, idx) => {
+    const a = byKey.get(String(e.from)), b = byKey.get(String(e.to));
+    if (!a || !b) return '';
+    const x1 = Number(a.x || 0) + 92, y1 = Number(a.y || 0) + 38;
+    const x2 = Number(b.x || 0) + 92, y2 = Number(b.y || 0) + 38;
+    const mid = `M ${x1} ${y1} C ${(x1 + x2) / 2} ${y1}, ${(x1 + x2) / 2} ${y2}, ${x2} ${y2}`;
+    const err = String(e.condition || '').toUpperCase() === 'ERROR';
+    return `<path d="${mid}" class="be-flow-edge ${err ? 'error' : ''}" marker-end="url(#be-flow-arrow)"></path>
+      <text x="${(x1 + x2) / 2}" y="${(y1 + y2) / 2 - 4}" class="be-flow-edge-label">${esc(e.condition || 'SUCCESS')}</text>`;
+  }).join('');
+  const cards = nodes.map(n => {
+    const ev = events.get(String(n.key));
+    const type = String(n.type || 'STEP').toLowerCase().replace(/[^a-z0-9_-]+/g, '-');
+    const selected = String(selectedBusinessEntityFlowNodeKey || '') === String(n.key);
+    return `<div class="be-flow-node ${type} ${selected ? 'selected' : ''} ${ev ? String(ev.status || '').toLowerCase() : ''}" style="left:${Number(n.x || 0)}px;top:${Number(n.y || 0)}px" onclick="selectBusinessEntityFlowNode(${js(n.key)})">
+      <div class="be-flow-node-head"><b>${esc(n.label || n.type || n.key)}</b>${ev ? statusPill(ev.status || 'PASSED') : ''}</div>
+      <span>${esc(n.type || 'STEP')}</span>
+      ${n.breakpoint ? '<em>breakpoint</em>' : ''}
+    </div>`;
+  }).join('');
+  return `<div class="be-flow-canvas-wrap">
+    <div class="be-flow-canvas" style="width:${width}px;height:${height}px">
+      <svg width="${width}" height="${height}" class="be-flow-svg">
+        <defs><marker id="be-flow-arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto"><path d="M0,0 L0,6 L8,3 z"></path></marker></defs>
+        ${lines}
+      </svg>
+      ${cards}
+    </div>
+  </div>`;
+}
+
+function renderBusinessEntityFlowInspector() {
+  const node = (businessEntityFlowDraft?.nodes || []).find(n => String(n.key) === String(selectedBusinessEntityFlowNodeKey));
+  if (!node) return `<div class="be-flow-panel"><h3>Step inspector</h3><div class="empty small-empty">Select a step on the canvas.</div></div>`;
+  return `<div class="be-flow-panel">
+    <h3>Step inspector</h3>
+    <div class="be-flow-form">
+      <label>Step label</label><input id="be-flow-node-label" value="${esc(node.label || '')}">
+      <label>Step type</label><input value="${esc(node.type || '')}" disabled>
+      <label>Config JSON</label><textarea id="be-flow-node-config">${esc(JSON.stringify(node.config || {}, null, 2))}</textarea>
+      <label class="inline-check"><input id="be-flow-node-breakpoint" type="checkbox" ${node.breakpoint ? 'checked' : ''}> Pause debugger here</label>
+    </div>
+    <div class="be-actions">
+      <button class="ghost small" onclick="applyBusinessEntityFlowNode()">Apply</button>
+      ${!['START','END'].includes(String(node.type || '').toUpperCase()) ? `<button class="ghost small danger" onclick="removeBusinessEntityFlowNode(${js(node.key)})">Remove</button>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderBusinessEntityFlowDebugger() {
+  const nodes = businessEntityFlowDraft?.nodes || [];
+  const failOpts = '<option value="">No injected failure</option>' + nodes.map(n => `<option value="${esc(n.key)}">${esc(n.label || n.key)}</option>`).join('');
+  return `<div class="be-flow-panel">
+    <div class="be-members-head">
+      <div><h3>Run control</h3><p class="sub tight">Debug is dry-run. Run approved calls the same governed BE execution launcher.</p></div>
+    </div>
+    <div class="be-flow-form">
+      <label>Execution plan</label><select id="be-flow-run-plan">${enterprisePlanOptions()}</select>
+      <label>Target DB override</label><select id="be-flow-run-target">${beTargetDataSourceOptions(null, 'Use blueprint target(s)')}</select>
+      <label>Target schema</label><input id="be-flow-run-schema" placeholder="optional">
+      <label>Seed</label><input id="be-flow-run-seed" placeholder="optional">
+      <label>Rows / cap</label><input id="be-flow-run-rows" type="number" min="1" placeholder="optional">
+      <label>Load</label><select id="be-flow-run-load"><option>REPLACE</option><option>INSERT</option><option>INSERT_UPDATE</option><option>UPDATE</option><option>TRUNCATE_ONLY</option></select>
+      <label>Prep</label><select id="be-flow-run-prep"><option>DELETE</option><option>TRUNCATE</option><option>TRUNCATE_CASCADE</option><option>NONE</option></select>
+      <label>Inject failure at step</label><select id="be-flow-fail-step">${failOpts}</select>
+    </div>
+    <div class="be-actions">
+      <button class="ghost" onclick="debugBusinessEntityFlow()">Debug dry-run</button>
+      <button onclick="runBusinessEntityFlow()">Run approved</button>
+    </div>
+    ${renderBusinessEntityFlowEvents()}
+  </div>`;
+}
+
+function renderBusinessEntityFlowValidation() {
+  const v = businessEntityFlowValidation;
+  if (!v) return '';
+  const rows = (v.findings || []).slice(0, 8).map(f => `<div class="be-flow-finding ${String(f.severity || '').toLowerCase()}">
+    <b>${esc(f.severity || '')} / ${esc(f.code || '')}</b>
+    <span>${esc(f.stepKey ? f.stepKey + ': ' : '')}${esc(f.message || '')}</span>
+  </div>`).join('');
+  return `<div class="be-flow-validation ${String(v.status || '').toLowerCase()}">
+    <div>${statusPill(v.status || 'CHECK')}<b>Score ${esc(v.score ?? '-')}</b><span>${esc(v.summary || '')}</span></div>
+    ${rows || '<div class="okbox">No validation findings.</div>'}
+  </div>`;
+}
+
+function renderBusinessEntityFlowEvents() {
+  const run = businessEntityFlowDebugRun;
+  if (!run) return '<div class="empty small-empty">No debug run yet.</div>';
+  const rows = (run.events || []).map(e => `<div class="be-flow-event ${String(e.status || '').toLowerCase()}">
+    <div><b>${esc(e.sequence)}. ${esc(e.label || e.stepKey)}</b>${statusPill(e.status || 'PASSED')}</div>
+    <p>${esc(e.message || '')}</p>
+    <pre>${esc(JSON.stringify(e.details || {}, null, 2))}</pre>
+  </div>`).join('');
+  return `<div class="be-flow-run-head">${statusPill(run.status || 'COMPLETED')}<span>run #${esc(run.id || '-')} / ${esc(run.mode || 'DEBUG_DRY_RUN')}</span></div>
+    <div class="be-flow-events">${rows}</div>`;
+}
+
+function renderBusinessEntityRunPane() {
+  const e = businessEntityEnterprise || {};
+  return `<div class="be-ops">
+    <div class="be-test-card">
+      <b>How to test this tab</b>
+      <span>Create an execution plan in PLAN_ONLY mode first. SUBSET_MASK/ISSUE_RECREATE launch one DataScope run per application slice. Leave Target DB blank to use each blueprint target, or select a target to override all slices.</span>
+    </div>
+    <div class="be-op-card">
+      <div class="be-members-head">
+        <div><h3>Cross-system execution & operations</h3><p class="sub tight">Plan entity-level subset/mask/synthetic execution, choose loader strategy, and export scheduler packages.</p></div>
+        <span class="pill dim">${(e.loaderStrategies || []).length} loader checks</span>
+      </div>
+      <div class="be-op-form">
+        <div><label>Plan name</label><input id="be-plan-name" placeholder="Customer UAT release"></div>
+        <div><label>Operation</label><select id="be-plan-op"><option>SUBSET_MASK</option><option>SYNTHETIC_LOOKALIKE</option><option>ISSUE_RECREATE</option></select></div>
+        <div><label>Mode</label><select id="be-plan-mode"><option>PLAN_ONLY</option><option>APPROVED_RUN_READY</option></select></div>
+        <div><label>Target env</label><input id="be-plan-target" placeholder="UAT"></div>
+        <div class="grow"><label>Source env</label><input id="be-plan-source" placeholder="PROD / masked lower env"></div>
+        <button onclick="createBusinessEntityExecutionPlan()">Create plan</button>
+      </div>
+      <div class="be-op-form compact">
+        <div><label>Execution plan</label><select id="be-package-plan">${enterprisePlanOptions()}</select></div>
+        <div class="grow"><label>Package name</label><input id="be-package-name" placeholder="Nightly scheduler package"></div>
+        <button onclick="createBusinessEntityOperationalPackage()">Create package</button>
+      </div>
+      <div class="be-op-form compact">
+        <div><label>Package lifecycle</label><select id="be-lifecycle-package">${enterprisePackageOptions()}</select></div>
+        <div><label>Promote to</label><input id="be-promote-target" placeholder="QA / UAT / STAGE"></div>
+        <button class="ghost" onclick="createBusinessEntityPackageVersion()">Create version</button>
+        <button class="ghost" onclick="promoteBusinessEntityPackage()">Promote</button>
+      </div>
+      <div class="be-op-form compact">
+        <div><label>Plan to launch</label><select id="be-launch-plan">${enterprisePlanOptions()}</select></div>
+        <div><label>Target DB override</label><select id="be-launch-target">${beTargetDataSourceOptions(null, 'Use blueprint target(s)')}</select></div>
+        <div><label>Target schema</label><input id="be-launch-schema" placeholder="public / UAT schema"></div>
+        <div><label>Seed</label><input id="be-launch-seed" placeholder="optional"></div>
+        <div><label>Rows / cap</label><input id="be-launch-rows" type="number" min="1" placeholder="optional"></div>
+        <div><label>Load</label><select id="be-launch-load"><option>REPLACE</option><option>INSERT</option><option>INSERT_UPDATE</option><option>UPDATE</option><option>TRUNCATE_ONLY</option></select></div>
+        <div><label>Prep</label><select id="be-launch-prep"><option>DELETE</option><option>TRUNCATE</option><option>TRUNCATE_CASCADE</option><option>NONE</option></select></div>
+        <button onclick="launchBusinessEntityExecutionPlan()">Launch</button>
+      </div>
+      <div class="be-mini-grid">
+        <div><b>Execution plans</b>${enterpriseRows(e.executionPlans, renderBusinessEntityExecutionPlanRow)}</div>
+        <div><b>Operational packages</b>${enterpriseRows(e.operationalPackages, r => `<b>${esc(r.name)}</b> ${statusPill(r.status)}<div class="be-card-meta">${esc(r.packageType)} / plan #${esc(r.executionPlanId || '-')}</div><div class="be-actions"><button class="ghost small" onclick="viewBusinessEntityPackageScript(${r.id})">View runner</button></div>`)}</div>
+      </div>
+      <div id="be-package-script"></div>
+    </div>
+  </div>`;
+}
+
+function renderBusinessEntityEvidencePane() {
+  const e = businessEntityEnterprise || {};
+  return `<div class="be-ops">
+    <div class="be-test-card">
+      <b>What this tab proves</b>
+      <span>This is the audit/evidence view: loader decisions, execution run links, immutable package versions, and promotion records.</span>
+    </div>
+    <div class="be-mini-grid">
+      <div><b>Loader strategy evidence</b>${enterpriseRows(e.loaderStrategies, r => `${esc(r.role)} / ${esc(r.table)}<div class="be-card-meta">${esc(r.engine)} / ${esc(r.strategy)} / fallback ${esc(r.fallback)}</div>`)}</div>
+      <div><b>Execution run history</b>${enterpriseRows(e.executionRuns, renderBusinessEntityRunEvidence)}</div>
+      <div><b>Package versions</b>${enterpriseRows(e.packageVersions, r => `<b>v${esc(r.versionNumber)}</b> ${statusPill(r.status)}<div class="be-card-meta">package #${esc(r.packageId || '-')} - hash ${esc(String(r.artifactHash || '').slice(0, 12))} - retention ${esc(r.retentionUntil || '-')}</div>`)}</div>
+      <div><b>Package promotions</b>${enterpriseRows(e.packagePromotions, r => `<b>${esc(r.fromEnvironment || '-')} -> ${esc(r.toEnvironment || '-')}</b> ${statusPill(r.status)}<div class="be-card-meta">package #${esc(r.packageId || '-')} - version #${esc(r.versionId || '-')} - approval ${esc(r.approvedRequestId || '-')}</div>`)}</div>
+    </div>
+  </div>`;
+}
+
+function beJson(value) {
+  if (!value) return null;
+  if (typeof value === 'object') return value;
+  try { return JSON.parse(value); } catch { return null; }
+}
+
+function businessEntityDataScopeSlices(plan) {
+  const planJson = beJson(plan?.planJson);
+  if (Array.isArray(planJson?.applicationSlices) && planJson.applicationSlices.length) return planJson.applicationSlices;
+  const detail = businessEntityDetail || {};
+  const entity = detail.entity || {};
+  const primaryDatasetId = entity.primaryDatasetId;
+  const byDataset = new Map();
+  (detail.members || []).forEach(m => {
+    if (m.includeInSubset === false) return;
+    const datasetId = m.datasetId || primaryDatasetId;
+    if (!datasetId) return;
+    const key = String(datasetId);
+    if (!byDataset.has(key)) {
+      byDataset.set(key, {
+        datasetId,
+        label: m.systemName || m.logicalRole || m.tableName || ('DataScope ' + datasetId),
+        members: []
+      });
+    }
+    byDataset.get(key).members.push(m);
+  });
+  if (!byDataset.size && primaryDatasetId) {
+    byDataset.set(String(primaryDatasetId), { datasetId: primaryDatasetId, label: 'Primary DataScope blueprint', members: [] });
+  }
+  return [...byDataset.values()];
+}
+
+function renderBusinessEntityRunEvidence(r) {
+  const result = beJson(r.launchResultJson) || {};
+  const loader = beJson(r.loaderStrategyJson) || {};
+  const status = r.status || r.engineStatus || result.status;
+  const base = `<b>${esc(r.engine === 'DATASCOPE_FANOUT' ? 'DataScope fan-out' : r.engine)}</b> ${statusPill(status)}`;
+  const meta = `<div class="be-card-meta">plan #${esc(r.executionPlanId || '-')} - run ${esc(r.engineRunId || result.runId || '-')} - ${esc(r.engineStatus || result.status || '-')}</div>`;
+  if (r.engine === 'DATASCOPE_FANOUT' || result.fanOut || loader.fanOut) {
+    const slices = result.slices || loader.slices || [];
+    const childRuns = result.runs || loader.childRuns || [];
+    const sliceText = slices.slice(0, 4).map(s => esc(s.label || s.datasetName || s.sliceKey || 'slice')).join(', ');
+    const childText = childRuns.slice(0, 4).map(c => {
+      const label = c.slice?.label || c.slice?.datasetName || c.sliceNo || 'slice';
+      return `${esc(label)} -> ${esc(c.runId || '-')}`;
+    }).join(' / ');
+    return `${base}${meta}<div class="be-card-meta">${esc(result.sliceCount || loader.sliceCount || slices.length || childRuns.length || '-')} application slice(s)${sliceText ? ': ' + sliceText : ''}</div>${childText ? `<div class="be-card-meta">Child runs: ${childText}</div>` : ''}`;
+  }
+  if (r.engine === 'DATASCOPE' && result.slice) {
+    const slice = result.slice;
+    return `${base}${meta}<div class="be-card-meta">${esc(slice.label || slice.datasetName || 'application slice')} - source #${esc(result.sourceDataSourceId || slice.sourceDataSourceId || '-')} -> target ${esc(result.targetDataSourceName || slice.targetDataSourceName || result.targetDataSourceId || '-')}</div>`;
+  }
+  return `${base}${meta}`;
+}
+
+function renderBusinessEntityExecutionPlanRow(r) {
+  const op = String(r.operationType || '').toUpperCase();
+  const slices = ['SUBSET_MASK', 'ISSUE_RECREATE'].includes(op) ? businessEntityDataScopeSlices(r) : [];
+  const sliceMeta = slices.length
+    ? ` / ${slices.length} app slice${slices.length === 1 ? '' : 's'}`
+    : '';
+  return `<b>${esc(r.name)}</b> ${statusPill(r.status)}<div class="be-card-meta">${esc(r.operationType)} / ${esc(r.mode)} / target ${esc(r.targetEnvironment || '-')}${sliceMeta}</div>`;
 }
 
 function renderBusinessEntityOps(entity) {
@@ -5709,7 +6645,7 @@ function renderBusinessEntityEnterpriseOps() {
     </div>
     <div class="be-op-form compact">
       <div><label>Plan to launch</label><select id="be-launch-plan">${enterprisePlanOptions()}</select></div>
-      <div><label>Target DB</label><select id="be-launch-target">${beTargetDataSourceOptions()}</select></div>
+      <div><label>Target DB override</label><select id="be-launch-target">${beTargetDataSourceOptions(null, 'Use blueprint target(s)')}</select></div>
       <div><label>Target schema</label><input id="be-launch-schema" placeholder="public / UAT schema"></div>
       <div><label>Seed</label><input id="be-launch-seed" placeholder="optional"></div>
       <div><label>Rows / cap</label><input id="be-launch-rows" type="number" min="1" placeholder="optional"></div>
@@ -5718,11 +6654,11 @@ function renderBusinessEntityEnterpriseOps() {
       <button onclick="launchBusinessEntityExecutionPlan()">Launch</button>
     </div>
     <div class="be-mini-grid">
-      <div><b>Execution plans</b>${enterpriseRows(e.executionPlans, r => `<b>${esc(r.name)}</b> ${statusPill(r.status)}<div class="be-card-meta">${esc(r.operationType)} · ${esc(r.mode)} · target ${esc(r.targetEnvironment || '-')}</div>`)}</div>
+      <div><b>Execution plans</b>${enterpriseRows(e.executionPlans, renderBusinessEntityExecutionPlanRow)}</div>
       <div><b>Operational packages</b>${enterpriseRows(e.operationalPackages, r => `<b>${esc(r.name)}</b> ${statusPill(r.status)}<div class="be-card-meta">${esc(r.packageType)} · plan #${esc(r.executionPlanId || '-')}</div><div class="be-actions"><button class="ghost small" onclick="viewBusinessEntityPackageScript(${r.id})">View runner</button></div>`)}</div>
     </div>
     <div><b>Loader strategy evidence</b>${enterpriseRows(e.loaderStrategies, r => `${esc(r.role)} / ${esc(r.table)}<div class="be-card-meta">${esc(r.engine)} · ${esc(r.strategy)} · fallback ${esc(r.fallback)}</div>`)}</div>
-    <div><b>Execution run history</b>${enterpriseRows(e.executionRuns, r => `<b>${esc(r.engine)}</b> ${statusPill(r.status || r.engineStatus)}<div class="be-card-meta">plan #${esc(r.executionPlanId || '-')} - run ${esc(r.engineRunId || '-')} - ${esc(r.engineStatus || '-')}</div>`)}</div>
+    <div><b>Execution run history</b>${enterpriseRows(e.executionRuns, renderBusinessEntityRunEvidence)}</div>
     <div><b>Package versions</b>${enterpriseRows(e.packageVersions, r => `<b>v${esc(r.versionNumber)}</b> ${statusPill(r.status)}<div class="be-card-meta">package #${esc(r.packageId || '-')} - hash ${esc(String(r.artifactHash || '').slice(0, 12))} - retention ${esc(r.retentionUntil || '-')}</div>`)}</div>
     <div><b>Package promotions</b>${enterpriseRows(e.packagePromotions, r => `<b>${esc(r.fromEnvironment || '-')} -> ${esc(r.toEnvironment || '-')}</b> ${statusPill(r.status)}<div class="be-card-meta">package #${esc(r.packageId || '-')} - version #${esc(r.versionId || '-')} - approval ${esc(r.approvedRequestId || '-')}</div>`)}</div>
     <div id="be-package-script"></div>
@@ -5781,10 +6717,261 @@ function beDataSourceOptions(selected) {
     `<option value="${d.id}"${String(selected ?? '') === String(d.id) ? ' selected' : ''}>${esc(d.name)} (${esc(d.kind || 'DB')})</option>`).join('');
 }
 
-function beTargetDataSourceOptions(selected) {
+function businessEntityMemberOptions(selected) {
+  const rows = businessEntityDetail?.members || [];
+  return '<option value="">Manual / no member</option>' + rows.map(m =>
+    `<option value="${m.id}"${String(selected ?? '') === String(m.id) ? ' selected' : ''}>${esc(m.systemName || dataSourceName(m.dataSourceId) || m.logicalRole || 'member')} / ${esc(m.tableName || '')}</option>`).join('');
+}
+
+function beTargetDataSourceOptions(selected, emptyLabel) {
   const rows = dataSources.filter(d => ['TARGET', 'BOTH'].includes(String(d.role || '').toUpperCase()));
-  return '<option value="">Select target</option>' + rows.map(d =>
+  return `<option value="">${esc(emptyLabel || 'Select target')}</option>` + rows.map(d =>
     `<option value="${d.id}"${String(selected ?? '') === String(d.id) ? ' selected' : ''}>${esc(d.name)} (${esc(d.kind || 'DB')})</option>`).join('');
+}
+
+function beFlowToDraft(flow) {
+  const canvas = beJson(flow?.canvasJson) || {};
+  return {
+    id: flow?.id || null,
+    name: flow?.name || canvas.name || '',
+    description: flow?.description || canvas.description || '',
+    status: flow?.status || 'DRAFT',
+    versionNo: flow?.versionNo || 1,
+    nodes: JSON.parse(JSON.stringify(flow?.nodes || canvas.nodes || [])),
+    edges: JSON.parse(JSON.stringify(flow?.edges || canvas.edges || [])),
+    settings: JSON.parse(JSON.stringify(flow?.settings || canvas.settings || {}))
+  };
+}
+
+function beFlowStepLabel(type) {
+  return ({
+    TRANSFORM: 'Reusable transformation',
+    LOOP: 'Loop over participants',
+    EXCEPTION_HANDLER: 'Exception handler',
+    TWO_PHASE_COMMIT: 'Two-phase commit',
+    SYNTHETIC_LOOKALIKE: 'Synthetic look-alike',
+    DATASCOPE_FANOUT: 'DataScope fan-out',
+    EXECUTION_PLAN: 'Execution plan launch'
+  })[type] || type;
+}
+
+async function selectBusinessEntityFlow(id) {
+  const flow = (businessEntityFlows || []).find(f => String(f.id) === String(id));
+  if (!flow) return;
+  selectedBusinessEntityFlowId = flow.id;
+  businessEntityFlowDraft = beFlowToDraft(flow);
+  selectedBusinessEntityFlowNodeKey = businessEntityFlowDraft.nodes?.[0]?.key || null;
+  businessEntityFlowDebugRun = null;
+  try {
+    const runs = await api.get('/api/business-entities/flows/' + flow.id + '/debug-runs');
+    businessEntityFlowDebugRun = runs?.[0] || null;
+  } catch {}
+  renderBusinessEntityDetail();
+}
+
+async function newBusinessEntityFlow() {
+  if (!selectedBusinessEntityId) return toast('Select a Business Entity first', 'err');
+  try {
+    const starter = await api.get('/api/business-entities/' + selectedBusinessEntityId + '/flows/starter');
+    businessEntityFlowDraft = beFlowToDraft(starter);
+    businessEntityFlowDraft.id = null;
+    selectedBusinessEntityFlowId = null;
+    selectedBusinessEntityFlowNodeKey = businessEntityFlowDraft.nodes?.[0]?.key || null;
+    businessEntityFlowDebugRun = null;
+    renderBusinessEntityDetail();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+function collectBusinessEntityFlowDraftFromForm() {
+  if (!businessEntityFlowDraft) return null;
+  businessEntityFlowDraft.name = $('be-flow-name')?.value.trim() || businessEntityFlowDraft.name || 'Enterprise flow';
+  businessEntityFlowDraft.description = $('be-flow-desc')?.value.trim() || null;
+  businessEntityFlowDraft.status = $('be-flow-status')?.value || 'DRAFT';
+  return businessEntityFlowDraft;
+}
+
+async function saveBusinessEntityFlow(showToast = true) {
+  if (!selectedBusinessEntityId) return null;
+  const draft = collectBusinessEntityFlowDraftFromForm();
+  if (!draft) return null;
+  try {
+    const saved = await api.post('/api/business-entities/' + selectedBusinessEntityId + '/flows', {
+      id: draft.id || null,
+      name: draft.name,
+      description: draft.description,
+      status: draft.status,
+      nodes: draft.nodes || [],
+      edges: draft.edges || [],
+      settings: draft.settings || {}
+    });
+    businessEntityFlows = await api.get('/api/business-entities/' + selectedBusinessEntityId + '/flows');
+    selectedBusinessEntityFlowId = saved.id;
+    businessEntityFlowDraft = beFlowToDraft(saved);
+    selectedBusinessEntityFlowNodeKey = selectedBusinessEntityFlowNodeKey || businessEntityFlowDraft.nodes?.[0]?.key || null;
+    businessEntityFlowValidation = null;
+    if (showToast) toast('Flow saved', 'ok');
+    renderBusinessEntityDetail();
+    return saved;
+  } catch (e) {
+    toast(e.message, 'err');
+    return null;
+  }
+}
+
+async function validateBusinessEntityFlow() {
+  const saved = await saveBusinessEntityFlow(false);
+  if (!saved?.id) return;
+  try {
+    businessEntityFlowValidation = await api.post('/api/business-entities/flows/' + saved.id + '/validate', {});
+    toast(`Flow validation ${businessEntityFlowValidation.status}: score ${businessEntityFlowValidation.score}`, businessEntityFlowValidation.status === 'PASS' ? 'ok' : 'err');
+    renderBusinessEntityDetail();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function publishBusinessEntityFlow() {
+  const saved = await saveBusinessEntityFlow(false);
+  if (!saved?.id) return;
+  try {
+    businessEntityFlowValidation = await api.post('/api/business-entities/flows/' + saved.id + '/validate', {});
+    if (businessEntityFlowValidation.status !== 'PASS') {
+      renderBusinessEntityDetail();
+      return toast('Fix critical validation findings before publish', 'err');
+    }
+    const published = await api.post('/api/business-entities/flows/' + saved.id + '/publish', {});
+    businessEntityFlows = await api.get('/api/business-entities/' + selectedBusinessEntityId + '/flows');
+    selectedBusinessEntityFlowId = published.id;
+    businessEntityFlowDraft = beFlowToDraft(published);
+    toast('Flow published and ready for governed execution', 'ok');
+    renderBusinessEntityDetail();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function deleteBusinessEntityFlow() {
+  const id = businessEntityFlowDraft?.id;
+  if (!id) return;
+  if (!await uiConfirm('Delete this orchestration flow?', { danger: true, okText: 'Delete' })) return;
+  try {
+    await api.del('/api/business-entities/flows/' + id);
+    businessEntityFlows = await api.get('/api/business-entities/' + selectedBusinessEntityId + '/flows');
+    await hydrateBusinessEntityFlowDraft();
+    toast('Flow deleted', 'ok');
+    renderBusinessEntityDetail();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+function selectBusinessEntityFlowNode(key) {
+  selectedBusinessEntityFlowNodeKey = key;
+  renderBusinessEntityDetail();
+}
+
+function applyBusinessEntityFlowNode() {
+  const node = (businessEntityFlowDraft?.nodes || []).find(n => String(n.key) === String(selectedBusinessEntityFlowNodeKey));
+  if (!node) return;
+  node.label = $('be-flow-node-label')?.value.trim() || node.label;
+  try {
+    node.config = JSON.parse($('be-flow-node-config')?.value || '{}');
+  } catch (e) {
+    return toast('Config JSON is not valid: ' + e.message, 'err');
+  }
+  node.breakpoint = !!$('be-flow-node-breakpoint')?.checked;
+  renderBusinessEntityDetail();
+}
+
+function addBusinessEntityFlowStep(type, label, config) {
+  if (!businessEntityFlowDraft) return;
+  collectBusinessEntityFlowDraftFromForm();
+  type = String(type || 'TRANSFORM').toUpperCase();
+  const key = type.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now();
+  const nodes = businessEntityFlowDraft.nodes || (businessEntityFlowDraft.nodes = []);
+  const edges = businessEntityFlowDraft.edges || (businessEntityFlowDraft.edges = []);
+  const end = nodes.find(n => String(n.type || '').toUpperCase() === 'END');
+  const prior = [...nodes].reverse().find(n => !['END','EXCEPTION_HANDLER'].includes(String(n.type || '').toUpperCase())) || nodes[nodes.length - 1];
+  const x = 28 + ((nodes.length % 4) * 235);
+  const y = 560 + (Math.floor(nodes.length / 4) * 125);
+  nodes.push({ key, type, label: label || beFlowStepLabel(type), x, y, config: config || defaultBusinessEntityFlowStepConfig(type) });
+  if (prior && end) {
+    const old = edges.findIndex(e => String(e.from) === String(prior.key) && String(e.to) === String(end.key) && String(e.condition || 'SUCCESS').toUpperCase() === 'SUCCESS');
+    if (old >= 0) edges.splice(old, 1);
+    edges.push({ from: prior.key, to: key, condition: 'SUCCESS' });
+    edges.push({ from: key, to: end.key, condition: 'SUCCESS' });
+  }
+  selectedBusinessEntityFlowNodeKey = key;
+  renderBusinessEntityDetail();
+}
+
+function defaultBusinessEntityFlowStepConfig(type) {
+  if (type === 'LOOP') return { loopMode: 'FOR_EACH_APPLICATION_SLICE', iterations: businessEntityDataScopeSlices().length || 1 };
+  if (type === 'TWO_PHASE_COMMIT') return { prepare: true, rollbackOnFailure: true };
+  if (type === 'EXCEPTION_HANDLER') return { onFailure: 'capture evidence and rollback prepared participants' };
+  if (type === 'SYNTHETIC_LOOKALIKE') return { profile: 'selected look-alike profile', dryRunOnlyInDebugger: true };
+  return { transformationName: 'CUSTOM_TRANSFORM', reusable: true };
+}
+
+function removeBusinessEntityFlowNode(key) {
+  const node = (businessEntityFlowDraft?.nodes || []).find(n => String(n.key) === String(key));
+  if (!node || ['START','END'].includes(String(node.type || '').toUpperCase())) return;
+  businessEntityFlowDraft.nodes = businessEntityFlowDraft.nodes.filter(n => String(n.key) !== String(key));
+  businessEntityFlowDraft.edges = (businessEntityFlowDraft.edges || []).filter(e => String(e.from) !== String(key) && String(e.to) !== String(key));
+  selectedBusinessEntityFlowNodeKey = businessEntityFlowDraft.nodes?.[0]?.key || null;
+  renderBusinessEntityDetail();
+}
+
+async function debugBusinessEntityFlow() {
+  const failStepKey = $('be-flow-fail-step')?.value || null;
+  const saved = await saveBusinessEntityFlow(false);
+  if (!saved?.id) return;
+  const draft = businessEntityFlowDraft || beFlowToDraft(saved);
+  const breakpoints = (draft.nodes || []).filter(n => n.breakpoint).map(n => n.key);
+  try {
+    businessEntityFlowDebugRun = await api.post('/api/business-entities/flows/' + saved.id + '/debug', {
+      mode: 'DEBUG_DRY_RUN',
+      failStepKey,
+      breakpoints,
+      inputs: { entityId: selectedBusinessEntityId, flowVersion: draft.versionNo || saved.versionNo || 1 }
+    });
+    toast('Debug run completed: ' + (businessEntityFlowDebugRun.status || 'COMPLETED'), 'ok');
+    renderBusinessEntityDetail();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function runBusinessEntityFlow() {
+  const planId = beInt($('be-flow-run-plan')?.value);
+  const targetDataSourceId = beInt($('be-flow-run-target')?.value);
+  const rows = beInt($('be-flow-run-rows')?.value);
+  const seed = beInt($('be-flow-run-seed')?.value);
+  const targetSchema = $('be-flow-run-schema')?.value.trim() || null;
+  const seedText = $('be-flow-run-seed')?.value.trim() || null;
+  const loadAction = $('be-flow-run-load')?.value || 'REPLACE';
+  const targetPrep = $('be-flow-run-prep')?.value || 'DELETE';
+  const saved = await saveBusinessEntityFlow(false);
+  if (!saved?.id) return;
+  if (!planId) return toast('Choose an approved execution plan for the flow run', 'err');
+  const plan = (businessEntityEnterprise?.executionPlans || []).find(p => String(p.id) === String(planId));
+  if (plan && !['APPROVED', 'SUBMITTED'].includes(String(plan.status || '').toUpperCase())) {
+    return toast('Approve this execution plan before running the flow', 'err');
+  }
+  if (String(saved.status || businessEntityFlowDraft?.status || '').toUpperCase() !== 'ACTIVE') {
+    return toast('Publish the flow before approved physical execution', 'err');
+  }
+  if (!await uiConfirm(`Run this published orchestration flow using execution plan #${planId}?\n\nThis can submit real DataScope/Synthetic jobs through the governed backend launcher.`, { okText: 'Run' })) return;
+  try {
+    businessEntityFlowDebugRun = await api.post('/api/business-entities/flows/' + saved.id + '/run', {
+      mode: 'EXECUTE_APPROVED',
+      executionPlanId: planId,
+      targetDataSourceId: targetDataSourceId || null,
+      targetSchema,
+      seed: seed || null,
+      maskingSeed: seedText,
+      rowCount: rows || null,
+      maxRows: rows || null,
+      loadAction,
+      targetPrep,
+      inputs: { entityId: selectedBusinessEntityId, planId }
+    });
+    await refreshBusinessEntityEnterprise();
+    toast(`Flow run ${businessEntityFlowDebugRun.status || 'submitted'}`, 'ok');
+    renderBusinessEntityDetail();
+  } catch (e) { toast(e.message, 'err'); }
 }
 
 function beDatasetOptions(selected, emptyLabel) {
@@ -5815,11 +7002,243 @@ async function createBusinessEntityFromDataset() {
       description: $('be-from-desc')?.value.trim() || null
     });
     selectedBusinessEntityId = businessEntityDetail.entity.id;
+    businessEntityActiveTab = 'model';
+    localStorage.setItem('forgetdm.be.tab', businessEntityActiveTab);
     ['be-from-name','be-from-domain','be-from-desc'].forEach(id => { if ($(id)) $(id).value = ''; });
     businessEntities = await api.get('/api/business-entities');
     renderBusinessEntities();
     renderBusinessEntityDetail();
     toast('Business Entity created from DataScope', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function loadBusinessEntityIdentities() {
+  if (!selectedBusinessEntityId) return;
+  const q = $('be-id-search')?.value.trim();
+  try {
+    businessEntityIdentities = await api.get('/api/business-entities/' + selectedBusinessEntityId + '/identities' + (q ? '?q=' + encodeURIComponent(q) : ''));
+    renderBusinessEntityDetail();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+function collectBusinessEntityIdentityLinks() {
+  const rows = [...document.querySelectorAll('[data-id-link-row]')];
+  return rows.map(row => {
+    const memberId = beInt(row.querySelector('.be-id-link-member')?.value);
+    const member = (businessEntityDetail?.members || []).find(m => String(m.id) === String(memberId));
+    const externalId = row.querySelector('.be-id-link-external')?.value.trim();
+    if (!externalId) return null;
+    return {
+      memberId: memberId || null,
+      systemName: row.querySelector('.be-id-link-system')?.value.trim() || member?.systemName || null,
+      dataSourceId: member?.dataSourceId || null,
+      schemaName: member?.schemaName || null,
+      tableName: row.querySelector('.be-id-link-table')?.value.trim() || member?.tableName || null,
+      logicalRole: row.querySelector('.be-id-link-role')?.value.trim() || member?.logicalRole || null,
+      keyColumns: row.querySelector('.be-id-link-cols')?.value.trim() || member?.keyColumns || null,
+      externalId,
+      matchRule: row.querySelector('.be-id-link-rule')?.value.trim() || 'MANUAL',
+      confidence: 1,
+      status: 'ACTIVE',
+      source: 'BUSINESS_ENTITY_UI'
+    };
+  }).filter(Boolean);
+}
+
+async function saveBusinessEntityIdentity() {
+  if (!selectedBusinessEntityId) return toast('Select a Business Entity first', 'err');
+  const canonicalKey = $('be-id-canonical')?.value.trim();
+  if (!canonicalKey) return toast('Canonical key is required', 'err');
+  const links = collectBusinessEntityIdentityLinks();
+  if (!links.length) return toast('Enter at least one system identifier link', 'err');
+  try {
+    const saved = await api.post('/api/business-entities/' + selectedBusinessEntityId + '/identities', {
+      canonicalKey,
+      identityType: $('be-id-type')?.value || 'CUSTOMER',
+      status: $('be-id-status')?.value || 'ACTIVE',
+      confidence: parseFloat($('be-id-confidence')?.value || '1'),
+      attributes: { createdFrom: 'Business Entity Identity tab' },
+      links
+    });
+    businessEntityIdentities = await api.get('/api/business-entities/' + selectedBusinessEntityId + '/identities');
+    businessEntityIdentityResolve = { matched: true, crosswalk: saved };
+    toast('Identity crosswalk saved', 'ok');
+    renderBusinessEntityDetail();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function resolveBusinessEntityIdentity() {
+  if (!selectedBusinessEntityId) return;
+  const memberId = beInt($('be-id-res-member')?.value);
+  const member = (businessEntityDetail?.members || []).find(m => String(m.id) === String(memberId));
+  const externalId = $('be-id-res-external')?.value.trim();
+  if (!externalId) return toast('Enter a system external id to resolve', 'err');
+  try {
+    businessEntityIdentityResolve = await api.post('/api/business-entities/' + selectedBusinessEntityId + '/identities/resolve', {
+      memberId: memberId || null,
+      systemName: member?.systemName || null,
+      dataSourceId: member?.dataSourceId || null,
+      schemaName: member?.schemaName || null,
+      tableName: member?.tableName || null,
+      keyColumns: member?.keyColumns || null,
+      externalId
+    });
+    toast(businessEntityIdentityResolve.matched ? 'Identity resolved' : 'No identity match found', businessEntityIdentityResolve.matched ? 'ok' : 'err');
+    renderBusinessEntityDetail();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function deleteBusinessEntityIdentity(id) {
+  if (!await uiConfirm('Delete this canonical identity crosswalk?', { danger: true, okText: 'Delete' })) return;
+  try {
+    await api.del('/api/business-entities/identities/' + id);
+    businessEntityIdentities = await api.get('/api/business-entities/' + selectedBusinessEntityId + '/identities');
+    businessEntityIdentityResolve = null;
+    toast('Identity deleted', 'ok');
+    renderBusinessEntityDetail();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function deleteBusinessEntityIdentityLink(id) {
+  if (!await uiConfirm('Delete this system identity link?', { danger: true, okText: 'Delete' })) return;
+  try {
+    await api.del('/api/business-entities/identity-links/' + id);
+    businessEntityIdentities = await api.get('/api/business-entities/' + selectedBusinessEntityId + '/identities');
+    businessEntityIdentityResolve = null;
+    toast('Identity link deleted', 'ok');
+    renderBusinessEntityDetail();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+function newBusinessEntitySyncPolicy() {
+  selectedBusinessEntitySyncPolicyId = null;
+  businessEntitySyncRun = null;
+  renderBusinessEntityDetail();
+}
+
+function selectBusinessEntitySyncPolicy(id) {
+  selectedBusinessEntitySyncPolicyId = id || null;
+  businessEntitySyncRun = null;
+  renderBusinessEntityDetail();
+}
+
+function applyBusinessEntitySyncMember(idx, memberId) {
+  const row = document.querySelector(`[data-be-sync-member="${idx}"]`);
+  const member = (businessEntityDetail?.members || []).find(m => String(m.id) === String(memberId));
+  if (!row || !member) return;
+  const set = (sel, value) => { const el = row.querySelector(sel); if (el) el.value = value ?? ''; };
+  set('.be-sync-system', member.systemName || dataSourceName(member.dataSourceId) || member.logicalRole || '');
+  set('.be-sync-source', member.dataSourceId || '');
+  set('.be-sync-schema', member.schemaName || '');
+  set('.be-sync-table', member.tableName || '');
+  set('.be-sync-keys', member.keyColumns || '');
+}
+
+function addBusinessEntitySyncMember() {
+  const box = $('be-sync-members');
+  if (!box) return;
+  if (box.querySelector('.empty')) box.innerHTML = '';
+  const idx = Date.now();
+  box.insertAdjacentHTML('beforeend', renderBusinessEntitySyncMemberInput({
+    memberId: null,
+    systemName: '',
+    dataSourceId: null,
+    schemaName: '',
+    tableName: '',
+    keyColumns: '',
+    watermarkColumn: '',
+    maxLagSeconds: '',
+    syncMode: 'POLLING',
+    queryFilter: ''
+  }, idx));
+}
+
+function removeBusinessEntitySyncMember(btn) {
+  btn?.closest('[data-be-sync-member]')?.remove();
+}
+
+function collectBusinessEntitySyncMembers() {
+  return [...document.querySelectorAll('[data-be-sync-member]')].map(row => ({
+    memberId: beInt(row.querySelector('.be-sync-member')?.value),
+    systemName: row.querySelector('.be-sync-system')?.value.trim() || null,
+    dataSourceId: beInt(row.querySelector('.be-sync-source')?.value),
+    schemaName: row.querySelector('.be-sync-schema')?.value.trim() || null,
+    tableName: row.querySelector('.be-sync-table')?.value.trim() || null,
+    logicalRole: null,
+    keyColumns: row.querySelector('.be-sync-keys')?.value.trim() || null,
+    watermarkColumn: row.querySelector('.be-sync-watermark')?.value.trim() || null,
+    maxLagSeconds: beInt(row.querySelector('.be-sync-member-lag')?.value),
+    syncMode: row.querySelector('.be-sync-member-mode')?.value || 'POLLING',
+    queryFilter: row.querySelector('.be-sync-filter')?.value.trim() || null
+  })).filter(m => m.tableName);
+}
+
+function collectBusinessEntitySyncPolicy() {
+  return {
+    id: beInt($('be-sync-id')?.value),
+    name: $('be-sync-name')?.value.trim() || ((businessEntityDetail?.entity?.name || 'Business Entity') + ' freshness'),
+    syncMode: $('be-sync-mode')?.value || 'POLLING',
+    status: $('be-sync-status')?.value || 'ACTIVE',
+    maxLagSeconds: beInt($('be-sync-lag')?.value) || 900,
+    scheduleCron: $('be-sync-cron')?.value.trim() || null,
+    syncStrategy: $('be-sync-strategy')?.value || 'FRESHNESS_CHECK',
+    autoRefreshEnabled: !!$('be-sync-auto')?.checked,
+    notes: $('be-sync-notes')?.value.trim() || null,
+    members: collectBusinessEntitySyncMembers()
+  };
+}
+
+async function loadBusinessEntitySyncPolicies() {
+  if (!selectedBusinessEntityId) return;
+  businessEntitySyncPolicies = await api.get('/api/business-entities/' + selectedBusinessEntityId + '/sync-policies');
+  selectedBusinessEntitySyncPolicyId = businessEntitySyncPolicies.some(p => String(p.id) === String(selectedBusinessEntitySyncPolicyId))
+    ? selectedBusinessEntitySyncPolicyId
+    : (businessEntitySyncPolicies[0]?.id || null);
+}
+
+async function saveBusinessEntitySyncPolicy(showToast = true) {
+  if (!selectedBusinessEntityId) return toast('Select a Business Entity first', 'err');
+  const body = collectBusinessEntitySyncPolicy();
+  if (!body.members.length) return toast('Add at least one source/table freshness member', 'err');
+  try {
+    const saved = await api.post('/api/business-entities/' + selectedBusinessEntityId + '/sync-policies', body);
+    selectedBusinessEntitySyncPolicyId = saved.id;
+    await loadBusinessEntitySyncPolicies();
+    if (showToast) toast('Freshness policy saved', 'ok');
+    renderBusinessEntityDetail();
+    return saved;
+  } catch (e) {
+    toast(e.message, 'err');
+    return null;
+  }
+}
+
+async function checkBusinessEntitySyncPolicy(policyId) {
+  let id = policyId || beInt($('be-sync-id')?.value);
+  const formId = beInt($('be-sync-id')?.value);
+  if (!id || (formId && String(formId) === String(id))) {
+    const saved = await saveBusinessEntitySyncPolicy(false);
+    if (!saved?.id) return;
+    id = saved.id;
+  }
+  try {
+    businessEntitySyncRun = await api.post('/api/business-entities/sync-policies/' + id + '/check', {});
+    selectedBusinessEntitySyncPolicyId = id;
+    await loadBusinessEntitySyncPolicies();
+    toast('Freshness check completed: ' + (businessEntitySyncRun.status || businessEntitySyncRun.result?.status || 'done'), 'ok');
+    renderBusinessEntityDetail();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function deleteBusinessEntitySyncPolicy(id) {
+  if (!await uiConfirm('Delete this freshness policy?', { danger: true, okText: 'Delete' })) return;
+  try {
+    await api.del('/api/business-entities/sync-policies/' + id);
+    if (String(selectedBusinessEntitySyncPolicyId) === String(id)) selectedBusinessEntitySyncPolicyId = null;
+    businessEntitySyncRun = null;
+    await loadBusinessEntitySyncPolicies();
+    toast('Freshness policy deleted', 'ok');
+    renderBusinessEntityDetail();
   } catch (e) { toast(e.message, 'err'); }
 }
 
@@ -6013,9 +7432,12 @@ async function launchBusinessEntityExecutionPlan(planId) {
   const targetDataSourceId = beInt($('be-launch-target')?.value);
   const seed = beInt($('be-launch-seed')?.value);
   const rows = beInt($('be-launch-rows')?.value);
+  const slices = businessEntityDataScopeSlices(plan);
   const flow = plan?.operationType === 'SYNTHETIC_LOOKALIKE'
     ? 'Synthetic look-alike data will be generated and loaded into the selected target.'
-    : 'DataScope subset/mask will run from the primary blueprint and load into the target.';
+    : (slices.length > 1
+      ? `DataScope fan-out will submit ${slices.length} application slice runs: ${slices.slice(0, 5).map(s => s.label || s.datasetName || ('dataset #' + s.datasetId)).join(', ')}.${targetDataSourceId ? '\nThe selected Target DB will override every slice target.' : '\nEach slice will use its configured DataScope blueprint target.'}`
+      : `${plan?.operationType || 'DataScope'} will submit one DataScope application slice run.${targetDataSourceId ? '\nThe selected Target DB will override the blueprint target.' : '\nThe blueprint target DB will be used.'}`);
   if (!await uiConfirm(`${flow}\n\nLaunch plan #${id}?`, { okText: 'Launch' })) return;
   try {
     const result = await api.post('/api/business-entities/execution-plans/' + id + '/launch', {
@@ -6029,7 +7451,10 @@ async function launchBusinessEntityExecutionPlan(planId) {
       targetPrep: $('be-launch-prep')?.value || 'DELETE'
     });
     await refreshBusinessEntityEnterprise();
-    toast(`${result.engine || 'Plan'} launch submitted: ${result.runId || result.id || result.status}`, 'ok');
+    const childCount = Array.isArray(result.runs) ? result.runs.length : 0;
+    toast(result.engine === 'DATASCOPE_FANOUT'
+      ? `Fan-out submitted: ${childCount} slice run(s)`
+      : `${result.engine || 'Plan'} launch submitted: ${result.runId || result.id || result.status}`, 'ok');
   } catch (e) { toast(e.message, 'err'); }
 }
 
@@ -7945,7 +9370,7 @@ async function cbMaskBatch() {
 }
 
 /* ---------- Mainframe pipeline ---------- */
-let mfConns = [], mfCopybooks = [], mfEditCpyId = null, mfMapId = null, mfBrowseFiles = [];
+let mfConns = [], mfCopybooks = [], mfEditCpyId = null, mfMapId = null, mfBrowseFiles = [], mfConnTests = {};
 
 async function mfInit() {
   try {
@@ -7955,6 +9380,7 @@ async function mfInit() {
     mfRenderConns();
     mfRenderCopybooks();
     mfFillConnSelects();
+    mfRefreshCopybookSelects();
     if (!document.querySelector('.mf-file-row')) mfAddFileRow();
     await mfRenderJobs();
   } catch (e) { toast(e.message, 'err'); }
@@ -7988,22 +9414,56 @@ async function mfAddConn() {
   } catch (e) { toast(e.message, 'err'); }
 }
 
+function mfConnTestStatus(c) {
+  const st = mfConnTests[c.id];
+  if (!st) return '<span class="ds-health untested">○ Not tested</span>';
+  if (st.state === 'testing') {
+    const elapsed = Math.max(0, Math.floor((Date.now() - st.startedAt) / 1000));
+    const note = elapsed > 25 ? 'Still waiting on host or credentials'
+      : elapsed > 10 ? 'Waiting for z/OSMF response' : (st.note || '');
+    return `<span class="ds-health testing">◌ Testing... ${elapsed}s</span><div class="mf-test-note">${esc(note)}</div>`;
+  }
+  if (st.state === 'online') return `<span class="ds-health online">● OK</span><div class="mf-test-note">${esc(st.info || '')}</div>`;
+  if (st.state === 'offline') return `<span class="ds-health offline">○ Failed</span><div class="mf-test-note" title="${esc(st.info || '')}">${esc(st.info || '')}</div>`;
+  return '<span class="ds-health untested">○ Not tested</span>';
+}
+
 function mfRenderConns() {
   const el = $('mf-conn-list');
   if (!mfConns.length) { el.innerHTML = '<div class="empty">No connections yet.</div>'; return; }
-  const rows = mfConns.map(c => `<tr><td>${esc(c.name)}</td><td>${pill(c.type, c.type === 'ZOWE' ? 'info' : 'dim')}</td>
+  const rows = mfConns.map(c => {
+    const testing = mfConnTests[c.id]?.state === 'testing';
+    return `<tr><td>${esc(c.name)}</td><td>${pill(c.type, c.type === 'ZOWE' ? 'info' : 'dim')}</td>
     <td><code>${esc(c.type === 'LOCAL' ? (c.baseDir || '') : (c.host + ':' + (c.port || '') + (c.basePath || '')))}</code></td>
-    <td>${esc(c.codePage)}</td>
-    <td><button class="ghost small" onclick="mfTestConn(${c.id})">Test</button>
-        <button class="ghost small danger" onclick="mfDeleteConn(${c.id})">Delete</button></td></tr>`).join('');
-  el.innerHTML = `<table><thead><tr><th>Name</th><th>Type</th><th>Endpoint</th><th>CP</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+    <td>${esc(c.codePage)}</td><td>${mfConnTestStatus(c)}</td>
+    <td><button class="ghost small" onclick="mfTestConn(${c.id})" ${testing ? 'disabled' : ''}>${testing ? 'Testing...' : 'Test'}</button>
+        <button class="ghost small danger" onclick="mfDeleteConn(${c.id})" ${testing ? 'disabled' : ''}>Delete</button></td></tr>`;
+  }).join('');
+  el.innerHTML = `<table><thead><tr><th>Name</th><th>Type</th><th>Endpoint</th><th>CP</th><th>Test status</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
 async function mfTestConn(id) {
+  const c = mfConns.find(x => x.id === id) || {};
+  mfConnTests[id] = {
+    state: 'testing',
+    startedAt: Date.now(),
+    note: (c.type || '').toUpperCase() === 'ZOWE' ? 'Contacting z/OSMF and listing datasets' : 'Checking landing folder'
+  };
+  mfRenderConns();
+  const ticker = setInterval(mfRenderConns, 1000);
+  const done = () => { clearInterval(ticker); mfRenderConns(); };
   try {
     const r = await api.post(`/api/mainframe/connections/${id}/test`);
+    mfConnTests[id] = r.ok
+      ? { state: 'online', info: `${r.count || 0} file/dataset(s) visible` }
+      : { state: 'offline', info: r.error || 'Connection test failed' };
+    done();
     toast(r.ok ? `OK — ${r.count} file(s) visible` : `Failed: ${r.error}`, r.ok ? 'ok' : 'err');
-  } catch (e) { toast(e.message, 'err'); }
+  } catch (e) {
+    mfConnTests[id] = { state: 'offline', info: e.message };
+    done();
+    toast(e.message, 'err');
+  }
 }
 
 async function mfDeleteConn(id) {
@@ -8034,6 +9494,7 @@ async function mfSaveCpy() {
     mfEditCpyId = null;
     mfCopybooks = await api.get('/api/mainframe/copybooks');
     mfRenderCopybooks();
+    mfRefreshCopybookSelects();
   } catch (e) { toast(e.message, 'err'); }
 }
 
@@ -8147,6 +9608,14 @@ function mfConnOptions(sel) {
 function mfCpyOptions(sel) {
   return '<option value="">Select copybook</option>' +
     mfCopybooks.map(c => `<option value="${c.id}" ${c.id == sel ? 'selected' : ''}>${esc(c.name)}</option>`).join('');
+}
+
+function mfRefreshCopybookSelects() {
+  document.querySelectorAll('.mf-f-cpy').forEach(sel => {
+    const cur = sel.value;
+    sel.innerHTML = mfCpyOptions(cur);
+    if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+  });
 }
 
 function mfAddFileRow(prefill) {

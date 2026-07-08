@@ -13,15 +13,24 @@ public class BusinessEntityController {
     private final BusinessEntitySnapshotService snapshots;
     private final BusinessEntityReservationService reservations;
     private final BusinessEntityEnterpriseService enterprise;
+    private final BusinessEntityFlowService flows;
+    private final BusinessEntityIdentityService identities;
+    private final BusinessEntitySyncService sync;
 
     public BusinessEntityController(BusinessEntityService svc,
                                     BusinessEntitySnapshotService snapshots,
                                     BusinessEntityReservationService reservations,
-                                    BusinessEntityEnterpriseService enterprise) {
+                                    BusinessEntityEnterpriseService enterprise,
+                                    BusinessEntityFlowService flows,
+                                    BusinessEntityIdentityService identities,
+                                    BusinessEntitySyncService sync) {
         this.svc = svc;
         this.snapshots = snapshots;
         this.reservations = reservations;
         this.enterprise = enterprise;
+        this.flows = flows;
+        this.identities = identities;
+        this.sync = sync;
     }
 
     @GetMapping
@@ -114,6 +123,149 @@ public class BusinessEntityController {
     @GetMapping("/{id}/enterprise")
     public java.util.Map<String, Object> enterpriseDashboard(@PathVariable Long id) {
         return enterprise.dashboard(id);
+    }
+
+    @GetMapping("/{id}/identities")
+    public java.util.List<java.util.Map<String, Object>> listIdentities(
+            @PathVariable Long id,
+            @RequestParam(name = "q", required = false) String q) {
+        return identities.list(id, q);
+    }
+
+    @PostMapping("/{id}/identities")
+    public java.util.Map<String, Object> upsertIdentity(
+            @PathVariable Long id,
+            @RequestBody BusinessEntityIdentityService.CrosswalkRequest body) {
+        return identities.upsert(id, body);
+    }
+
+    @GetMapping("/identities/{subjectId}")
+    public java.util.Map<String, Object> getIdentity(@PathVariable Long subjectId) {
+        return identities.get(subjectId);
+    }
+
+    @PostMapping("/{id}/identities/resolve")
+    public java.util.Map<String, Object> resolveIdentity(
+            @PathVariable Long id,
+            @RequestBody BusinessEntityIdentityService.ResolveRequest body) {
+        return identities.resolve(id, body);
+    }
+
+    @PostMapping("/{id}/identities/{subjectId}/links")
+    public java.util.Map<String, Object> addIdentityLink(
+            @PathVariable Long id,
+            @PathVariable Long subjectId,
+            @RequestBody BusinessEntityIdentityService.LinkRequest body) {
+        return identities.addLink(id, subjectId, body);
+    }
+
+    @DeleteMapping("/identities/{subjectId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteIdentity(@PathVariable Long subjectId) {
+        identities.deleteSubject(subjectId);
+    }
+
+    @DeleteMapping("/identity-links/{linkId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteIdentityLink(@PathVariable Long linkId) {
+        identities.deleteLink(linkId);
+    }
+
+    @GetMapping("/{id}/sync-policies")
+    public java.util.List<java.util.Map<String, Object>> listSyncPolicies(@PathVariable Long id) {
+        return sync.listPolicies(id);
+    }
+
+    @PostMapping("/{id}/sync-policies")
+    public java.util.Map<String, Object> saveSyncPolicy(
+            @PathVariable Long id,
+            @RequestBody BusinessEntitySyncService.SyncPolicyRequest body) {
+        return sync.savePolicy(id, body);
+    }
+
+    @GetMapping("/sync-policies/{policyId}")
+    public java.util.Map<String, Object> getSyncPolicy(@PathVariable Long policyId) {
+        return sync.getPolicy(policyId);
+    }
+
+    @DeleteMapping("/sync-policies/{policyId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteSyncPolicy(@PathVariable Long policyId) {
+        sync.deletePolicy(policyId);
+    }
+
+    @PostMapping("/sync-policies/{policyId}/check")
+    public java.util.Map<String, Object> checkSyncPolicy(@PathVariable Long policyId) {
+        return sync.checkFreshness(policyId);
+    }
+
+    @GetMapping("/sync-policies/{policyId}/runs")
+    public java.util.List<java.util.Map<String, Object>> listSyncRuns(@PathVariable Long policyId) {
+        return sync.listRuns(policyId);
+    }
+
+    @PostMapping("/sync-policies/{policyId}/heartbeat")
+    public java.util.Map<String, Object> syncHeartbeat(
+            @PathVariable Long policyId,
+            @RequestBody BusinessEntitySyncService.HeartbeatRequest body) {
+        return sync.heartbeat(policyId, body);
+    }
+
+    @GetMapping("/{id}/flows")
+    public java.util.List<java.util.Map<String, Object>> listFlows(@PathVariable Long id) {
+        return flows.listFlows(id);
+    }
+
+    @GetMapping("/{id}/flows/starter")
+    public java.util.Map<String, Object> starterFlow(@PathVariable Long id) {
+        return flows.starterFlow(id);
+    }
+
+    @PostMapping("/{id}/flows")
+    public java.util.Map<String, Object> saveFlow(
+            @PathVariable Long id,
+            @RequestBody BusinessEntityFlowService.FlowRequest body) {
+        return flows.saveFlow(id, body);
+    }
+
+    @GetMapping("/flows/{flowId}")
+    public java.util.Map<String, Object> getFlow(@PathVariable Long flowId) {
+        return flows.getFlow(flowId);
+    }
+
+    @DeleteMapping("/flows/{flowId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteFlow(@PathVariable Long flowId) {
+        flows.deleteFlow(flowId);
+    }
+
+    @GetMapping("/flows/{flowId}/debug-runs")
+    public java.util.List<java.util.Map<String, Object>> listDebugRuns(@PathVariable Long flowId) {
+        return flows.listDebugRuns(flowId);
+    }
+
+    @PostMapping("/flows/{flowId}/validate")
+    public java.util.Map<String, Object> validateFlow(@PathVariable Long flowId) {
+        return flows.validateFlow(flowId);
+    }
+
+    @PostMapping("/flows/{flowId}/publish")
+    public java.util.Map<String, Object> publishFlow(@PathVariable Long flowId) {
+        return flows.publishFlow(flowId);
+    }
+
+    @PostMapping("/flows/{flowId}/debug")
+    public java.util.Map<String, Object> debugFlow(
+            @PathVariable Long flowId,
+            @RequestBody(required = false) BusinessEntityFlowService.DebugRequest body) {
+        return flows.debugFlow(flowId, body);
+    }
+
+    @PostMapping("/flows/{flowId}/run")
+    public java.util.Map<String, Object> runFlow(
+            @PathVariable Long flowId,
+            @RequestBody(required = false) BusinessEntityFlowService.RunRequest body) {
+        return flows.runFlow(flowId, body);
     }
 
     @PostMapping("/{id}/issue-packages")

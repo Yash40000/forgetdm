@@ -1,0 +1,988 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ForgeTDM Customer 360 Business Entity Demo</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f6f8fb;
+      --panel: #ffffff;
+      --ink: #152033;
+      --muted: #5b677a;
+      --line: #d9e1ec;
+      --blue: #2563eb;
+      --green: #16a34a;
+      --orange: #f97316;
+      --purple: #7c3aed;
+      --red: #dc2626;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: Inter, Segoe UI, Arial, sans-serif;
+    }
+
+    main {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 28px 18px 40px;
+    }
+
+    h1 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      letter-spacing: 0;
+    }
+
+    p {
+      color: var(--muted);
+      line-height: 1.5;
+      margin: 0;
+    }
+
+    .shell {
+      margin-top: 20px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 18px 45px rgba(42, 56, 85, 0.12);
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 9;
+      background: #eef4ff;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid var(--line);
+      padding: 14px;
+    }
+
+    .button-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    button {
+      min-height: 38px;
+      border: 1px solid #c8d3e2;
+      border-radius: 6px;
+      padding: 0 14px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 650;
+      cursor: pointer;
+    }
+
+    button.primary {
+      background: var(--blue);
+      border-color: var(--blue);
+      color: #fff;
+    }
+
+    button.success {
+      background: var(--green);
+      border-color: var(--green);
+      color: #fff;
+    }
+
+    .status {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .timeline-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      align-items: center;
+      width: 100%;
+      border-top: 1px solid var(--line);
+      padding: 12px 14px 14px;
+      background: #fbfdff;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--blue);
+    }
+
+    .time-label {
+      min-width: 92px;
+      text-align: right;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .notes {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    .note {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+
+    .note strong {
+      display: block;
+      margin-bottom: 6px;
+    }
+
+    .note ul {
+      margin: 8px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+
+    @media (max-width: 760px) {
+      .notes {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>ForgeTDM Customer 360 Business Entity Demo</h1>
+  <p>
+    A concrete walkthrough of how a Business Entity turns a DataScope table map into a reusable provisioning object.
+  </p>
+
+  <section class="shell" aria-label="Animated demo player">
+    <canvas id="demoCanvas" width="1280" height="720"></canvas>
+    <div class="controls">
+      <div class="button-row">
+        <button class="primary" id="playButton" type="button">Play</button>
+        <button id="pauseButton" type="button">Pause</button>
+        <button id="restartButton" type="button">Restart</button>
+        <button class="success" id="exportButton" type="button">Export WebM Video</button>
+      </div>
+      <div class="status" id="statusText">Ready. Click Play to watch the walkthrough.</div>
+    </div>
+    <div class="timeline-row">
+      <input id="timeline" type="range" min="0" max="1000" value="0" aria-label="Demo timeline">
+      <div class="time-label" id="timeLabel">0:00 / 0:00</div>
+    </div>
+  </section>
+
+  <section class="notes">
+    <div class="note">
+      <strong>How to use this</strong>
+      <ul>
+        <li>Click Play to watch the demo.</li>
+        <li>Click Export WebM Video to create a local video file.</li>
+        <li>Share the downloaded WebM file with your team, or convert it to MP4 if needed.</li>
+      </ul>
+    </div>
+    <div class="note">
+      <strong>Demo message</strong>
+      <ul>
+        <li>DataScope handles table maps, column maps, masking, and loading.</li>
+        <li>Business Entity wraps those technical details into Customer 360.</li>
+        <li>Users request complete test-data objects instead of rebuilding table jobs.</li>
+      </ul>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+  const canvas = document.getElementById("demoCanvas");
+  const ctx = canvas.getContext("2d");
+  const statusText = document.getElementById("statusText");
+  const playButton = document.getElementById("playButton");
+  const pauseButton = document.getElementById("pauseButton");
+  const restartButton = document.getElementById("restartButton");
+  const exportButton = document.getElementById("exportButton");
+  const timeline = document.getElementById("timeline");
+  const timeLabel = document.getElementById("timeLabel");
+
+  const W = canvas.width;
+  const H = canvas.height;
+  const sceneDuration = 4.2;
+  const scenes = [
+    {
+      title: "The tester asks for a business object",
+      eyebrow: "Problem",
+      body: [
+        "A UAT tester needs complete Customer 360 data.",
+        "They should not have to rebuild five table jobs by hand."
+      ],
+      footer: "Goal: request customers, not tables.",
+      type: "request"
+    },
+    {
+      title: "DataScope owns the technical table map",
+      eyebrow: "Foundation",
+      body: [
+        "Admin maps source to target tables once.",
+        "Column maps carry masking rules for PII fields."
+      ],
+      footer: "customers, addresses, accounts, cards, transactions",
+      type: "datascope"
+    },
+    {
+      title: "In real banks, Customer 360 spans apps",
+      eyebrow: "Multi-App",
+      body: [
+        "Core banking can be DB2, cards can be Oracle, CRM can be Postgres.",
+        "The business customer is one object even when data lives in many databases."
+      ],
+      footer: "Business Entity sits above the application databases.",
+      type: "multiSource"
+    },
+    {
+      title: "Crosswalk keeps the same customer linked",
+      eyebrow: "Identity",
+      body: [
+        "One business key maps to different technical keys in each application.",
+        "Masking uses the same entity key and seed for consistent output."
+      ],
+      footer: "CUST-10025 -> DB2 customer_id, Oracle card ref, CRM party id, Digital user id",
+      type: "crosswalk"
+    },
+    {
+      title: "Business Entity wraps the table map",
+      eyebrow: "Business Entity",
+      body: [
+        "Root: customers.id",
+        "Members: addresses, accounts, cards, transactions"
+      ],
+      footer: "Customer 360 - Active VIP",
+      type: "model"
+    },
+    {
+      title: "Reservation and governance add control",
+      eyebrow: "Control",
+      body: [
+        "Reserve 3 customer entities for Payments regression.",
+        "Approval records who requested and who approved the run."
+      ],
+      footer: "Purpose, owner, expiry, approval, audit",
+      type: "governance"
+    },
+    {
+      title: "The run plan is clear before launch",
+      eyebrow: "Confirmation",
+      body: [
+        "Operation: SUBSET_MASK",
+        "Source: bank-demo    Target: bank-qa",
+        "Load: truncate or delete, then insert masked rows"
+      ],
+      footer: "The user confirms the exact flow before execution.",
+      type: "plan"
+    },
+    {
+      title: "One launch can fan out across target apps",
+      eyebrow: "Fan-Out",
+      body: [
+        "Each application slice keeps its own source, target, load mode, and evidence.",
+        "ForgeTDM runs them as one controlled Customer 360 package."
+      ],
+      footer: "Core UAT DB2 + Cards UAT Oracle + CRM UAT Postgres + Digital UAT SQL Server",
+      type: "fanout"
+    },
+    {
+      title: "ForgeTDM executes the provisioning flow",
+      eyebrow: "Run",
+      body: [
+        "Pull root customers by filter.",
+        "Follow relationships to child rows.",
+        "Apply masking and load the target."
+      ],
+      footer: "DataScope/Synthetic engines do the physical work underneath.",
+      type: "run"
+    },
+    {
+      title: "Target receives complete masked data",
+      eyebrow: "Result",
+      body: [
+        "Foreign keys stay valid.",
+        "Sensitive columns are masked.",
+        "The tester gets usable UAT data."
+      ],
+      footer: "One Customer 360 request becomes a complete target load.",
+      type: "target"
+    },
+    {
+      title: "Evidence stays attached to the package",
+      eyebrow: "Audit",
+      body: [
+        "Run history, package version, loader evidence, and masking evidence",
+        "are stored with the business entity execution."
+      ],
+      footer: "This is the enterprise TDM story: reusable, controlled, explainable.",
+      type: "evidence"
+    }
+  ];
+
+  const totalDuration = scenes.length * sceneDuration;
+  let startedAt = 0;
+  let pausedAt = 0;
+  let playing = false;
+  let tickTimer = 0;
+  let recorder = null;
+  let recordedChunks = [];
+  let exportMode = false;
+  let lastStatusSecond = -1;
+
+  function easeOut(t) {
+    return 1 - Math.pow(1 - clamp(t), 3);
+  }
+
+  function clamp(v) {
+    return Math.max(0, Math.min(1, v));
+  }
+
+  function roundRect(x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
+  }
+
+  function fillRoundRect(x, y, w, h, r, fill, stroke) {
+    roundRect(x, y, w, h, r);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) {
+      ctx.strokeStyle = stroke;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  }
+
+  function text(value, x, y, size, color, weight, align) {
+    ctx.font = `${weight || 600} ${size}px Inter, Segoe UI, Arial, sans-serif`;
+    ctx.fillStyle = color || "#152033";
+    ctx.textAlign = align || "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(value, x, y);
+  }
+
+  function multiline(lines, x, y, size, color, gap) {
+    lines.forEach((line, index) => text(line, x, y + index * (gap || size + 12), size, color || "#435066", 550));
+  }
+
+  function arrow(x1, y1, x2, y2, color, width) {
+    const angle = Math.atan2(y2 - y1, x2 - x1);
+    ctx.strokeStyle = color || "#2563eb";
+    ctx.lineWidth = width || 4;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - 16 * Math.cos(angle - Math.PI / 6), y2 - 16 * Math.sin(angle - Math.PI / 6));
+    ctx.lineTo(x2 - 16 * Math.cos(angle + Math.PI / 6), y2 - 16 * Math.sin(angle + Math.PI / 6));
+    ctx.closePath();
+    ctx.fillStyle = color || "#2563eb";
+    ctx.fill();
+  }
+
+  function badge(label, x, y, color) {
+    fillRoundRect(x, y, 190, 34, 17, color, null);
+    text(label, x + 95, y + 7, 15, "#ffffff", 800, "center");
+  }
+
+  function drawHeader(scene, index, sceneProgress) {
+    const slide = index + 1;
+    badge(scene.eyebrow, 56, 42, "#2563eb");
+    text(scene.title, 56, 92, 36, "#152033", 800);
+    multiline(scene.body, 58, 148, 21, "#4c5b70", 34);
+    text(scene.footer, 58, 620, 21, "#334155", 750);
+
+    const progressX = 930;
+    text(`${slide}/${scenes.length}`, 1150, 42, 19, "#64748b", 800, "right");
+    fillRoundRect(progressX, 50, 220, 8, 4, "#dbe5f2");
+    fillRoundRect(progressX, 50, 220 * ((index + sceneProgress) / scenes.length), 8, 4, "#16a34a");
+
+    const playheadX = 56 + 730 * ((index + sceneProgress) / scenes.length);
+    fillRoundRect(56, 674, 730, 8, 4, "#dbe5f2");
+    fillRoundRect(56, 674, playheadX - 56, 8, 4, "#2563eb");
+    ctx.fillStyle = "#f97316";
+    ctx.beginPath();
+    ctx.arc(playheadX, 678, 13, 0, Math.PI * 2);
+    ctx.fill();
+    text("demo is moving", playheadX + 22, 664, 15, "#475569", 800);
+  }
+
+  function drawPerson(x, y, scale, color) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.fillStyle = "#f2c6a7";
+    ctx.beginPath();
+    ctx.arc(0, -78, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#263246";
+    ctx.beginPath();
+    ctx.arc(-5, -88, 24, Math.PI, Math.PI * 2);
+    ctx.fill();
+    fillRoundRect(-36, -45, 72, 90, 16, color);
+    ctx.strokeStyle = "#f2c6a7";
+    ctx.lineWidth = 14;
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(-34, -24);
+    ctx.lineTo(-82, 18);
+    ctx.moveTo(34, -24);
+    ctx.lineTo(86, 15);
+    ctx.stroke();
+    ctx.strokeStyle = "#263246";
+    ctx.lineWidth = 16;
+    ctx.beginPath();
+    ctx.moveTo(-20, 44);
+    ctx.lineTo(-42, 112);
+    ctx.moveTo(20, 44);
+    ctx.lineTo(50, 112);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawTableCard(label, x, y, color, detail) {
+    fillRoundRect(x, y, 210, 78, 8, "#ffffff", "#d7e1ef");
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, 8, 78);
+    text(label, x + 22, y + 15, 20, "#152033", 800);
+    text(detail, x + 22, y + 45, 14, "#64748b", 650);
+  }
+
+  function drawDatabase(x, y, label, color) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = color;
+    ctx.strokeStyle = "#1f2a44";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 80, 24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillRect(-80, 0, 160, 100);
+    ctx.beginPath();
+    ctx.ellipse(0, 100, 80, 24, 0, 0, Math.PI);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 80, 24, 0, 0, Math.PI);
+    ctx.stroke();
+    text(label, 0, 38, 19, "#ffffff", 800, "center");
+    ctx.restore();
+  }
+
+  function drawSceneRequest(progress) {
+    drawPerson(850, 340, 1.35, "#2563eb");
+    fillRoundRect(720, 150, 420, 110, 8, "#ffffff", "#cdd8e8");
+    text("I need 3 complete customers", 748, 178, 24, "#152033", 800);
+    text("for Payments regression in UAT.", 748, 214, 21, "#475569", 650);
+    fillRoundRect(782, 448, 230, 74, 8, "#eff6ff", "#bfdbfe");
+    text("Customer 360", 897, 467, 24, "#1d4ed8", 850, "center");
+    text("not table-by-table work", 897, 501, 15, "#475569", 650, "center");
+    const bounce = Math.sin(progress * Math.PI) * 16;
+    arrow(625, 405, 760 + bounce, 480, "#16a34a", 5);
+  }
+
+  function drawSceneDataScope(progress) {
+    const x = 650 + easeOut(progress) * 20;
+    drawTableCard("customers", x, 130, "#2563eb", "root + PII rules");
+    drawTableCard("addresses", x, 235, "#16a34a", "customer_id");
+    drawTableCard("accounts", x, 340, "#f97316", "customer_id");
+    drawTableCard("cards", x + 260, 285, "#7c3aed", "account_id");
+    drawTableCard("transactions", x + 260, 390, "#dc2626", "account_id");
+    arrow(x + 105, 208, x + 105, 235, "#64748b", 3);
+    arrow(x + 105, 208, x + 105, 340, "#64748b", 3);
+    arrow(x + 210, 379, x + 260, 324, "#64748b", 3);
+    arrow(x + 210, 418, x + 260, 429, "#64748b", 3);
+    fillRoundRect(850, 525, 245, 56, 8, "#fff7ed", "#fed7aa");
+    text("Column Map", 972, 537, 20, "#9a3412", 850, "center");
+    text("email, ssn, card_number", 972, 564, 14, "#9a3412", 650, "center");
+  }
+
+  function drawAppBox(label, db, x, y, color) {
+    fillRoundRect(x, y, 210, 78, 8, "#ffffff", "#d7e1ef");
+    ctx.fillStyle = color;
+    ctx.fillRect(x, y, 8, 78);
+    text(label, x + 22, y + 14, 18, "#152033", 850);
+    text(db, x + 22, y + 43, 15, "#64748b", 700);
+  }
+
+  function drawSceneMultiSource(progress) {
+    const centerX = 905;
+    const centerY = 345;
+    fillRoundRect(centerX - 135, centerY - 58, 270, 116, 8, "#eff6ff", "#bfdbfe");
+    text("Customer 360", centerX, centerY - 30, 25, "#1d4ed8", 850, "center");
+    text("Business Entity", centerX, centerY + 8, 17, "#475569", 750, "center");
+
+    const apps = [
+      ["Core Banking", "DB2 UDB", 660, 145, "#2563eb"],
+      ["Cards", "Oracle", 980, 145, "#dc2626"],
+      ["CRM", "PostgreSQL", 660, 485, "#16a34a"],
+      ["Digital", "SQL Server", 980, 485, "#7c3aed"],
+      ["Analytics", "Snowflake", 820, 560, "#0f766e"]
+    ];
+    apps.forEach((app, index) => {
+      const appear = easeOut(clamp(progress * 6 - index));
+      ctx.save();
+      ctx.globalAlpha = appear;
+      drawAppBox(app[0], app[1], app[2], app[3], app[4]);
+      ctx.restore();
+      if (appear > 0.2) {
+        arrow(app[2] + 105, app[3] + 78, centerX, centerY, "#94a3b8", 3);
+      }
+    });
+
+    fillRoundRect(726, 92, 360, 34, 17, "#fff7ed", "#fed7aa");
+    text("Same customer, many physical databases", 906, 100, 16, "#9a3412", 850, "center");
+  }
+
+  function drawSceneCrosswalk(progress) {
+    fillRoundRect(630, 145, 540, 365, 8, "#ffffff", "#d5dfeb");
+    text("Cross-Application Identity Map", 900, 174, 27, "#152033", 850, "center");
+    const rows = [
+      ["Business Key", "CUST-10025", "#2563eb"],
+      ["Core DB2", "customer_id = 10025", "#2563eb"],
+      ["Cards Oracle", "card_customer_ref = 778812", "#dc2626"],
+      ["CRM Postgres", "crm_party_id = P44281", "#16a34a"],
+      ["Digital SQL Server", "digital_user_id = D99120", "#7c3aed"]
+    ];
+    rows.forEach((row, index) => {
+      const y = 225 + index * 48;
+      const appear = easeOut(clamp(progress * 6 - index));
+      fillRoundRect(675, y, 450 * appear, 34, 6, "#f8fafc", "#e2e8f0");
+      if (appear > 0.2) {
+        ctx.fillStyle = row[2];
+        ctx.fillRect(690, y + 7, 18, 20);
+        text(row[0], 725, y + 7, 16, "#152033", 800);
+        text(row[1], 1110, y + 7, 16, "#475569", 700, "right");
+      }
+    });
+    const spin = progress * Math.PI * 2;
+    ctx.strokeStyle = "#16a34a";
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.arc(900, 560, 34, -Math.PI / 2, -Math.PI / 2 + spin);
+    ctx.stroke();
+    text("same seed = consistent masks", 900, 608, 18, "#166534", 850, "center");
+  }
+
+  function drawSceneModel(progress) {
+    const pulse = 1 + Math.sin(progress * Math.PI * 2) * 0.03;
+    ctx.save();
+    ctx.translate(850, 340);
+    ctx.scale(pulse, pulse);
+    fillRoundRect(-170, -205, 340, 410, 8, "#ffffff", "#cbd5e1");
+    text("Customer 360", 0, -176, 27, "#152033", 850, "center");
+    drawTableCard("Customer", -105, -122, "#2563eb", "customers.id");
+    drawTableCard("Address", -105, -22, "#16a34a", "customer_id");
+    drawTableCard("Account", -105, 78, "#f97316", "customer_id");
+    drawTableCard("Card", -105, 178, "#7c3aed", "account_id");
+    ctx.restore();
+    arrow(665, 515, 795, 515, "#2563eb", 5);
+    text("One reusable object", 860, 550, 24, "#2563eb", 850, "center");
+  }
+
+  function drawSceneGovernance(progress) {
+    const cards = [
+      ["Reserve", "3 customers", "#eff6ff", "#2563eb"],
+      ["Purpose", "Payments regression", "#f0fdf4", "#16a34a"],
+      ["Approve", "TDM Admin", "#fff7ed", "#f97316"],
+      ["Audit", "who, when, why", "#f5f3ff", "#7c3aed"]
+    ];
+    cards.forEach((card, index) => {
+      const appear = clamp((progress * 5) - index);
+      const y = 150 + index * 105;
+      fillRoundRect(720, y, 390 * easeOut(appear), 76, 8, card[2], "#d9e1ec");
+      if (appear > 0.15) {
+        text(card[0], 745, y + 16, 22, card[3], 850);
+        text(card[1], 745, y + 45, 17, "#475569", 650);
+      }
+    });
+  }
+
+  function drawScenePlan(progress) {
+    fillRoundRect(690, 145, 455, 365, 8, "#ffffff", "#d5dfeb");
+    text("Execution Plan", 918, 174, 28, "#152033", 850, "center");
+    const rows = [
+      ["Operation", "SUBSET_MASK"],
+      ["Source", "bank-demo"],
+      ["Target", "bank-qa"],
+      ["Count", "3 customer entities"],
+      ["Load", "TRUNCATE + INSERT"],
+      ["Seed", "uat-customer360-001"]
+    ];
+    rows.forEach((row, index) => {
+      const y = 225 + index * 42;
+      text(row[0], 725, y, 18, "#64748b", 700);
+      text(row[1], 920, y, 18, "#152033", 800);
+    });
+    const p = easeOut(progress);
+    fillRoundRect(776, 536, 286 * p, 52, 8, "#16a34a");
+    if (p > 0.5) {
+      text("Confirm And Launch", 918, 550, 20, "#ffffff", 850, "center");
+    }
+  }
+
+  function drawSceneFanout(progress) {
+    fillRoundRect(770, 135, 260, 92, 8, "#eff6ff", "#bfdbfe");
+    text("Approved", 900, 156, 21, "#1d4ed8", 850, "center");
+    text("Customer 360 Package", 900, 188, 18, "#475569", 750, "center");
+
+    const targets = [
+      ["Core UAT", "DB2 load", 615, 385, "#2563eb"],
+      ["Cards UAT", "Oracle load", 805, 450, "#dc2626"],
+      ["CRM UAT", "Postgres load", 995, 385, "#16a34a"],
+      ["Digital UAT", "SQL Server load", 805, 300, "#7c3aed"]
+    ];
+    targets.forEach((target, index) => {
+      const p = easeOut(clamp(progress * 5 - index));
+      const startX = 900;
+      const startY = 230;
+      const endX = target[2] + 92;
+      const endY = target[3];
+      if (p > 0.05) {
+        arrow(startX, startY, startX + (endX - startX) * p, startY + (endY - startY) * p, target[4], 4);
+      }
+      ctx.save();
+      ctx.globalAlpha = p;
+      fillRoundRect(target[2], target[3], 184, 70, 8, "#ffffff", "#d7e1ef");
+      ctx.fillStyle = target[4];
+      ctx.fillRect(target[2], target[3], 8, 70);
+      text(target[0], target[2] + 22, target[3] + 13, 18, "#152033", 850);
+      text(target[1], target[2] + 22, target[3] + 41, 14, "#64748b", 700);
+      ctx.restore();
+    });
+    fillRoundRect(730, 560, 340, 52, 8, "#ecfdf5", "#86efac");
+    text("one request, coordinated target loads", 900, 575, 19, "#166534", 850, "center");
+  }
+
+  function drawSceneRun(progress) {
+    drawDatabase(710, 280, "Source", "#2563eb");
+    drawDatabase(1110, 280, "Target", "#16a34a");
+    fillRoundRect(838, 216, 150, 128, 8, "#ffffff", "#d5dfeb");
+    text("Mask", 913, 246, 25, "#7c3aed", 850, "center");
+    text("PII rules", 913, 285, 17, "#64748b", 650, "center");
+    const moving = 710 + easeOut(progress) * 400;
+    arrow(790, 278, 838, 278, "#64748b", 4);
+    arrow(988, 278, 1030, 278, "#64748b", 4);
+    ctx.fillStyle = "#f97316";
+    ctx.beginPath();
+    ctx.arc(moving, 430, 18, 0, Math.PI * 2);
+    ctx.fill();
+    text("rows", moving, 460, 15, "#475569", 700, "center");
+    const steps = ["Read root", "Follow children", "Mask", "Load"];
+    steps.forEach((step, index) => {
+      const active = progress * steps.length >= index;
+      fillRoundRect(650 + index * 140, 545, 118, 48, 8, active ? "#dcfce7" : "#edf2f7", active ? "#86efac" : "#d5dfeb");
+      text(step, 709 + index * 140, 559, 15, active ? "#166534" : "#64748b", 800, "center");
+    });
+  }
+
+  function drawSceneTarget(progress) {
+    fillRoundRect(650, 140, 500, 340, 8, "#ffffff", "#d5dfeb");
+    text("bank-qa target", 900, 170, 28, "#152033", 850, "center");
+    const tables = [
+      ["customers", "3 masked rows", "#2563eb"],
+      ["addresses", "related rows", "#16a34a"],
+      ["accounts", "related rows", "#f97316"],
+      ["cards", "masked card numbers", "#7c3aed"],
+      ["transactions", "valid account links", "#dc2626"]
+    ];
+    tables.forEach((row, index) => {
+      const appear = clamp(progress * 6 - index);
+      const y = 222 + index * 48;
+      fillRoundRect(690, y, 420 * easeOut(appear), 34, 6, "#f8fafc", "#e2e8f0");
+      if (appear > 0.12) {
+        ctx.fillStyle = row[2];
+        ctx.fillRect(700, y + 7, 20, 20);
+        text(row[0], 735, y + 7, 16, "#152033", 800);
+        text(row[1], 1100, y + 7, 16, "#475569", 650, "right");
+      }
+    });
+    fillRoundRect(755, 520, 290, 56, 8, "#ecfdf5", "#86efac");
+    text("RI intact + PII masked", 900, 536, 21, "#166534", 850, "center");
+  }
+
+  function drawSceneEvidence(progress) {
+    const angle = progress * Math.PI * 2;
+    const cx = 910;
+    const cy = 335;
+    const items = [
+      ["Run History", -210, -90, "#2563eb"],
+      ["Package Version", 120, -115, "#16a34a"],
+      ["Loader Evidence", 155, 95, "#f97316"],
+      ["Masking Evidence", -205, 110, "#7c3aed"]
+    ];
+    fillRoundRect(cx - 150, cy - 55, 300, 110, 8, "#ffffff", "#d5dfeb");
+    text("Customer 360", cx, cy - 28, 25, "#152033", 850, "center");
+    text("approved execution", cx, cy + 10, 17, "#64748b", 700, "center");
+    items.forEach((item, index) => {
+      const orbit = Math.sin(angle + index) * 8;
+      const x = cx + item[1];
+      const y = cy + item[2] + orbit;
+      fillRoundRect(x - 85, y - 28, 170, 56, 8, "#ffffff", "#d5dfeb");
+      ctx.fillStyle = item[3];
+      ctx.beginPath();
+      ctx.arc(x - 60, y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      text(item[0], x - 40, y - 9, 15, "#152033", 800);
+      arrow(cx + Math.sign(item[1]) * 150, cy, x - Math.sign(item[1]) * 85, y, "#94a3b8", 2);
+    });
+  }
+
+  function formatTime(seconds) {
+    const safe = Math.max(0, Math.floor(seconds));
+    const mins = Math.floor(safe / 60);
+    const secs = String(safe % 60).padStart(2, "0");
+    return `${mins}:${secs}`;
+  }
+
+  function updateTimeline(seconds) {
+    const bounded = Math.max(0, Math.min(totalDuration, seconds));
+    timeline.value = String(Math.round((bounded / totalDuration) * 1000));
+    timeLabel.textContent = `${formatTime(bounded)} / ${formatTime(totalDuration)}`;
+  }
+
+  function safeDrawAt(seconds) {
+    try {
+      drawAt(seconds);
+      updateTimeline(seconds);
+      return true;
+    } catch (error) {
+      console.error("Demo render failed", error);
+      ctx.clearRect(0, 0, W, H);
+      fillRoundRect(80, 120, W - 160, 320, 8, "#ffffff", "#d5dfeb");
+      text("Demo render failed", W / 2, 170, 34, "#dc2626", 850, "center");
+      text("Refresh the page. If it repeats, send the browser console error.", W / 2, 230, 22, "#475569", 650, "center");
+      statusText.textContent = "Demo render failed. Refresh the page and try again.";
+      pause();
+      return false;
+    }
+  }
+
+  function tick() {
+    if (!playing) {
+      return;
+    }
+    const elapsed = (Date.now() - startedAt) / 1000;
+    if (elapsed >= totalDuration) {
+      safeDrawAt(totalDuration - 0.01);
+      playing = false;
+      pausedAt = totalDuration;
+      clearInterval(tickTimer);
+      playButton.textContent = "Play";
+      statusText.textContent = exportMode ? "Finishing export..." : "Demo complete.";
+      if (exportMode && recorder && recorder.state === "recording") {
+        recorder.stop();
+      }
+      return;
+    }
+
+    if (!safeDrawAt(elapsed)) {
+      return;
+    }
+
+    const wholeSecond = Math.floor(elapsed);
+    if (wholeSecond !== lastStatusSecond) {
+      lastStatusSecond = wholeSecond;
+      const sceneNumber = Math.min(scenes.length, Math.floor(elapsed / sceneDuration) + 1);
+      statusText.textContent = exportMode
+        ? `Recording demo video... scene ${sceneNumber} of ${scenes.length}`
+        : `Playing walkthrough... scene ${sceneNumber} of ${scenes.length}`;
+    }
+  }
+
+  function drawAt(seconds) {
+    const sceneIndex = Math.min(scenes.length - 1, Math.floor(seconds / sceneDuration));
+    const scene = scenes[sceneIndex];
+    const local = (seconds - sceneIndex * sceneDuration) / sceneDuration;
+
+    const g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, "#f8fbff");
+    g.addColorStop(1, "#e8f0fb");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.fillStyle = "rgba(37, 99, 235, 0.08)";
+    ctx.beginPath();
+    ctx.arc(1120, 120, 180, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(22, 163, 74, 0.08)";
+    ctx.beginPath();
+    ctx.arc(1060, 620, 220, 0, Math.PI * 2);
+    ctx.fill();
+
+    fillRoundRect(38, 26, 1188, 668, 8, "rgba(255,255,255,0.72)", "#d7e2f0");
+    drawHeader(scene, sceneIndex, local);
+
+    switch (scene.type) {
+      case "request":
+        drawSceneRequest(local);
+        break;
+      case "datascope":
+        drawSceneDataScope(local);
+        break;
+      case "multiSource":
+        drawSceneMultiSource(local);
+        break;
+      case "crosswalk":
+        drawSceneCrosswalk(local);
+        break;
+      case "model":
+        drawSceneModel(local);
+        break;
+      case "governance":
+        drawSceneGovernance(local);
+        break;
+      case "plan":
+        drawScenePlan(local);
+        break;
+      case "fanout":
+        drawSceneFanout(local);
+        break;
+      case "run":
+        drawSceneRun(local);
+        break;
+      case "target":
+        drawSceneTarget(local);
+        break;
+      case "evidence":
+        drawSceneEvidence(local);
+        break;
+      default:
+        break;
+    }
+  }
+
+  function play(reset) {
+    if (reset) {
+      pausedAt = 0;
+    }
+    if (playing) {
+      return;
+    }
+    playing = true;
+    startedAt = Date.now() - pausedAt * 1000;
+    lastStatusSecond = -1;
+    playButton.textContent = "Playing";
+    statusText.textContent = exportMode ? "Recording demo video..." : "Playing walkthrough...";
+    clearInterval(tickTimer);
+    tick();
+    tickTimer = setInterval(tick, 33);
+  }
+
+  function pause() {
+    if (!playing) {
+      return;
+    }
+    pausedAt = (Date.now() - startedAt) / 1000;
+    playing = false;
+    clearInterval(tickTimer);
+    playButton.textContent = "Play";
+    statusText.textContent = "Paused.";
+  }
+
+  function restart() {
+    playing = false;
+    clearInterval(tickTimer);
+    pausedAt = 0;
+    lastStatusSecond = -1;
+    playButton.textContent = "Play";
+    statusText.textContent = "Restarted. Click Play to watch from the beginning.";
+    safeDrawAt(0);
+  }
+
+  function exportVideo() {
+    if (!canvas.captureStream || !window.MediaRecorder) {
+      statusText.textContent = "This browser cannot export video. Try the latest Chrome or Edge.";
+      return;
+    }
+
+    const stream = canvas.captureStream(30);
+    const candidates = [
+      "video/webm;codecs=vp9",
+      "video/webm;codecs=vp8",
+      "video/webm"
+    ];
+    const mimeType = candidates.find(type => MediaRecorder.isTypeSupported(type)) || "";
+
+    recordedChunks = [];
+    recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    recorder.ondataavailable = event => {
+      if (event.data && event.data.size > 0) {
+        recordedChunks.push(event.data);
+      }
+    };
+    recorder.onstop = () => {
+      const blob = new Blob(recordedChunks, { type: mimeType || "video/webm" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "ForgeTDM_Customer360_BE_Demo.webm";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      exportMode = false;
+      playButton.textContent = "Play";
+      statusText.textContent = "Video exported. Check your downloads folder.";
+    };
+
+    exportMode = true;
+    recorder.start();
+    play(true);
+  }
+
+  playButton.addEventListener("click", () => play(false));
+  pauseButton.addEventListener("click", pause);
+  restartButton.addEventListener("click", restart);
+  exportButton.addEventListener("click", exportVideo);
+  canvas.addEventListener("click", () => play(false));
+  timeline.addEventListener("input", () => {
+    const next = (Number(timeline.value) / 1000) * totalDuration;
+    pausedAt = next;
+    safeDrawAt(next);
+    if (playing) {
+      startedAt = Date.now() - pausedAt * 1000;
+    }
+  });
+
+  window.forgeDemoPlay = () => play(false);
+  window.forgeDemoPause = pause;
+  window.forgeDemoRestart = restart;
+
+  safeDrawAt(0);
+})();
+</script>
+</body>
+</html>

@@ -2516,13 +2516,14 @@ public class ProvisioningService {
 
     private void createStaging(Connection out, SqlDialect dialect, String schema, String stg,
                                String srcTable, List<String> cols) throws SQLException {
-        dropStaging(out, schema, stg);
+        dropStaging(out, dialect, schema, stg);
         String colList = String.join(",", cols.stream().map(ProvisioningService::q).toList());
         String src = q(schema, srcTable);
         String stgQ = q(schema, stg);
         String sql = switch (dialect) {
             case SQLSERVER -> "SELECT " + colList + " INTO " + stgQ + " FROM " + src + " WHERE 1=0";
             case POSTGRES  -> "CREATE UNLOGGED TABLE " + stgQ + " AS SELECT " + colList + " FROM " + src + " WHERE 1=0";
+            case DB2       -> "CREATE TABLE " + stgQ + " AS (SELECT " + colList + " FROM " + src + ") WITH NO DATA";
             default        -> "CREATE TABLE " + stgQ + " AS SELECT " + colList + " FROM " + src + " WHERE 1=0";
         };
         try (Statement st = out.createStatement()) { st.executeUpdate(sql); }
@@ -2530,12 +2531,23 @@ public class ProvisioningService {
     }
 
     private void dropStaging(Connection out, String schema, String stg) {
+        SqlDialect dialect;
+        try { dialect = SqlDialect.fromConnection(out); }
+        catch (Exception e) { dialect = SqlDialect.GENERIC; }
+        dropStaging(out, dialect, schema, stg);
+    }
+
+    private void dropStaging(Connection out, SqlDialect dialect, String schema, String stg) {
         // Clear any aborted transaction first so this cleanup can run; use IF EXISTS so dropping a
         // non-existent staging table never errors (which on Postgres would abort the whole transaction
         // and make the subsequent CREATE fail with "current transaction is aborted").
         try { if (!out.getAutoCommit()) out.rollback(); } catch (SQLException ignore) { }
         try (Statement st = out.createStatement()) {
-            st.executeUpdate("DROP TABLE IF EXISTS " + q(schema, stg));
+            String sql = switch (dialect) {
+                case DB2, ORACLE -> "DROP TABLE " + q(schema, stg);
+                default -> "DROP TABLE IF EXISTS " + q(schema, stg);
+            };
+            st.executeUpdate(sql);
             if (!out.getAutoCommit()) out.commit();
         } catch (SQLException ignore) {
             try { if (!out.getAutoCommit()) out.rollback(); } catch (SQLException e2) { /* ignore */ }
@@ -2568,8 +2580,11 @@ public class ProvisioningService {
             }
             default: { // ORACLE, DB2, H2, GENERIC — MERGE (update columns exclude the ON keys)
                 String on = String.join(" AND ", joinKeys.stream().map(k -> t + "." + q(k) + "=" + s + "." + q(k)).toList());
-                String set = String.join(",", updateCols.stream().map(c -> t + "." + q(c) + "=" + s + "." + q(c)).toList());
-                return "MERGE INTO " + q(schema, table) + " " + t + " USING " + q(schema, stg) + " " + s
+                boolean db2 = dialect == SqlDialect.DB2;
+                String set = String.join(",", updateCols.stream()
+                        .map(c -> (db2 ? q(c) : t + "." + q(c)) + "=" + s + "." + q(c)).toList());
+                return "MERGE INTO " + q(schema, table) + (db2 ? " AS " : " ") + t
+                        + " USING " + q(schema, stg) + (db2 ? " AS " : " ") + s
                         + " ON (" + on + ") WHEN MATCHED THEN UPDATE SET " + set;
             }
         }
