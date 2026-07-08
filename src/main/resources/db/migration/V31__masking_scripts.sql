@@ -1,0 +1,1 @@
+-- placeholder: masking_scripts table created in V36__masking_scripts.sql

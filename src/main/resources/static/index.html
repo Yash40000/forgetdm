@@ -1,0 +1,1445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ForgeTDM - Test Data Management</title>
+<link rel="stylesheet" href="styles.css?v=ds-modal-1">
+</head>
+<body>
+<nav id="sidebar">
+  <div id="brand">
+    <div class="logo">F</div>
+    <h1>ForgeTDM<small>Test Data Platform</small></h1>
+  </div>
+  <div class="theme-box">
+    <label>Theme</label>
+    <select id="theme-select" onchange="setTheme(this.value)">
+      <option value="dark">Dark+ (VS Code)</option>
+      <option value="light">Light+ (VS Code)</option>
+      <option value="midnight">Midnight Blue</option>
+      <option value="azure">Blue White</option>
+      <option value="sage">Soft Sage</option>
+      <option value="slate">Soft Slate</option>
+      <option value="hc">High Contrast</option>
+    </select>
+  </div>
+  <div id="current-user-box" class="user-box hidden"></div>
+
+  <div class="nav-group">
+    <div class="nav-group-title" onclick="toggleNavGroup(this)">Home</div>
+    <div class="nav-group-items">
+      <div class="nav-item active" data-page="dashboard"><span class="ico">DB</span>Dashboard</div>
+      <div class="nav-item" data-page="challenges"><span class="ico">CH</span>Challenge Center</div>
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-title" onclick="toggleNavGroup(this)">Connect &amp; Discover</div>
+    <div class="nav-group-items">
+      <div class="nav-item" data-page="datasources"><span class="ico">DS</span>Data Sources</div>
+      <div class="nav-item" data-page="query"><span class="ico">QY</span>Data Explorer</div>
+      <div class="nav-item" data-page="discovery"><span class="ico">PI</span>PII Discovery</div>
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-title" onclick="toggleNavGroup(this)">Referential Integrity</div>
+    <div class="nav-group-items">
+      <div class="nav-item" data-page="ri"><span class="ico">RI</span>Keys &amp; Relationships</div>
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-title" onclick="toggleNavGroup(this)">Mask</div>
+    <div class="nav-group-items">
+      <div class="nav-item" data-page="policies"><span class="ico">MP</span>Masking Policies</div>
+      <div class="nav-item" data-page="studio"><span class="ico">MS</span>Masking Studio</div>
+      <div class="nav-item" data-page="maskscripts"><span class="ico">Lua</span>Masking Scripts</div>
+      <div class="nav-item" data-page="datasets"><span class="ico">SC</span>DataScope</div>
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-title" onclick="toggleNavGroup(this)">Mainframe</div>
+    <div class="nav-group-items">
+      <div class="nav-item" data-page="copybook"><span class="ico">MF</span>Copybook Studio</div>
+      <div class="nav-item" data-page="mainframe"><span class="ico">MZ</span>Mainframe</div>
+      <div class="nav-item" data-page="mfgen"><span class="ico">MG</span>MF Generator</div>
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-title" onclick="toggleNavGroup(this)">Provision &amp; Deliver</div>
+    <div class="nav-group-items">
+      <div class="nav-item" data-page="agent"><span class="ico">AI</span>Auto-Provision</div>
+      <div class="nav-item" data-page="mapping"><span class="ico">MX</span>Mapping Designer</div>
+      <div class="nav-item" data-page="subset"><span class="ico">SS</span>Subsetting</div>
+      <div class="nav-item" data-page="synthetic"><span class="ico">SG</span>Synthetic Data</div>
+      <div class="nav-item" data-page="virtualize"><span class="ico">DV</span>Virtualization</div>
+      <div class="nav-item" data-page="jobs"><span class="ico">PJ</span>Provisioning Jobs</div>
+      <div class="nav-item" data-page="reservations"><span class="ico">FR</span>Reservations</div>
+    </div>
+  </div>
+
+  <div class="nav-group">
+    <div class="nav-group-title" onclick="toggleNavGroup(this)">Govern</div>
+    <div class="nav-group-items">
+      <div class="nav-item" data-page="business-entities"><span class="ico">BE</span>Business Entities</div>
+      <div class="nav-item" data-page="security"><span class="ico">AC</span>Access Control</div>
+      <div class="nav-item" data-page="validation"><span class="ico">VL</span>Validation</div>
+      <div class="nav-item" data-page="audit"><span class="ico">AU</span>Audit Trail</div>
+    </div>
+  </div>
+</nav>
+
+<main id="main">
+
+<section class="page active" id="page-dashboard">
+  <h2>Dashboard</h2><p class="sub">Self-service test data operations across discovery, masking, subsetting, generation, reservation, and validation.</p>
+  <div class="stat-grid" id="stats"></div>
+  <div class="card command-card"><div class="card-head"><h3>Forge Copilot</h3><span class="pill info">guided workflows</span></div>
+    <p class="sub tight">Start from the outcome you need. ForgeTDM keeps the workflow visible and turns each step into an executable job or policy.</p>
+    <div class="command-grid">
+      <button class="command" onclick="showPage('discovery')"><b>Find sensitive data</b><span>Scan, approve, and generate a masking policy.</span></button>
+      <button class="command" onclick="showPage('subset')"><b>Create a right-sized subset</b><span>Use row limit, optional filters, and FK closure when available.</span></button>
+      <button class="command" onclick="showPage('synthetic'); applyBlueprint('customer360')"><b>Generate synthetic data</b><span>Pick a blueprint or compose columns from the catalog.</span></button>
+      <button class="command" onclick="showPage('validation')"><b>Prove data is safe</b><span>Run leak, format, RI, and domain checks.</span></button>
+      <button class="command" onclick="showPage('challenges')"><b>Solve a TDM challenge</b><span>Top 10 corporate test data problems, mapped to the workflow that fixes each.</span></button>
+    </div>
+  </div>
+  <div class="card"><h3>Operating path</h3>
+    <ol class="steps">
+      <li>Register source and target databases.</li>
+      <li>Run PII discovery and approve the findings that matter.</li>
+      <li>Generate or tune a policy with deterministic masking rules.</li>
+      <li>Provision with MASK_COPY, SUBSET_MASK, or SYNTHETIC_LOAD.</li>
+      <li>Validate the target and reserve records for test cycles.</li>
+    </ol>
+  </div>
+</section>
+
+<section class="page" id="page-challenges">
+  <h2>TDM Challenge Center</h2><p class="sub">The ten test data problems enterprises report most in 2025-26, each mapped to the ForgeTDM workflow that solves it. Click an action to jump straight there.</p>
+  <div id="challenge-grid" class="challenge-grid"></div>
+</section>
+
+<section class="page" id="page-datasources">
+  <h2>Data Sources</h2><p class="sub">Connection catalog — register, classify, and health-check every source and target.</p>
+
+  <div id="ds-kpis" class="ds-kpis"></div>
+
+  <div class="ds-toolbar">
+    <input id="ds-search" class="ds-search" placeholder="Search name, URL or tag…" oninput="renderDsCatalog()">
+    <select id="ds-filter-role" onchange="renderDsCatalog()"><option value="">All roles</option><option>SOURCE</option><option>TARGET</option><option>BOTH</option></select>
+    <select id="ds-filter-engine" onchange="renderDsCatalog()"><option value="">All engines</option></select>
+    <select id="ds-filter-env" onchange="renderDsCatalog()"><option value="">All environments</option></select>
+    <span class="grow"></span>
+    <button class="ghost small" onclick="testAllDs()">Test all</button>
+    <button class="small" onclick="dsOpenAdd()">+ Add connection</button>
+  </div>
+
+  <div id="native-loader-panel" class="card"></div>
+
+  <div id="ds-form" class="card ds-form hidden">
+    <div class="row push"><h3 id="ds-form-title">Add connection</h3><button class="ghost small" onclick="dsCloseForm()">Close</button></div>
+    <div class="row">
+      <div><label>Name</label><input id="ds-name" placeholder="bank-prod-replica"></div>
+      <div><label>Engine</label><select id="ds-kind" onchange="dsApplyTemplate(true)">
+        <option>POSTGRES</option><option>MYSQL</option><option>ORACLE</option><option>SQLSERVER</option>
+        <option>DB2</option><option>DB2UDB</option><option>DB2ZOS</option><option>H2</option><option>GENERIC</option>
+      </select></div>
+      <div><label>Environment</label><select id="ds-env">
+        <option value="">—</option><option>PROD</option><option>UAT</option><option>QA</option><option>DEV</option><option>STAGE</option><option>OTHER</option>
+      </select></div>
+      <div><label>Role</label><select id="ds-role"><option>SOURCE</option><option>TARGET</option><option>BOTH</option></select></div>
+    </div>
+    <div class="row">
+      <div class="grow"><label>JDBC URL</label><input id="ds-url" placeholder="jdbc:postgresql://localhost:5432/dbname"></div>
+      <button class="ghost small" onclick="dsApplyTemplate(false)" title="Insert a JDBC template for the selected engine">Template</button>
+    </div>
+    <div class="row">
+      <div><label>Username</label><input id="ds-user"></div>
+      <div><label>Password</label><input id="ds-pass" type="password" placeholder="(unchanged when editing)"></div>
+      <div class="grow"><label>Tags (comma-separated)</label><input id="ds-tags" placeholder="pii, finance, replica"></div>
+    </div>
+    <div class="row push">
+      <button class="ghost small" onclick="dsTestForm()">Test connection</button>
+      <span id="ds-form-status" class="ds-form-status"></span>
+      <span class="grow"></span>
+      <button id="ds-save-btn" onclick="saveDs()">Add connection</button>
+    </div>
+  </div>
+
+  <div id="ds-cards" class="ds-cards"></div>
+</section>
+
+<section class="page" id="page-query">
+  <h2>Data Explorer</h2><p class="sub">Run a read-only query against a connected source and preview up to 1000 rows.</p>
+  <div class="card">
+    <div class="row">
+      <div><label>Data source</label><select id="q-ds" onchange="qDsChanged()"></select></div>
+      <div><label>Schema</label><select id="q-schema" onchange="qSchemaChanged()"><option value="">—</option></select></div>
+      <div><label>Table</label><select id="q-table" onchange="qTableChanged()"><option value="">—</option></select></div>
+      <span class="form-hint">Pick a table to auto-fill a SELECT, or write your own below.</span>
+    </div>
+    <div class="row">
+      <div class="grow"><label>SQL — SELECT only</label><textarea id="q-sql" rows="5" class="mono" placeholder="SELECT * FROM schema.table" onkeydown="qSqlKey(event)"></textarea></div>
+    </div>
+    <div class="row push">
+      <button onclick="runQuery()">Run query</button>
+      <button class="ghost small" id="q-csv-btn" onclick="qDownloadCsv()" disabled>Download CSV</button>
+      <span class="grow"></span>
+      <span id="q-status" class="sub"></span>
+    </div>
+  </div>
+  <div class="card"><div id="q-results"><div class="empty">Run a query to see results (capped at 1000 rows).</div></div></div>
+</section>
+
+<section class="page" id="page-discovery">
+  <h2>PII Discovery</h2><p class="sub">Dual-signal scan from column names and sampled values, then review, masking-rule assignment, and policy generation.</p>
+  <div class="card" id="disc-scan-card" data-tab-label="1. Scan Source"><h3>Scan source</h3><div class="row">
+    <div><label>Data source</label><select id="disc-ds" onchange="loadDiscoverySchemas()"></select></div>
+    <div><label>Schema</label><select id="disc-schema" onchange="loadDiscoveryContext()"><option value="">Select schema</option></select></div>
+    <button onclick="runScan()">Scan for PII</button>
+  </div>
+  <div class="disc-scope" style="margin-top:8px">
+    <label>PII types to scan <span class="pill dim small">leave all unchecked = scan everything</span></label>
+    <div id="disc-type-scope" class="chip-set"><span class="sub">Select a data source to load PII types…</span></div>
+    <div class="row" style="margin-top:6px">
+      <button class="ghost small" onclick="discScopeAll(true)">Select all</button>
+      <button class="ghost small" onclick="discScopeAll(false)">Clear</button>
+      <button class="ghost small" onclick="toggleCustomPatterns()">Custom regex patterns…</button>
+    </div>
+  </div>
+  <div id="disc-custom-card" class="card" style="display:none;margin-top:8px">
+    <div class="row push"><h4>Custom PII patterns</h4><span class="pill dim small">applies to you / your group</span></div>
+    <p class="sub tight">Add your own column-name (NAME) or value (VALUE) regex for any PII type, used alongside the built-in patterns. Scope it to yourself, your group, or everyone.</p>
+    <div class="row">
+      <div><label>PII type</label><input id="cp-type" placeholder="SSN or CUSTOM_ID"></div>
+      <div><label>Match on</label><select id="cp-kind"><option value="NAME">Column name</option><option value="VALUE">Value</option></select></div>
+      <div><label>Regex</label><input id="cp-regex" placeholder="^EMP\\d{6}$"></div>
+      <div><label>Mask fn <span class="pill dim small">optional</span></label><input id="cp-fn" placeholder="FORMAT_PRESERVE"></div>
+      <div id="cp-vis-wrap"></div>
+    </div>
+    <div class="row" style="margin-top:6px"><button class="small" onclick="saveCustomPattern()">Add pattern</button></div>
+    <div id="cp-list"><div class="empty">No custom patterns yet.</div></div>
+  </div>
+  <p class="sub tight">The scan samples column names and values, then lands on the Findings &amp; Masking tab where you review results, assign masking rules, and approve.</p>
+  </div>
+  <div class="card" id="disc-results-card" data-tab-label="2. Findings &amp; Masking"><div class="card-head"><h3>Findings &amp; masking rules</h3><span class="pill info">review, assign, approve</span></div>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="disc-tab-findings" onclick="showDiscTab('disc-tab-findings')">Findings</button>
+      <button class="tab-btn" data-tab="disc-tab-er" onclick="showDiscTab('disc-tab-er')">ER Traversal</button>
+    </div>
+    <div class="tab-pane active" id="disc-tab-findings">
+      <div id="disc-kpis" class="ds-kpis"></div>
+      <div class="disc-toolbar">
+        <input id="disc-search" class="ds-search" placeholder="Search column, type or sample…" oninput="renderFindings()">
+        <select id="disc-table-filter" onchange="discTableChanged()"><option value="">All tables</option></select>
+        <select id="disc-type-filter" onchange="renderFindings()"><option value="">All PII types</option></select>
+        <select id="disc-status-filter" onchange="renderFindings()"><option value="">All statuses</option></select>
+        <span class="grow"></span>
+        <button class="ghost small" onclick="approveVisibleFindings()">Approve visible</button>
+        <button class="ghost small danger" onclick="rejectVisibleFindings()">Reject visible</button>
+      </div>
+      <div id="disc-table"><div class="empty">Pick a data source and scan.</div></div>
+      <h3 class="section-title">Full column review</h3>
+      <p class="sub tight">Pick a single table above to inspect every column — including ones not flagged — and mark or unmark PII.</p>
+      <div id="disc-column-review" class="column-review empty">Select a table to review its columns.</div>
+    </div>
+    <div class="tab-pane" id="disc-tab-er">
+      <p class="sub tight">Parent tables on the left, children to the right. Click a table to trace its traversal path: parents it descends from, and child tables (with their PII fields) that a rule on this table should be considered alongside.</p>
+      <div class="er-wrap">
+        <div class="er-canvas" id="er-canvas"><div class="empty">Select a context and scan to visualize relationships.</div></div>
+        <div class="er-side">
+          <div class="er-panel" id="er-traversal"><h4>Traversal order</h4><div class="empty">No FK metadata yet.</div></div>
+          <div class="er-panel" id="er-cycles"><h4>Traversal cycles</h4><div class="empty">No cycle analysis yet.</div></div>
+          <div class="er-panel" id="er-impact"><h4>Rule impact</h4><div class="empty">Click a table in the diagram.</div></div>
+        </div>
+      </div>
+      <div class="er-legend">
+        <span><i style="background:var(--accent)"></i>Selected table</span>
+        <span><i style="background:var(--good)"></i>Child / descendant (rules may also be needed here)</span>
+        <span><i style="background:var(--warn)"></i>Parent / ancestor</span>
+        <span><i style="background:var(--bad)"></i>Traversal cycle</span>
+      </div>
+    </div>
+  </div>
+  <div class="card" id="disc-policy-card" data-tab-label="3. Generate Policy"><div class="card-head"><h3>Generate masking policy</h3><span id="disc-policy-count" class="pill dim">select context</span></div>
+    <div class="row">
+      <div><label>New policy name</label><input id="disc-policy-name" placeholder="bank-pii-policy"></div>
+      <button onclick="genPolicy()">Generate Policy from Approved</button>
+    </div>
+    <div id="disc-policy-result" class="sub" style="margin-top:6px"></div>
+    <h3 class="section-title">Existing policies for selected database/schema</h3>
+    <div id="disc-policy-list" class="empty">Select a data source and schema.</div>
+  </div>
+</section>
+
+<section class="page" id="page-ri">
+  <h2>Referential Integrity &amp; Keys</h2>
+  <p class="sub">Define primary keys and foreign-key relationships once, at the tool level, and reuse them across masking, synthetic generation, subsetting and validation. Scope each definition to yourself, a group, or everyone &mdash; resolution precedence is user &gt; group &gt; global &gt; live database metadata.</p>
+
+  <div class="card">
+    <div class="row">
+      <div>
+        <label>Data source</label>
+        <select id="ri-ds" onchange="loadRi()"></select>
+      </div>
+      <div>
+        <label>Schema <span class="pill dim small">optional filter</span></label>
+        <input id="ri-schema" placeholder="(all schemas)" oninput="loadRi()">
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row push">
+      <h3>Primary keys</h3>
+      <button class="ghost small" onclick="riNewKey()">+ Define primary key</button>
+    </div>
+    <div id="ri-keys"><div class="empty">Select a data source.</div></div>
+  </div>
+
+  <div class="card">
+    <div class="row push">
+      <h3>Relationships (foreign keys)</h3>
+      <button class="ghost small" onclick="riNewRel()">+ Define relationship</button>
+    </div>
+    <div id="ri-rels"><div class="empty">Select a data source.</div></div>
+  </div>
+</section>
+
+<section class="page" id="page-policies">
+  <h2>Masking Policies</h2><p class="sub">Executable column-to-function bindings, deterministic by default.</p>
+  <div class="card" id="pol-create-card" data-tab-label="Create Policy"><h3>Create policy</h3><div class="row">
+    <div><label>Policy name</label><input id="pol-name" placeholder="my-policy"></div>
+    <div><label>Data source</label><select id="pol-ds" onchange="loadPolicySchemas()"></select></div>
+    <div><label>Schema</label><select id="pol-schema"><option value="">Optional schema</option></select></div>
+    <div class="grow"><label>Description</label><input id="pol-desc"></div>
+    <button onclick="createPolicy()">Create</button>
+  </div></div>
+  <div class="card" id="pol-list-card" data-tab-label="Policies"><h3>Policies</h3><div id="pol-table"></div></div>
+  <div class="card" id="rules-card" data-tab-label="Rules" style="display:none"><h3 id="rules-title">Rules</h3>
+    <div class="row push">
+      <div><label>Table</label><input id="rule-table"></div>
+      <div><label>Column</label><input id="rule-col"></div>
+      <div><label>Function</label><select id="rule-fn" onchange="updateMaskParamVisibility('rule')"></select></div>
+      <div id="rule-p1-wrap"><label id="rule-p1-label">Param 1</label><span id="rule-p1-control"><input id="rule-p1" placeholder="optional"></span></div>
+      <div id="rule-p2-wrap"><label id="rule-p2-label">Param 2</label><span id="rule-p2-control"><input id="rule-p2" placeholder="optional"></span></div>
+      <button onclick="addRule()">Add Rule</button>
+    </div>
+    <div id="rules-table"></div>
+  </div>
+  <div class="card" id="table-map-card" data-tab-label="Bind from Discovery" style="display:none"><div class="card-head"><h3>Bind discovery findings</h3><span class="pill info">Optim-style selection</span></div>
+    <p class="sub tight">Choose only the discovery tables and columns you want to bind into this policy. This lets discovery cover 10 tables while masking uses only 2.</p>
+    <div class="row push">
+      <div><label>Discovery data source</label><select id="map-ds" onchange="loadMapSchemas()"></select></div>
+      <div><label>Schema</label><select id="map-schema" onchange="loadTableMap()"><option value="">Select schema</option></select></div>
+      <button class="ghost" onclick="loadTableMap()">Load discovery map</button>
+      <button onclick="addMappedRules()">Add selected to policy</button>
+    </div>
+    <div id="table-map" class="table-map empty">Open a policy, then load discovery results.</div>
+  </div>
+</section>
+
+<section class="page" id="page-studio">
+  <h2>Masking Studio</h2><p class="sub">Try any function live before committing it to a policy.</p>
+  <div class="card"><h3>Function preview</h3><div class="row">
+    <div><label>Function</label><select id="st-fn" onchange="updateMaskParamVisibility('st')"></select></div>
+    <div class="grow"><label>Sample value</label><input id="st-value" placeholder="123-45-6789"></div>
+    <div id="st-p1-wrap"><label id="st-p1-label">Param 1</label><span id="st-p1-control"><input id="st-p1"></span></div>
+    <div id="st-p2-wrap"><label id="st-p2-label">Param 2</label><span id="st-p2-control"><input id="st-p2"></span></div>
+    <div><label>Seed (optional)</label><input id="st-seed" placeholder="blank = default" title="Same seed = same masked values. Different seed = different deterministic output."></div>
+    <button onclick="preview()">Mask it</button>
+  </div>
+  <div class="preview-out" id="st-out" style="display:none"></div>
+  <p class="sub tight">Try SSN <code class="k">123-45-6789</code> with <code class="k">KEEP_LAST4</code>, CREDIT_CARD <code class="k">4111 1111 1111 1111</code> with <code class="k">VALID_RANDOM_BIN</code>, EMAIL <code class="k">jane.doe@gmail.com</code> with <code class="k">PRESERVE_DOMAIN</code>, PHONE <code class="k">+1 (415) 555-0182</code> with <code class="k">PRESERVE_AREA</code>, or ADDRESS_US <code class="k">12 Rosewood Ave, Austin, TX 73301, USA</code> with <code class="k">PRESERVE_STATE</code>.</p>
+  </div>
+</section>
+
+<section class="page" id="page-copybook">
+  <h2>Copybook Studio</h2><p class="sub">Parse a COBOL copybook and decode mainframe records (EBCDIC, COMP-3, COMP, zoned) — paste hex or upload a binary file. Everything runs off-platform; no mainframe needed.</p>
+
+  <div class="card"><h3>Copybook</h3>
+    <div class="row"><div class="grow"><label>COBOL copybook source</label>
+      <textarea id="cb-src" rows="10" spellcheck="false" placeholder="01 CUSTOMER-RECORD.&#10;   05 CUST-ID      PIC 9(5).&#10;   05 CUST-NAME    PIC X(10).&#10;   05 BALANCE      PIC S9(5)V99 COMP-3.&#10;   05 ACCT-COUNT   PIC 9(2) COMP.&#10;   05 STATUS-FLAG  PIC X."></textarea></div></div>
+    <div class="row push">
+      <div><label>EBCDIC code page</label><input id="cb-codepage" value="Cp037" placeholder="Cp037"></div>
+      <button class="ghost" onclick="cbSample()">Load sample</button>
+      <button onclick="cbParse()">Parse layout</button>
+    </div>
+    <div id="cb-layout" class="empty">Paste a copybook and parse to see the byte-level field layout.</div>
+  </div>
+
+  <div class="card"><h3>Decode a record</h3>
+    <div class="row push"><div class="seg-btn-group">
+      <button class="seg-btn active" id="cb-seg-hex" onclick="cbMode('hex')">Paste hex</button>
+      <button class="seg-btn" id="cb-seg-file" onclick="cbMode('file')">Upload binary file</button>
+    </div></div>
+    <div id="cb-hex-pane">
+      <div class="row"><div class="grow"><label>Record bytes (hex)</label>
+        <textarea id="cb-hex" rows="3" spellcheck="false" placeholder="F1F2F3F4F5 C1D3C9C3C5404040404040 ..."></textarea></div></div>
+      <div class="row push"><button onclick="cbDecodeHex()">Decode</button></div>
+    </div>
+    <div id="cb-file-pane" style="display:none">
+      <div class="row push">
+        <div><label>Binary EBCDIC file</label><input type="file" id="cb-file"></div>
+        <div><label>Max records</label><input id="cb-maxrec" type="number" value="50" min="1"></div>
+        <button onclick="cbDecodeFile()">Upload &amp; decode</button>
+      </div>
+      <div class="row push" id="cb-rec-nav" style="display:none">
+        <div><label>Record</label><select id="cb-rec-select" onchange="cbShowRecord()"></select></div>
+        <span id="cb-rec-summary" class="muted" style="align-self:center"></span>
+      </div>
+    </div>
+    <div id="cb-decoded" class="empty">Decode a record to see field values.</div>
+  </div>
+
+  <div class="card"><h3>Mask fields</h3>
+    <p class="sub tight">Pick a function per field — card, phone, SSN, name and date functions expose the same option dropdowns as the Masking Studio (e.g. card mode / card format). Check one field, several, or all, then apply. A text function on a numeric field reports an error rather than corrupting it.</p>
+    <div class="row push">
+      <button class="ghost" onclick="cbCheckAll(true)">Select all</button>
+      <button class="ghost" onclick="cbCheckAll(false)">Clear</button>
+      <button onclick="cbMaskBatch()">Apply masking to checked</button>
+    </div>
+    <div id="cb-mask-grid" class="empty">Decode a record first to choose masking per field.</div>
+    <div id="cb-mask-out" class="empty">No preview yet.</div>
+  </div>
+</section>
+
+<section class="page" id="page-mainframe">
+  <h2>Mainframe</h2><p class="sub">End-to-end batch masking of mainframe files: register LPARs (real z/OSMF via Zowe, or a local landing folder), keep a copybook library, then run jobs that fetch many files, mask each with its own copybook, and write back to the same or a different LPAR under a new name.</p>
+
+  <!-- Connections -->
+  <div class="card" data-tab-label="Connections"><h3>Connections (LPARs)</h3>
+    <div class="row push">
+      <div><label>Name</label><input id="mf-conn-name" placeholder="prod-lpar-a"></div>
+      <div><label>Type</label><select id="mf-conn-type" onchange="mfConnTypeChanged()"><option>LOCAL</option><option>ZOWE</option></select></div>
+      <div><label>Code page</label><input id="mf-conn-cp" value="Cp037"></div>
+    </div>
+    <div class="row push" id="mf-conn-local">
+      <div class="grow"><label>Base directory (landing folder)</label><input id="mf-conn-dir" placeholder="C:\\mf-landing\\lparA"></div>
+    </div>
+    <div class="row push" id="mf-conn-zowe" style="display:none">
+      <div><label>Host</label><input id="mf-conn-host" placeholder="zos.example.com"></div>
+      <div><label>Port</label><input id="mf-conn-port" type="number" value="443"></div>
+      <div><label>z/OSMF base path</label><input id="mf-conn-path" value="/zosmf"></div>
+      <div><label>Username</label><input id="mf-conn-user"></div>
+      <div><label>Password</label><input id="mf-conn-pass" type="password"></div>
+      <label class="check"><input id="mf-conn-trust" type="checkbox"> Trust self-signed cert</label>
+    </div>
+    <div class="row push"><button onclick="mfAddConn()">Add connection</button></div>
+    <div id="mf-conn-list"><div class="empty">No connections yet.</div></div>
+  </div>
+
+  <!-- Copybooks -->
+  <div class="card" data-tab-label="Copybooks"><h3>Copybook registry</h3>
+    <p class="sub tight">Save each record layout once and reuse it across files and jobs. After saving, open its field map to choose a masking function per field.</p>
+    <div class="row push">
+      <div><label>Name</label><input id="mf-cpy-name" placeholder="customer-record"></div>
+      <div><label>Code page</label><input id="mf-cpy-cp" value="Cp037"></div>
+      <button class="ghost" onclick="mfCpySample()">Load sample</button>
+      <button onclick="mfSaveCpy()">Save copybook</button>
+    </div>
+    <div class="row"><div class="grow"><label>COBOL copybook source</label>
+      <textarea id="mf-cpy-src" rows="8" spellcheck="false" placeholder="01 CUSTOMER-RECORD.&#10;   05 CUST-ID PIC 9(5)...."></textarea></div></div>
+    <div id="mf-cpy-list"><div class="empty">No copybooks yet.</div></div>
+    <div id="mf-cpy-map" class="empty" style="margin-top:14px">Open a copybook's field map to configure masking.</div>
+  </div>
+
+  <!-- File Jobs -->
+  <div class="card" data-tab-label="File Jobs"><h3>File masking jobs</h3>
+    <div class="row push">
+      <div><label>Job name</label><input id="mf-job-name" placeholder="nightly-mask"></div>
+      <div><label>Source LPAR</label><select id="mf-job-src"></select></div>
+      <div><label>Target LPAR</label><select id="mf-job-tgt"></select></div>
+      <div><label>Masking seed (optional)</label><input id="mf-job-seed" placeholder="blank = default"></div>
+    </div>
+    <h3 class="section-title">Files</h3>
+    <div class="row push">
+      <button class="ghost small" onclick="mfBrowseSource()">Browse source files</button>
+      <button class="ghost small" onclick="mfAddFileRow()">+ Add file</button>
+    </div>
+    <div id="mf-browse" class="empty" style="display:none">No files listed.</div>
+    <div id="mf-files"></div>
+    <div class="row push"><button onclick="mfLaunchJob()">Launch masking job</button></div>
+    <h3 class="section-title">Jobs <button class="ghost small" onclick="mfRenderJobs()">Refresh</button></h3>
+    <div id="mf-jobs"><div class="empty">No jobs yet.</div></div>
+    <div id="mf-job-detail"></div>
+  </div>
+</section>
+
+<section class="page" id="page-mfgen">
+  <h2>MF File Generator</h2><p class="sub">Generate synthetic mainframe files: define a copybook, map a generator to each field, then convert to EBCDIC and deliver to an LPAR or download the copybook, the pre-conversion data, and the binary.</p>
+
+  <div class="card" data-tab-label="1. Copybook"><h3>Copybook</h3>
+    <div class="row push">
+      <div><label>Use a saved copybook</label><select id="mfg-cpy" onchange="mfgSelectCopybook()"><option value="">Select copybook</option></select></div>
+      <span id="mfg-cpy-info" class="muted" style="align-self:center"></span>
+    </div>
+    <h3 class="section-title">…or create one</h3>
+    <div class="row push">
+      <div><label>Name</label><input id="mfg-cpy-name" placeholder="customer-record"></div>
+      <div><label>Code page</label><input id="mfg-cpy-cp" value="Cp037"></div>
+      <button class="ghost" onclick="mfgCpySample()">Load sample</button>
+      <button onclick="mfgSaveCopybook()">Save copybook</button>
+    </div>
+    <div class="row"><div class="grow"><label>COBOL copybook source</label>
+      <textarea id="mfg-cpy-src" rows="8" spellcheck="false" placeholder="01 CUSTOMER-RECORD.&#10;   05 CUST-ID PIC 9(6)...."></textarea></div></div>
+  </div>
+
+  <div class="card" data-tab-label="2. Generate Data"><h3>Field generators</h3>
+    <p class="sub tight">Each copybook field is mapped to a generator. Use LITERAL/NULL for constants, or API to pull values from a microservice (e.g. account numbers).</p>
+    <div class="row push">
+      <div><label>Rows</label><input id="mfg-rows" type="number" value="100" min="0"></div>
+      <div><label>Seed</label><input id="mfg-seed" type="number" value="42"></div>
+      <button class="ghost small" onclick="mfgLoadFields()">Reload fields</button>
+    </div>
+    <div id="mfg-fields"><div class="empty">Select or save a copybook on tab 1 first.</div></div>
+  </div>
+
+  <div class="card" data-tab-label="3. Convert &amp; Deliver"><h3>Convert to EBCDIC</h3>
+    <div class="row push">
+      <div><label>RECFM</label><select id="mfg-recfm"><option>FB</option><option>VB</option></select></div>
+      <div><label>Code page</label><input id="mfg-codepage" value="Cp037"></div>
+      <div><label>Output</label><select id="mfg-output" onchange="mfgOutputChanged()"><option value="DOWNLOAD">Download files</option><option value="TARGET">Deliver to LPAR</option></select></div>
+    </div>
+    <div class="row push" id="mfg-target-row" style="display:none">
+      <div><label>Target LPAR</label><select id="mfg-target"></select></div>
+      <div><label>Target dataset / name</label><input id="mfg-target-name" placeholder="(copybook).dat"></div>
+    </div>
+    <div class="row push"><button onclick="mfgGenerate()">Generate file</button></div>
+    <div id="mfg-result" class="empty">No output yet.</div>
+  </div>
+</section>
+
+<section class="page" id="page-subset">
+  <h2>Subsetting</h2><p class="sub">Plan a right-sized dataset using row limits, optional filters, and FK graph closure when metadata is available.</p>
+  <div class="card" id="sub-define-card" data-tab-label="Define Subset"><h3>Subset criteria</h3><div class="row">
+    <div><label>Data source</label><select id="sub-ds" onchange="loadSubsetSchemas()"></select></div>
+    <div><label>Schema</label><select id="sub-schema" onchange="loadSubsetTables()"><option value="">Select schema</option></select></div>
+    <div><label>Driver table</label><select id="sub-driver"><option value="">Select table</option></select></div>
+    <div class="grow"><label>Filter (optional WHERE expression)</label><input id="sub-filter" placeholder="state = 'TX' AND vip = true"></div>
+    <div><label>Row limit</label><input id="sub-max" type="number" value="1000" min="0"></div>
+    <label class="check"><input id="sub-related" type="checkbox" checked onchange="subsetTraversalChanged()"> RI traversal</label>
+    <label class="check"><input id="sub-q1" type="checkbox" checked> Q1 parents</label>
+    <label class="check"><input id="sub-q2" type="checkbox" checked> Q2 children</label>
+    <button onclick="planSubset()">Plan Subset</button>
+  </div>
+  <p class="sub tight">Leave the filter blank for a pure row-limit slice. Q1 includes parent rows for selected children; Q2 includes child rows for selected parents. Use both for cycle-aware RI closure.</p>
+  <h3 class="section-title">Additional table criteria</h3>
+  <div id="sub-criteria"></div>
+  <div class="row push"><button class="ghost small" onclick="addSubsetCriterion()">Add table filter or row limit</button></div>
+  </div>
+  <div class="card" id="sub-plan-card" data-tab-label="Plan Result"><h3>Plan dry run</h3><div id="sub-out"><div class="empty">No plan yet. Execute via a SUBSET_MASK job once happy.</div></div></div>
+</section>
+
+<section class="page" id="page-datasets">
+  <h2>DataScope</h2>
+  <p class="sub">Build reusable extraction maps: choose source tables, bind them to targets, tune traversal, map columns, and provision from one saved blueprint.</p>
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB 1 — Blueprint: create / list + driver + table profiles            -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <div class="card ds-tab-pane" id="ds-tab-blueprint" data-tab-label="1 · Blueprint">
+
+    <!-- §1 Create / list -->
+    <div class="ds-section ds-section-soft">
+      <div class="ds-section-head">
+        <div>
+          <h3>DataScope Blueprints</h3>
+          <p class="sub tight">Create or choose the blueprint you want to work on.</p>
+        </div>
+        <span class="pill info">extraction blueprints</span>
+      </div>
+      <div class="ds-create-grid">
+        <div><label>Name</label><input id="ad-name" placeholder="bank-customer-subset"></div>
+        <div><label>Data source</label><select id="ad-ds" onchange="loadAdSchemas()"></select></div>
+        <div><label>Schema</label><select id="ad-schema"><option value="">Optional</option></select></div>
+        <div class="grow"><label>Description</label><input id="ad-desc" placeholder="Customer entity with transactions and addresses"></div>
+        <button onclick="createAccessDef()">Create</button>
+      </div>
+      <div class="ds-list-toolbar">
+        <input id="ad-search" class="ds-search" placeholder="Search blueprints by name, description, source, driver…" oninput="adListGo(1)">
+        <select id="ad-filter-ds" onchange="adListGo(1)"><option value="">All data sources</option></select>
+        <select id="ad-filter-status" onchange="adListGo(1)"><option value="">All statuses</option><option value="ready">Driver ready</option><option value="needs">Needs driver</option></select>
+        <select id="ad-sort" onchange="renderAdList()"><option value="name">Sort: Name (A→Z)</option><option value="recent">Sort: Recently created</option></select>
+        <span class="grow"></span>
+        <span id="ad-list-count" class="muted"></span>
+      </div>
+      <div id="ad-list"><div class="empty">No DataScope blueprints yet.</div></div>
+    </div>
+
+    <!-- §2 Edit selected definition (hidden until a definition is selected) -->
+    <div id="ad-detail" style="display:none">
+
+      <!-- Driver & Scope -->
+      <div class="ds-section">
+        <div class="ds-editor-head">
+          <div>
+            <h3 id="ad-detail-title">Edit Blueprint</h3>
+            <p class="sub tight" id="ad-detail-meta">Choose the driver and defaults for this extraction.</p>
+          </div>
+          <span class="pill info" id="ad-detail-badge"></span>
+        </div>
+        <div id="ad-workspace-summary" class="ds-overview-grid"></div>
+        <div id="ad-insights"></div>
+        <div class="ds-field-grid">
+          <div><label>Driver table <span class="muted">(its rows define the subset)</span></label>
+            <select id="ad-driver"><option value="">Select driver table</option></select></div>
+          <div class="grow"><label>Driver filter <span class="muted">(SQL WHERE, optional)</span></label>
+            <input id="ad-filter" placeholder="region = 'US' AND status = 'ACTIVE'"></div>
+          <div><label>Max driver rows</label><input id="ad-maxrows" type="number" min="0" placeholder="optional"></div>
+        </div>
+        <div class="ds-toggle-row">
+          <label class="check" title="Q1 — Parent closure: also pull parent rows referenced by selected child rows via FK. Ensures referential integrity upstream.">
+            <input id="ad-q1" type="checkbox" checked>
+            <span>Pull parents <span class="muted">(Q1 — parent rows referenced via FK)</span></span>
+          </label>
+          <label class="check" title="Q2 — Child closure: also pull child rows that reference selected parent rows via FK. Captures dependent data downstream.">
+            <input id="ad-q2" type="checkbox" checked>
+            <span>Pull children <span class="muted">(Q2 — child rows referencing selected parents)</span></span>
+          </label>
+          <span class="grow"></span>
+          <button onclick="saveAdDriver()">Save Blueprint</button>
+          <button class="ghost" onclick="previewAdPlan()">Preview Plan</button>
+        </div>
+      </div>
+
+      <!-- Version history -->
+      <div class="ds-section">
+        <div class="ds-section-head">
+          <div><h3>Version history</h3><p class="sub tight">Snapshot the whole blueprint (driver, profiles, overrides, custom keys &amp; relationships) for change control. View any snapshot to compare or roll back manually.</p></div>
+          <span class="pill dim">change control</span>
+        </div>
+        <div class="row">
+          <div class="grow"><label>Note <span class="muted">(optional)</span></label><input id="ad-ver-note" placeholder="e.g. before adding card tables"></div>
+          <button class="ghost small" onclick="saveAdVersion()">Save version</button>
+        </div>
+        <div id="ad-ver-list"><div class="empty">No versions saved yet.</div></div>
+        <div id="ad-ver-diff"></div>
+      </div>
+
+    </div><!-- /#ad-detail -->
+  </div><!-- /#ds-tab-blueprint -->
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB — Table Profiles: per-table inclusion / filter / strategy          -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <div class="card ds-tab-pane" id="ds-tab-profiles" data-tab-label="2 · Table Profiles">
+    <div class="ds-gate-msg" id="ds-profiles-gate">Select a blueprint from the <b>Blueprint</b> tab to configure table profiles.</div>
+    <div id="ds-profiles-content" style="display:none">
+      <div class="ds-section" style="padding-top:0">
+        <div class="ds-section-head">
+          <div>
+            <h3>Table Profiles</h3>
+            <p class="sub tight">Keep simple inclusion/filter settings here. Use Table Map for source, target, policy, and column mapping.</p>
+          </div>
+          <span class="pill info">inclusion · filter · strategy</span>
+        </div>
+        <details class="help-block ds-help-compact">
+          <summary>Column reference</summary>
+          <ul>
+            <li><b>Included</b> — unchecked = completely excluded from the extraction run (no SELECT, no INSERT).</li>
+            <li><b>Filter (WHERE)</b> — additional SQL WHERE clause applied after FK closure. Rows must satisfy both the FK path and this filter.</li>
+            <li><b>Strategy</b> — <em>Inherit</em>: use global Q1/Q2. <em>Follow Parent</em>: rows constrained by FK join to parent PK set. <em>Independent</em>: an additional <b>start table</b> — seeded from its own Filter, then FK closure runs outward from it. Mark one or more tables Independent for a multi-start extraction; with at least one, a driver table is optional.</li>
+          </ul>
+        </details>
+        <div class="ds-toolbar-row">
+          <div><label>Add table</label>
+            <select id="ad-prof-table"><option value="">Select table</option></select></div>
+          <button class="ghost small" onclick="addAdProfile()">Add</button>
+          <button class="ghost small" onclick="addAllAdProfiles()">Add All</button>
+          <button class="ghost small" onclick="loadAdTables()">Refresh</button>
+          <span class="grow"></span>
+          <button class="ghost small" onclick="openTableMap()">Open Table Map</button>
+          <button onclick="saveAdProfiles()">Save All Profiles</button>
+        </div>
+        <div id="ad-profiles-grid"><div class="empty">No table profiles yet. Add tables above, then configure them below.</div></div>
+      </div>
+    </div>
+  </div><!-- /#ds-tab-profiles -->
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB 2 — Custom Data: custom PKs + custom relationships                -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <div class="card ds-tab-pane" id="ds-tab-custom" data-tab-label="3 · Custom Data">
+    <div class="ds-gate-msg" id="ds-custom-gate">Select a blueprint from the <b>Blueprint</b> tab to configure custom data settings.</div>
+    <div id="ds-custom-content" style="display:none">
+
+      <!-- § Custom PKs -->
+      <div class="ds-section" style="padding-top:0">
+        <div class="ds-section-head">
+          <h3>Custom Primary Keys</h3><span class="pill dim">tool-level, not enforced in DB</span>
+        </div>
+        <details class="help-block">
+          <summary>When do I need this?</summary>
+          <ul>
+            <li>Table has no PK or unique index in the database (common on DB2 z/OS, legacy Oracle, unload files).</li>
+            <li>You want to use a business key instead of the catalog PK for FK closure.</li>
+            <li>For composite keys, enter column names comma-separated in key order.</li>
+          </ul>
+        </details>
+        <div class="row push">
+          <div><label>Table</label><select id="ad-pk-table"><option value="">Select table</option></select></div>
+          <div class="grow"><label>PK column(s) <span class="muted">(comma-separated if composite)</span></label>
+            <input id="ad-pk-cols" placeholder="CUST_ID  or  COMPANY_CODE,POLICY_NO"></div>
+          <div><label>Note</label><input id="ad-pk-note" placeholder="optional"></div>
+          <button onclick="addCustomPk()">+ Add / Update</button>
+        </div>
+        <div id="ad-pks-grid"><div class="empty">No custom PKs defined.</div></div>
+        <div class="row" style="margin-top:10px">
+          <button onclick="saveCustomPks()">Save All Custom PKs</button>
+        </div>
+      </div>
+
+      <!-- § Custom Relationships -->
+      <div class="ds-section">
+        <div class="ds-section-head">
+          <h3>Custom Relationships</h3><span class="pill dim">tool-level soft FKs</span>
+        </div>
+        <details class="help-block">
+          <summary>When do I need this?</summary>
+          <ul>
+            <li>Tables are logically related but the FK constraint was never created in the DB (mainframe schemas, cross-schema joins, performance-tuned OLTP).</li>
+            <li>For composite keys, enter column names as comma-separated lists — same count and order on both sides.</li>
+          </ul>
+        </details>
+        <!-- Form / Canvas toggle -->
+        <div id="ad-rels-form-view">
+          <div class="row push">
+            <div class="seg-btn-group">
+              <button class="seg-btn active" onclick="switchRelView('form')">Form</button>
+              <button class="seg-btn" onclick="switchRelView('canvas')">Visual Canvas</button>
+            </div>
+          </div>
+          <div class="row push" style="flex-wrap:wrap;gap:8px;align-items:flex-end">
+            <div><label>Parent table</label>
+              <select id="ad-rel-parent" onchange="onRelTableChange()"><option value="">Select</option></select></div>
+            <div><label>Child table</label>
+              <select id="ad-rel-child" onchange="onRelTableChange()"><option value="">Select</option></select></div>
+            <div class="grow"><label>Relationship name <span class="muted">(optional)</span></label>
+              <input id="ad-rel-name" placeholder="Customer → Orders"></div>
+            <button onclick="createUserRel()">Save Relationship</button>
+          </div>
+          <!-- Multi-column join pairs — populated by renderRelFormPairs() -->
+          <div id="rel-form-pairs">
+            <p class="sub tight" style="margin:6px 0">Select parent and child tables above to configure join columns.</p>
+          </div>
+          <div id="ad-rels-grid" style="margin-top:14px"><div class="empty">No custom relationships defined.</div></div>
+        </div>
+
+        <div id="ad-rels-canvas-view" style="display:none">
+          <div class="row push">
+            <div class="seg-btn-group">
+              <button class="seg-btn" onclick="switchRelView('form')">Form</button>
+              <button class="seg-btn active" onclick="switchRelView('canvas')">Visual Canvas</button>
+            </div>
+            <button class="ghost small" onclick="loadRelCanvas()">Refresh Canvas</button>
+            <span class="muted" style="font-size:12px;align-self:center">Drag right ● → left ● to link columns. Multiple drags build composite keys.</span>
+          </div>
+          <div id="ad-rel-canvas-wrap" class="rel-canvas-wrap">
+            <svg id="ad-rel-svg" class="rel-canvas-svg"></svg>
+          </div>
+          <!-- Pending relationship panel — shown while building a multi-column relationship -->
+          <div id="rel-pending-panel" class="rel-pending-panel" style="display:none">
+            <div class="row" style="align-items:center;gap:10px;margin-bottom:10px">
+              <strong style="font-size:13px">Pending Relationship</strong>
+              <span class="muted" style="font-size:12px">draw more column lines to add to composite key, then save</span>
+            </div>
+            <div id="rel-pending-summary"></div>
+            <div class="row" style="margin-top:10px;gap:8px;flex-wrap:wrap">
+              <input id="rel-pending-name" placeholder="Relationship name (optional)" style="flex:1;min-width:180px">
+              <button onclick="savePendingRelCanvas()">Save Relationship</button>
+              <button class="ghost small danger" onclick="clearPendingRelCanvas()">✕ Clear</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /#ds-custom-content -->
+  </div><!-- /#ds-tab-custom -->
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB 3 — Referential Integrity                                         -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <div class="card ds-tab-pane" id="ds-tab-refint" data-tab-label="4 · Ref Integrity">
+    <div class="ds-gate-msg" id="ds-refint-gate">Select a blueprint from the <b>Blueprint</b> tab to manage referential integrity.</div>
+    <div id="ds-refint-content" style="display:none">
+      <div class="ds-section" style="padding-top:0">
+        <div class="ds-section-head">
+          <h3>Referential Integrity</h3><span class="pill info">per-relationship traversal control</span>
+        </div>
+        <p class="sub tight">For each FK relationship (DB-catalog or custom) between included tables, set the traversal direction. Relationship-level rules take precedence over the global Q1/Q2 defaults.</p>
+        <details class="help-block">
+          <summary>Traversal direction reference</summary>
+          <ul>
+            <li><b>Both (Q1 + Q2)</b> — traverse in both directions. Default for most relationships.</li>
+            <li><b>Q1 only — parent pull</b> — pull parent rows the child references via FK. Do NOT expand child rows from parent. Use to limit explosion from large child tables.</li>
+            <li><b>Q2 only — child pull</b> — pull child rows the parent owns. Do NOT traverse back up to parents from a child's perspective.</li>
+            <li><b>None — skip this relationship</b> — decouple the two tables within this DataScope. FK exists in the schema but is irrelevant to this extraction.</li>
+          </ul>
+        </details>
+        <div class="row push">
+          <button class="ghost small" onclick="loadRefInt()">Refresh relationships</button>
+          <button onclick="saveTraversalRules()">Save Traversal Rules</button>
+        </div>
+        <div id="ad-refint-grid"><div class="empty">Click "Refresh relationships" to load all FK edges for included tables.</div></div>
+      </div>
+    </div><!-- /#ds-refint-content -->
+  </div><!-- /#ds-tab-refint -->
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB 4 — Traversal Map                                                 -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <div class="card ds-tab-pane" id="ds-tab-travmap" data-tab-label="5 · Traversal Map">
+    <div class="ds-gate-msg" id="ds-travmap-gate">Select a blueprint from the <b>Blueprint</b> tab to generate the traversal map.</div>
+    <div id="ds-travmap-content" style="display:none">
+      <div class="ds-section" style="padding-top:0">
+        <div class="ds-section-head">
+          <h3>Traversal Map</h3><span class="pill dim">read-only · derived view</span>
+        </div>
+        <p class="sub tight">Human-readable description of every traversal the DataScope will perform — which parent rows are pulled (Q1) and which child rows are pulled (Q2) for each included table. Inspired by the IBM Optim mainframe Access Definition traversal summary.</p>
+        <div class="row push" style="margin-bottom:12px">
+          <button onclick="loadTraversalMap()">Generate Map</button>
+          <span class="muted" style="font-size:12px;align-self:center">Loads latest relationships and traversal rules before rendering</span>
+        </div>
+        <div id="ad-travmap-out"><div class="empty">Click "Generate Map" to build the traversal description.</div></div>
+      </div>
+    </div><!-- /#ds-travmap-content -->
+  </div><!-- /#ds-tab-travmap -->
+
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <!-- TAB 5 — Masking Overrides                                             -->
+  <!-- ══════════════════════════════════════════════════════════════════════ -->
+  <div class="card ds-tab-pane" id="ds-tab-overrides" data-tab-label="6 · Masking">
+    <div class="ds-gate-msg" id="ds-overrides-gate">Select a blueprint from the <b>Blueprint</b> tab to configure masking overrides.</div>
+    <div id="ds-overrides-content" style="display:none">
+
+      <!-- § Column overrides -->
+      <div class="ds-section" style="padding-top:0">
+        <div class="ds-section-head">
+          <h3>Column Masking Overrides</h3><span class="pill info">literal values, suppress, null-out</span>
+        </div>
+        <details class="help-block">
+          <summary>Override types explained</summary>
+          <ul>
+            <li><b>Map / mask if rule exists</b> - apply a saved policy rule when a policy is selected; otherwise copy the mapped value as-is.</li>
+            <li><b>Literal value</b> — write a hardcoded constant (e.g. <code>REDACTED</code>, <code>0</code>, <code>1900-01-01</code>) instead of running a masking function.</li>
+            <li><b>Null out</b> — always write NULL regardless of the original value or any policy.</li>
+            <li><b>Suppress column</b> — exclude the column from both SELECT and INSERT. Target table must allow NULL or have a DEFAULT for this column.</li>
+          </ul>
+        </details>
+        <p class="sub tight">Only tables marked <em>Included</em> in Table Profiles appear in the table dropdown.</p>
+        <div class="row push">
+          <div><label>Table</label>
+            <select id="ad-ov-table" onchange="loadAdOverrideColumns()"><option value="">Select table</option></select></div>
+          <div><label>Column</label>
+            <select id="ad-ov-col"><option value="">Select column</option></select></div>
+          <div><label>Override type</label>
+            <select id="ad-ov-type" onchange="adOverrideTypeChanged()">
+              <option value="USE_POLICY">Map / mask if rule exists</option>
+              <option value="LITERAL">Literal value</option>
+              <option value="NULL_OUT">Null out</option>
+              <option value="SUPPRESS">Suppress column</option>
+            </select></div>
+          <div id="ad-ov-literal-wrap"><label>Literal value</label>
+            <input id="ad-ov-literal" placeholder="MASKED"></div>
+          <div class="grow"><label>Note (optional)</label><input id="ad-ov-note"></div>
+          <button onclick="addAdOverride()">Add Override</button>
+        </div>
+        <div id="ad-overrides-grid"><div class="empty">No column overrides yet.</div></div>
+      </div>
+
+      <!-- § Plan preview -->
+      <div class="ds-section">
+        <div class="ds-section-head">
+          <h3>Plan Preview</h3><span class="pill info">dry run — no data moved</span>
+        </div>
+        <p class="sub tight">Shows which tables would be included and how many rows would be selected. No data is read or written.</p>
+        <div class="row push" style="margin-bottom:12px">
+          <button onclick="previewAdPlan()">Run Preview</button>
+        </div>
+        <div id="ad-plan-out"><div class="empty">Click "Run Preview" to build the plan.</div></div>
+      </div>
+
+    </div><!-- /#ds-overrides-content -->
+  </div><!-- /#ds-tab-overrides -->
+
+  <div class="card ds-tab-pane" id="ds-tab-provision" data-tab-label="7 · Provision">
+    <div class="ds-gate-msg" id="ds-provision-gate">Select a blueprint from the <b>Blueprint</b> tab to provision from this DataScope.</div>
+    <div id="ds-provision-content" style="display:none">
+      <div class="ds-section" style="padding-top:0">
+        <div class="ds-section-head">
+          <h3>Provision From DataScope</h3><span class="pill info">uses saved table and column maps</span>
+        </div>
+        <div id="ad-prov-summary"><div class="empty">Select a DataScope blueprint first.</div></div>
+        <div class="row push">
+          <div><label>Job name</label><input id="ad-prov-name" placeholder="datascope-refresh"></div>
+          <div><label>Max driver rows</label><input id="ad-prov-max" type="number" min="0" placeholder="optional"></div>
+          <div><label>Masking seed</label><input id="ad-prov-seed" placeholder="blank = default"></div>
+          <div><label>Default masking policy <span class="muted">(applies to all tables; override per table in Table Map)</span></label>
+            <select id="ad-prov-policy"><option value="">No default — only per-table policies</option></select></div>
+        </div>
+        <div class="row push">
+          <div><label>Load action</label><select id="ad-prov-load-action" onchange="adProvisionLoadChanged()">
+            <option value="REPLACE">Load replace</option>
+            <option value="INSERT">Insert only</option>
+            <option value="UPDATE">Update only</option>
+            <option value="INSERT_UPDATE">Insert-update</option>
+            <option value="IN_PLACE">In-place mask (same table)</option>
+            <option value="TRUNCATE_ONLY">Truncate only</option>
+          </select></div>
+          <div><label>Target prep</label><select id="ad-prov-target-prep">
+            <option value="DELETE">Delete rows first</option>
+            <option value="TRUNCATE" selected>Truncate selected tables together</option>
+            <option value="NONE">Do not clear target</option>
+          </select></div>
+          <div><label>Key columns</label><input id="ad-prov-key-cols" placeholder="blank = target PK"></div>
+          <div id="ad-prov-chunk-key-wrap" style="display:none"><label>In-place chunk key</label><input id="ad-prov-chunk-key" placeholder="single unique column (composite PK only)"></div>
+          <div><label><input type="checkbox" id="ad-prov-exchange" onchange="toggleExchangeFields()"> Partition exchange (Oracle)</label></div>
+          <div id="ad-prov-exchange-wrap" style="display:none">
+            <label>Partition exchange</label>
+            <input id="ad-prov-exchange-part" placeholder="partition name (e.g. P_2026_06)">
+            <input id="ad-prov-exchange-tbl" placeholder="partitioned target table (blank = single mapped table)" style="margin-top:6px">
+            <label style="margin-top:6px;font-weight:normal"><input type="checkbox" id="ad-prov-exchange-validate"> Validate rows fit the partition (slower, safe)</label>
+          </div>
+          <div><label>Batch size</label><input id="ad-prov-batch" type="number" min="1" max="50000" placeholder="default 5000"></div>
+        </div>
+        <div class="row push">
+          <span id="ad-prov-load-hint" class="form-hint">Load replace clears each mapped target table, then inserts masked rows.</span>
+          <button class="ghost" onclick="previewAdPlan()">Preview Plan</button>
+          <button onclick="submitDataScopeProvision()">Provision</button>
+          <button class="ghost" onclick="saveDataScopeProvisionJob()" title="Save this design as a reusable job you can re-run, schedule, or export as a batch runner">Save as Job</button>
+          <button class="ghost" onclick="goTo('jobs','job-monitor-card')">Open Job Monitor</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="ds-section" id="ds-saved-card" style="margin-top:16px;border-top:1px solid var(--border);padding-top:16px">
+      <div class="ds-section-head">
+        <h3>Saved Jobs <span id="ds-saved-count" class="pill dim">0 saved</span></h3>
+        <button class="ghost small" onclick="dsRefreshSavedJobs()">Refresh</button>
+      </div>
+      <p class="form-hint">Reusable DataScope provisioning jobs (private to you). Run on demand, schedule to run
+        automatically, or export a PowerShell / Bash runner for Task Scheduler or cron. Each run still passes
+        through the normal maker-checker approval gate.</p>
+      <div id="ds-saved-jobs"><div class="empty">No saved DataScope jobs yet. Build a provision design above, then click “Save as Job”.</div></div>
+    </div>
+  </div>
+
+</section>
+
+<section class="page" id="page-virtualize">
+  <h2>Data Virtualization</h2><p class="sub">Delphix-style dSource snapshots, VDB provisioning, bookmarks, refresh, and rewind for fast test data copies.</p>
+
+  <!-- Capture snapshot -->
+  <div class="card" id="virt-capture-card" data-tab-label="Capture Snapshot"><div class="card-head"><h3>Create dSource snapshot</h3><span class="pill info">snapshot timeflow</span></div>
+    <div class="virt-flow">
+      <div><b>1. Link dSource</b><span>Pick a registered source datasource.</span></div>
+      <div><b>2. Snapshot</b><span>Capture a point-in-time timeflow entry.</span></div>
+      <div><b>3. Provision VDB</b><span>Create a read-write virtual datasource.</span></div>
+      <div><b>4. Bookmark / Rewind</b><span>Save and restore test states quickly.</span></div>
+    </div>
+    <div class="row push">
+    <div><label>Source data source</label><select id="virt-source" onchange="loadVirtSchemas()"></select></div>
+    <div><label>Provider</label><select id="virt-provider"><option value="POOL">Storage pool (logical, any DB)</option><option value="CONTAINER">Container CoW (physical, Postgres)</option><option value="ZFS">ZFS engine (block-level, Postgres/MSSQL)</option></select></div>
+    <div><label>Schema</label><select id="virt-schema"><option value="">Select schema</option></select></div>
+    <div><label>Snapshot name</label><input id="virt-snap-name" placeholder="qa-baseline"></div>
+    <div class="grow"><label>Note</label><input id="virt-note" placeholder="Before sprint test run"></div>
+    <button onclick="createVirtSnapshot()">Create Snapshot</button>
+    <button class="ghost" onclick="testVirtEngine()" title="Run zfs/docker/nfs checks over SSH before capturing a ZFS snapshot">Test ZFS Engine</button>
+    </div>
+    <div id="virt-engine-test"></div>
+    <div id="virt-op-panel"></div>
+    <p class="sub tight"><b>Storage pool</b>: logical ingest into a content-addressed pool (SHA-256 chunks, gzip, dedup) — any registered DB. <b>Container CoW</b>: physical pg_basebackup baked into Docker image layers. <span id="virt-docker-status"></span> <b>ZFS engine</b>: block-level thin clone on real OpenZFS, identical to Delphix. Supports LogSync (continuous WAL), point-in-time provisioning, NFS target environments, and SQL Server.</p>
+  </div>
+
+  <!-- Snapshots list + provision -->
+  <div class="card" id="virt-snapshots-card" data-tab-label="Snapshots"><div class="card-head"><h3>Snapshot timeflow</h3><span id="virt-snap-count" class="pill dim">0 snapshots</span><span id="virt-pool-stats" class="pill info" title="Storage pool: deduplicated + compressed">pool: empty</span></div>
+    <div class="row">
+      <div><label>Provision target (POOL/logical only)</label><select id="virt-provision-target"><option value="">Embedded H2 (thin clone)</option></select></div>
+      <div><label>Point-in-time (ZFS+LogSync, e.g. 2024-06-01T14:30:00)</label><input id="virt-pit" placeholder="blank = latest snapshot"></div>
+      <div><label>Environment (ZFS NFS export)</label><select id="virt-provision-env"><option value="">Engine host (local)</option></select></div>
+    </div>
+    <div id="virt-snapshots"><div class="empty">No snapshots yet.</div></div>
+  </div>
+
+  <!-- VDBs + operations -->
+  <div class="card" id="virt-vdb-card" data-tab-label="VDBs &amp; Operations"><div class="card-head"><h3>Virtual databases</h3><span id="virt-vdb-count" class="pill dim">0 VDBs</span></div>
+    <div id="virt-vdbs"><div class="empty">No VDBs yet. Provision one from a snapshot.</div></div>
+    <h3 class="section-title">VDB operations</h3>
+    <div class="row">
+    <div><label>VDB</label><select id="virt-op-vdb" onchange="renderVirtualization()"><option value="">Select VDB</option></select></div>
+    <div><label>Snapshot / bookmark</label><select id="virt-op-snapshot"><option value="">Select snapshot</option></select></div>
+    <div><label>Name for new VDB snapshot</label><input id="virt-op-name" placeholder="after-test-case-42"></div>
+    <button class="ghost" onclick="snapshotSelectedVdb(false)">Snapshot VDB</button>
+    <button class="ghost" onclick="snapshotSelectedVdb(true)">Bookmark</button>
+    <button onclick="refreshSelectedVdb()">Refresh</button>
+    <button class="danger" onclick="rewindSelectedVdb()">Rewind</button>
+    </div>
+    <p class="sub tight">Refresh restores the selected VDB from a dSource snapshot. Rewind restores the VDB to one of its own snapshots or bookmarks. ZFS rewind branches a new timeflow — nothing is destroyed.</p>
+  </div>
+
+  <!-- LogSync card (ZFS / Postgres) -->
+  <div class="card" id="virt-logsync-card" data-tab-label="LogSync"><div class="card-head"><h3>LogSync — continuous WAL streaming</h3><span class="pill info">ZFS + Postgres</span></div>
+    <p class="sub tight">Enables point-in-time recovery between snapshots. ForgeTDM runs a <code>pg_receivewal</code> container with a dedicated replication slot that ships WAL continuously to the ZFS dataset. Enable on a ZFS dSource; provisioning with a <em>Point-in-time</em> timestamp will replay WAL to the exact second.</p>
+    <div class="row push">
+      <div><label>Data source (ZFS dSource)</label><select id="virt-ls-ds"></select></div>
+      <button class="ghost" onclick="getLogSyncStatus()">Status</button>
+      <button onclick="enableLogSync()">Enable</button>
+      <button class="danger" onclick="disableLogSync()">Disable</button>
+    </div>
+    <div id="virt-ls-status" class="empty">Select a data source and click Status.</div>
+  </div>
+
+  <!-- Target environments card -->
+  <div class="card" id="virt-env-card" data-tab-label="Environments"><div class="card-head"><h3>Target environments</h3><span class="pill info">ZFS NFS export</span></div>
+    <p class="sub tight">Register SSH-reachable target hosts. ForgeTDM will NFS-export the ZFS clone to the environment and start the database container there — identical to Delphix's mount/export model.</p>
+    <div class="row push">
+      <div><label>Name</label><input id="env-name" placeholder="qa-host-1"></div>
+      <div><label>Host</label><input id="env-host" placeholder="192.168.1.50"></div>
+      <div><label>SSH user</label><input id="env-ssh-user" placeholder="root"></div>
+      <div><label>SSH port</label><input id="env-ssh-port" type="number" value="22" min="1"></div>
+      <div class="grow"><label>Mount base</label><input id="env-mount-base" placeholder="/mnt/forgetdm"></div>
+      <button onclick="createEnvironment()">Add Environment</button>
+    </div>
+    <div id="virt-env-list"><div class="empty">No environments registered.</div></div>
+  </div>
+
+</section>
+
+<section class="page" id="page-mapping">
+  <h2>Mapping Designer <span class="pill info">transform</span></h2>
+  <p class="sub">Map one or more sources through a pipeline of transformations to a target — joins, conditions, expressions and aggregates compile to runnable SQL.</p>
+  <div id="map-app"></div>
+  <div class="card" id="map-lineage-card">
+    <div class="card-head"><h3>Column lineage</h3>
+      <button type="button" class="ghost small" onclick="mapRenderLineage()">Compute from current design</button>
+      <button type="button" class="ghost small" onclick="mapLineageCsv()">Download CSV</button></div>
+    <p class="sub tight">Where each output column comes from: source columns → expression → output → target. Source matching is heuristic (column-name based) — qualify columns as <code>table.col</code> in expressions for exact lineage.</p>
+    <div id="map-lineage"><div class="empty">Open or build a mapping, then compute.</div></div>
+  </div>
+  <div class="card" id="map-workflows-card">
+    <div class="card-head"><h3>Workflows</h3><span id="wf-count" class="pill dim"></span>
+      <button type="button" class="ghost small" onclick="wfNew()">New workflow</button>
+      <button type="button" class="ghost small" onclick="wfLoadList()">Refresh</button></div>
+    <p class="sub tight">Ordered steps run server-side, top to bottom: saved mappings (their persisted load statements — Save the mapping with Output = Table first) and raw SQL steps (INSERT … SELECT / CREATE TABLE AS). Per-step failure policy: Stop aborts the rest, Continue records and moves on. Trigger externally via <code>POST /api/mappings/workflows/{id}/run</code>.</p>
+    <div class="ds-field-grid">
+      <div><label>Name</label><input id="wf-name" placeholder="nightly-refresh"></div>
+      <div class="grow"><label>Description</label><input id="wf-desc" placeholder="what this workflow refreshes"></div>
+      <div><label>&nbsp;</label><button onclick="wfSave()">Save workflow</button></div>
+    </div>
+    <div id="wf-steps"></div>
+    <div class="row push">
+      <button class="ghost small" onclick="wfAddStep('MAPPING')">+ Mapping step</button>
+      <button class="ghost small" onclick="wfAddStep('SQL')">+ SQL step</button>
+    </div>
+    <div id="wf-run"></div>
+    <div id="wf-list"><div class="empty">No workflows yet.</div></div>
+  </div>
+</section>
+
+<section class="page" id="page-agent">
+  <h2>Auto-Provision <span class="pill info">agentic</span></h2>
+  <p class="sub">Describe what you need; the agent plans the steps and runs them through the Copilot — pausing for your approval before anything changes data.</p>
+  <div class="card">
+    <div class="row">
+      <div class="grow"><label>What do you want to provision?</label>
+        <textarea id="agent-goal" rows="2" placeholder="e.g. Discover PII in bankdemo, build a masking policy, and mask a copy into bankqa"></textarea></div>
+      <button onclick="agentPlan()">Plan it</button>
+    </div>
+    <p class="form-hint">Read-only steps run automatically. Any data-changing action waits for your approval. Needs an AI provider configured (same as the Copilot).</p>
+  </div>
+  <div id="agent-run"></div>
+  <div class="card" id="agent-history-card"><h3>Recent runs</h3><div id="agent-history"><div class="empty">No runs yet.</div></div></div>
+</section>
+
+<section class="page" id="page-maskscripts">
+  <h2>Masking Scripts (Lua)</h2><p class="sub">User-defined masking exits — write once, call from any column in any policy via function <code>SCRIPT</code>.</p>
+  <div class="card" id="pol-scripts-card" data-tab-label="Scripts (Lua)">
+    <div class="card-head">
+      <h3>Masking scripts (Lua)</h3>
+      <span id="ms-count" class="pill dim"></span>
+      <button type="button" class="ghost small" onclick="loadMaskingScripts()">Refresh</button>
+    </div>
+    <p class="sub tight">Optim-style user exits for anything the built-in functions don't cover. Reference a script from a rule
+      as function <code>SCRIPT</code> with param1 = the script name. Scripts run sandboxed (no os / io / files) and must
+      <code>return</code> the masked value. The <code>forge.*</code> helpers are deterministic (HMAC on the project secret),
+      so custom masks keep referential integrity. Type in the editor for API suggestions.</p>
+    <div class="ds-field-grid">
+      <div><label>Name</label><input id="ms-name" placeholder="bank-a.custom-ref"></div>
+      <div><label>Visibility</label><select id="ms-visibility">
+        <option value="GLOBAL">GLOBAL (usable in jobs)</option><option value="PRIVATE">PRIVATE (draft)</option></select></div>
+      <div><label>Load a sample</label><select id="ms-sample" onchange="loadMaskSample(this.value)"><option value="">— pick an example —</option></select></div>
+      <div class="grow"><label>Description</label><input id="ms-desc" placeholder="what this script masks"></div>
+    </div>
+    <div class="ms-editor-wrap">
+      <textarea id="ms-source" class="ms-editor" rows="10" spellcheck="false"
+        placeholder="-- inputs: value, param, rowIndex, row[&quot;col&quot;]&#10;-- return the masked value (nil = SQL NULL)&#10;return forge.mask(&quot;FIRST_NAME&quot;, value) .. &quot;-&quot; .. forge.hash(value, 1000)"></textarea>
+      <div id="ms-suggest" class="ms-suggest" style="display:none"></div>
+    </div>
+    <div class="row push">
+      <button onclick="saveMaskingScript()">Save script</button>
+      <div><label>Test value</label><input id="ms-test-value" placeholder="yash1234"></div>
+      <button class="ghost" onclick="testMaskingScript()">Test</button>
+      <span id="ms-test-result" class="mono"></span>
+    </div>
+    <div id="ms-list"><div class="empty">No scripts yet.</div></div>
+  </div>
+</section>
+
+<section class="page" id="page-synthetic">
+  <h2>Synthetic Data</h2><p class="sub">Design-driven data with reusable blueprints, a searchable generator catalog, and seeded reproducibility.</p>
+  <div class="card" id="syn-design-card" data-tab-label="Build">
+    <div id="syn-steps" class="syn-steps"></div>
+    <div id="syn-wizard"></div>
+  </div>
+  <div class="card" id="syn-lists-card" data-tab-label="Value Lists">
+    <div class="card-head">
+      <h3>Value lists (reference data)</h3>
+      <span id="vl-count" class="pill dim"></span>
+      <button type="button" class="ghost small" onclick="loadValueLists()">Refresh</button>
+    </div>
+    <p class="sub tight">System-specific enumerations defined once and referenced from any plan: set a column's generator to
+      ENUM / STATUS / WEIGHTED with param1 <code>@list-name</code> (e.g. <code>@bank-a.product_type</code>).
+      Lists resolve at generation time, so updating a list here updates every plan that uses it.</p>
+    <div class="ds-field-grid">
+      <div><label>Name</label><input id="vl-name" placeholder="bank-a.product_type"></div>
+      <div><label>System tag</label><input id="vl-system" placeholder="bank-a"></div>
+      <div class="grow"><label>Values <span class="muted">(A1|A2|A3 or weighted A1:60|A2:30|A3:10)</span></label>
+        <input id="vl-values" placeholder="A1|A2|A3"></div>
+      <div><label>Visibility</label><select id="vl-visibility"><option>GLOBAL</option><option>PRIVATE</option></select></div>
+      <div><label>&nbsp;</label><button onclick="saveValueList()">Save list</button></div>
+    </div>
+    <div class="ds-field-grid">
+      <div><label>Import from live column</label><select id="vl-ds"><option value="">Data source</option></select></div>
+      <div><label>Schema <span class="muted">(optional)</span></label><input id="vl-schema" placeholder="public"></div>
+      <div><label>Table</label><input id="vl-table" placeholder="accounts"></div>
+      <div><label>Column</label><input id="vl-column" placeholder="product_type"></div>
+      <div><label class="check" title="Store observed frequencies as weights (A1:52|A2:31|A3:17) so WEIGHTED reproduces the real mix."><input id="vl-weighted" type="checkbox" checked> With frequencies</label></div>
+      <div><label>&nbsp;</label><button class="ghost" onclick="importValueList()">Import distinct values</button></div>
+    </div>
+    <div id="vl-list"><div class="empty">No value lists yet.</div></div>
+  </div>
+  <div class="card" id="syn-saved-card" data-tab-label="Saved Jobs">
+    <div class="card-head">
+      <h3>Saved synthetic jobs</h3>
+      <span id="syn-saved-count" class="pill dim">loading</span>
+      <button type="button" class="ghost small" data-syn-saved-action="save">Save Current Design</button>
+      <button type="button" class="ghost small" data-syn-saved-action="refresh">Refresh</button>
+    </div>
+    <p class="sub tight">Saved jobs are reusable generation plans. Run them later without rebuilding the tables, columns, output, and load settings. Download PS1/SH runners for Task Scheduler or cron.</p>
+    <div id="syn-saved-jobs"><div class="empty">Loading saved jobs...</div></div>
+  </div>
+  <div class="card" id="syn-history-card" data-tab-label="Run History">
+    <div class="card-head">
+      <h3>Run history</h3>
+      <span id="syn-job-count-page" class="pill dim">loading</span>
+      <button class="ghost small" onclick="synRefreshSyntheticJobs()">Refresh</button>
+    </div>
+    <p class="sub tight">Execution history for synthetic jobs you launched from saved jobs or the builder.</p>
+    <div id="syn-history-run-result" class="preview-box empty">Run a saved job to watch live progress here.</div>
+    <div id="syn-jobs-page"><div class="empty">Loading run history...</div></div>
+  </div>
+  <div class="card" id="syn-catalog-card" data-tab-label="Generator Catalog"><div class="card-head"><h3>Generator catalog</h3><span id="gen-count" class="pill dim">loading</span></div>
+    <div class="row push">
+      <div class="grow"><label>Search generators</label><input id="gen-search" placeholder="email, iban, ipv4, status..." oninput="renderGeneratorCatalog()"></div>
+      <div><label>Category</label><select id="gen-category" onchange="renderGeneratorCatalog()"></select></div>
+    </div>
+    <div id="gen-catalog" class="catalog-grid"></div>
+    <div id="gen-preview" class="preview-box empty">Select a generator to preview values.</div>
+  </div>
+</section>
+
+<section class="page" id="page-jobs">
+  <h2>Provisioning Jobs</h2><p class="sub">Extract, mask in flight, and batch load with async progress.</p>
+  <div class="card" id="job-launch-card" data-tab-label="Launch Job"><h3>New provisioning job</h3>
+  <h3 class="section-title">1. Job definition</h3>
+  <div class="row">
+    <div><label>Name</label><input id="job-name" placeholder="qa2-refresh"></div>
+    <div><label>Type</label><select id="job-type" onchange="jobTypeChanged()"><option>MASK_COPY</option><option>SUBSET_MASK</option></select></div>
+    <span class="form-hint">MASK_COPY copies and masks whole tables. SUBSET_MASK extracts a referentially intact slice, then masks it.</span>
+  </div>
+  <h3 class="section-title">2. Source (where data comes from)</h3>
+  <div class="row">
+    <div><label>Source data source</label><select id="job-src" onchange="loadJobSchemas()"></select></div>
+    <div><label>Source schema</label><select id="job-src-schema"><option value="">Default</option></select></div>
+    <div class="grow"><label>Tables (comma separated, blank = all) - MASK_COPY only</label><input id="job-tables" placeholder="customers,accounts,transactions"></div>
+  </div>
+  <div class="row push" id="job-subset-row" style="display:none">
+    <div><label>DataScope blueprint <span class="pill dim small">optional — overrides Q1/Q2/profiles</span></label>
+      <select id="job-dataset" onchange="jobDatasetChanged()"><option value="">None (manual settings)</option></select></div>
+    <div><label>Driver table <span class="pill dim small">or from definition</span></label><input id="job-driver"></div>
+    <div class="grow"><label>Filter (optional)</label><input id="job-filter"></div>
+    <div><label>Row limit</label><input id="job-max" type="number" min="0" placeholder="optional"></div>
+    <label class="check"><input id="job-related" type="checkbox" checked onchange="jobTraversalChanged()"> RI traversal</label>
+    <label class="check"><input id="job-q1" type="checkbox" checked> Q1 parents</label>
+    <label class="check"><input id="job-q2" type="checkbox" checked> Q2 children</label>
+  </div>
+  <h3 class="section-title">3. Masking</h3>
+  <div class="row">
+    <div><label>Policy</label><select id="job-policy"></select></div>
+    <div><label>Masking seed (optional)</label><input id="job-seed" placeholder="blank = default" title="Same seed = same masked values across runs. Different seed = entirely different masked data."></div>
+  </div>
+  <h3 class="section-title">4. Target (where data lands)</h3>
+  <div class="row">
+    <div><label>Target data source</label><select id="job-tgt" onchange="loadJobSchemas()"></select></div>
+    <div><label>Target schema</label><select id="job-tgt-schema"><option value="">Default</option></select></div>
+    <div><label>Load action</label><select id="job-load-action" onchange="jobLoadChanged()">
+      <option value="REPLACE">Load replace</option>
+      <option value="INSERT">Insert only</option>
+      <option value="UPDATE">Update only</option>
+      <option value="INSERT_UPDATE">Insert-update</option>
+      <option value="IN_PLACE">In-place mask (same table)</option>
+      <option value="TRUNCATE_ONLY">Truncate only</option>
+    </select></div>
+    <div><label>Target prep</label><select id="job-target-prep">
+      <option value="DELETE">Delete rows first</option>
+      <option value="TRUNCATE">Truncate selected tables together</option>
+      <option value="NONE">Do not clear target</option>
+    </select></div>
+    <div><label>Key columns</label><input id="job-key-cols" placeholder="blank = target PK"></div>
+    <div><label>Batch size</label><input id="job-batch" type="number" min="1" max="50000" placeholder="default 5000"></div>
+  </div>
+  <div class="row push">
+    <span id="job-load-hint" class="form-hint">Replace clears the target tables, then inserts masked rows.</span>
+    <button onclick="submitJob()">Provision</button>
+  </div></div>
+  <div class="card" id="job-monitor-card" data-tab-label="Job Monitor"><h3>Job monitor</h3><div id="jobs-table"></div></div>
+</section>
+
+<section class="page" id="page-reservations">
+  <h2>Find &amp; Reserve</h2><p class="sub">Lock matching rows for exclusive use during a test cycle.</p>
+  <div class="card" id="res-search-card" data-tab-label="Find &amp; Reserve"><h3>Reservation search</h3><div class="row">
+    <div><label>Data source</label><select id="res-ds"></select></div>
+    <div><label>Table</label><input id="res-table" placeholder="customers"></div>
+    <div class="grow"><label>Criteria (optional WHERE expression)</label><input id="res-criteria" placeholder="state = 'TX'"></div>
+    <div><label>Count</label><input id="res-count" type="number" value="5" min="1"></div>
+    <div><label>Reserved by</label><input id="res-by" placeholder="alice"></div>
+    <div><label>TTL hours</label><input id="res-ttl" type="number" value="24" min="1"></div>
+    <button onclick="reserve()">Find &amp; Reserve</button>
+  </div></div>
+  <div class="card" id="res-list-card" data-tab-label="Active Reservations"><h3>Reservations</h3><div id="res-table-out"></div></div>
+</section>
+
+<section class="page" id="page-validation">
+  <h2>Validation</h2><p class="sub">Prove the mask with leak, format, referential-integrity, and email domain checks.</p>
+  <div class="card" id="val-run-card" data-tab-label="Run Validation"><h3>Validation run</h3><div class="row">
+    <div><label>Source original</label><select id="val-src"></select></div>
+    <div><label>Target masked</label><select id="val-tgt"></select></div>
+    <div><label>Policy</label><select id="val-policy"></select></div>
+    <button onclick="runValidation()">Run Validation</button>
+  </div></div>
+  <div class="card" id="val-reports-card" data-tab-label="Reports"><h3>Reports</h3><div id="val-table"></div></div>
+</section>
+
+<section class="page" id="page-audit">
+  <h2>Audit Trail</h2><p class="sub">Immutable record of consequential actions for compliance evidence.</p>
+  <div class="card"><h3>Recent audit events</h3><div id="audit-table"></div></div>
+</section>
+
+<section class="page" id="page-business-entities">
+  <h2>Business Entities</h2>
+  <p class="sub">Define reusable business objects such as customer, account, policy, or claim across one or more systems.</p>
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h3>Entity catalog</h3>
+        <p class="sub tight">Start blank or build an entity from an existing DataScope blueprint.</p>
+      </div>
+      <span class="pill info">entity model</span>
+    </div>
+    <div class="be-create-row">
+      <div><label>Create from DataScope</label><select id="be-from-dataset"><option value="">Choose blueprint</option></select></div>
+      <div><label>Name override</label><input id="be-from-name" placeholder="Customer 360"></div>
+      <div><label>Domain</label><input id="be-from-domain" placeholder="Retail banking"></div>
+      <div class="grow"><label>Description</label><input id="be-from-desc" placeholder="Optional context"></div>
+      <button onclick="createBusinessEntityFromDataset()">Create from DataScope</button>
+      <button class="ghost" onclick="resetBusinessEntityForm()">New blank</button>
+    </div>
+    <div class="be-workspace">
+      <div class="be-panel">
+        <div class="be-panel-head">
+          <b>Entities</b>
+          <span id="be-count" class="muted"></span>
+        </div>
+        <input id="be-search" class="ds-search" placeholder="Search entity, domain, table, owner..." oninput="renderBusinessEntities()">
+        <div id="be-list"><div class="empty">No business entities yet.</div></div>
+      </div>
+      <div class="be-panel be-detail-panel">
+        <div id="be-detail"><div class="empty">Choose an entity or click New blank.</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="page" id="page-security">
+  <h2>Access Control</h2><p class="sub">User, group, role, and permission controls for enterprise TDM operations.</p>
+  <div class="card" id="sec-overview-card" data-tab-label="Overview">
+    <div class="card-head"><h3>Governance model</h3><span class="pill info">RBAC</span></div>
+    <div id="sec-overview" class="security-overview"></div>
+  </div>
+  <div class="card" id="sec-users-card" data-tab-label="Users">
+    <div class="card-head"><h3>Users</h3><span class="pill dim">direct roles + groups</span></div>
+    <div class="security-form">
+      <div><label>Username</label><input id="sec-user-name" placeholder="jane.doe"></div>
+      <div><label>Display name</label><input id="sec-user-display" placeholder="Jane Doe"></div>
+      <div><label>Password</label><input id="sec-user-password" type="password" placeholder="min 8 chars"></div>
+      <div><label>Roles</label><select id="sec-user-roles" multiple size="4"></select></div>
+      <div><label>Groups</label><select id="sec-user-groups" multiple size="4"></select></div>
+      <button onclick="createSecurityUser()">Create User</button>
+    </div>
+    <div id="sec-users"></div>
+  </div>
+  <div class="card" id="sec-groups-card" data-tab-label="Groups">
+    <div class="card-head"><h3>Groups</h3><span class="pill dim">role bundles</span></div>
+    <div class="security-form">
+      <div><label>Group name</label><input id="sec-group-name" placeholder="QA Team"></div>
+      <div><label>Description</label><input id="sec-group-desc" placeholder="What this group can do"></div>
+      <div><label>Roles</label><select id="sec-group-roles" multiple size="4"></select></div>
+      <button onclick="createSecurityGroup()">Create Group</button>
+    </div>
+    <div id="sec-groups"></div>
+  </div>
+  <div class="card" id="sec-roles-card" data-tab-label="Role Matrix">
+    <div class="card-head"><h3>Role matrix</h3><span class="pill info">least privilege</span></div>
+    <div id="sec-roles"></div>
+  </div>
+</section>
+
+</main>
+<datalist id="name-format-options">
+  <option value="FIRST LAST"></option>
+  <option value="FIRST MIDDLE LAST"></option>
+  <option value="FIRST MID LAST"></option>
+  <option value="LAST FIRST"></option>
+  <option value="LAST MIDDLE FIRST"></option>
+  <option value="LAST MID FIRST"></option>
+  <option value="LAST, FIRST"></option>
+  <option value="LAST, FIRST MIDDLE"></option>
+  <option value="FIRST, LAST"></option>
+</datalist>
+<datalist id="case-options">
+  <option value="PROPER"></option>
+  <option value="UPPER"></option>
+  <option value="LOWER"></option>
+  <option value="AS_IS"></option>
+</datalist>
+<datalist id="geo-part-options">
+  <option value="FULL"></option>
+  <option value="CITY"></option>
+  <option value="STATE"></option>
+  <option value="ZIP"></option>
+</datalist>
+<datalist id="geo-mode-options">
+  <option value="PRESERVE_STATE"></option>
+</datalist>
+
+<div id="table-map-modal" class="modal-backdrop" style="display:none">
+  <div class="modal-panel modal-wide">
+    <div class="modal-head">
+      <div>
+        <h3>Table Map</h3>
+        <p class="sub tight" id="tm-subtitle">Map all profiled source tables to target tables.</p>
+      </div>
+      <button class="small ghost" onclick="closeTableMap()">X</button>
+    </div>
+    <div class="map-form-grid">
+      <div><label>Target data source</label><select id="tm-target-ds" onchange="tableMapTargetChanged()"></select></div>
+      <div><label>Target schema</label><select id="tm-target-schema" onchange="loadTableMapTargetTables()"><option value="">Default</option></select></div>
+    </div>
+    <div class="table-map-add">
+      <div><label>Add source DB</label><select id="tm-add-source-ds" onchange="tableMapAddSourceChanged()"></select></div>
+      <div><label>Source schema</label><select id="tm-add-source-schema" onchange="loadTableMapAddTables()"><option value="">Default</option></select></div>
+      <div><label>Source table</label><select id="tm-add-source-table"><option value="">Select table</option></select></div>
+      <button class="ghost small" onclick="addTableMapSourceRow()">Add source table</button>
+    </div>
+    <div id="tm-grid" class="table-map-wrap"><div class="empty">Add table profiles first.</div></div>
+    <div class="modal-actions">
+      <button onclick="saveTableMap()">Save Table Map</button>
+    </div>
+  </div>
+</div>
+
+<div id="column-map-modal" class="modal-backdrop" style="display:none">
+  <div class="modal-panel modal-wide">
+    <div class="modal-head">
+      <div>
+        <h3>Column Map</h3>
+        <p class="sub tight" id="cm-subtitle">Map target columns to source columns, literals, nulls, or unused columns.</p>
+      </div>
+      <button class="small ghost" onclick="closeColumnMap()">X</button>
+    </div>
+    <div class="row push">
+      <div><label>Masking mode</label><select id="cm-policy" onchange="columnMapPolicyChanged()"></select></div>
+      <span class="muted">Choose a policy to mask mapped columns, or choose no masking to copy already-masked/source values as-is.</span>
+    </div>
+    <div class="column-map-toolbar">
+      <div><label>Action for all</label><select id="cm-bulk-action" onchange="columnMapBulkActionChanged()">
+        <option value="USE_POLICY">Map / mask if rule exists</option>
+        <option value="LITERAL">Literal</option>
+        <option value="NULL_OUT">Null</option>
+        <option value="SUPPRESS">Unused</option>
+      </select></div>
+      <div><label>Literal value</label><input id="cm-bulk-literal" placeholder="literal value" disabled></div>
+      <button class="ghost small" onclick="applyColumnMapActionToAll()">Apply to all</button>
+    </div>
+    <div id="cm-grid" class="column-map-wrap"><div class="empty">Open a table map first.</div></div>
+    <div id="cm-preview"></div>
+    <div class="modal-actions">
+      <button class="ghost" onclick="autoMapColumnMap()">Auto Map</button>
+      <button class="ghost" onclick="previewColumnMapMasking()" title="Mask 5 live source rows with the current selections — exact job-time output">Preview masking</button>
+      <button onclick="saveColumnMap()">Save Column Map</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<div id="login-modal" class="modal-backdrop login-backdrop" style="display:none">
+  <div class="modal-panel login-panel">
+    <div class="login-logo">F</div>
+    <h2>Sign in to ForgeTDM</h2>
+    <p class="sub">Access is now controlled by users, groups, roles, and audit.</p>
+    <div class="login-form">
+      <label>Username</label><input id="login-username" value="admin" autocomplete="username">
+      <label>Password</label><input id="login-password" type="password" placeholder="admin123" autocomplete="current-password" onkeydown="loginKey(event)">
+      <button onclick="login()">Sign In</button>
+      <div id="login-error" class="error hidden"></div>
+      <p class="sub tight">Default demo bootstrap: <code>admin</code> / <code>admin123</code>. Change it or set <code>FORGETDM_SECURITY_BOOTSTRAP_PASSWORD</code> for team use.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ForgeTDM Copilot -->
+<button id="ai-fab" onclick="aiToggle()" title="ForgeTDM Copilot" aria-label="Open ForgeTDM Copilot">
+  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/><path d="M8.5 10h.01M12 10h.01M15.5 10h.01"/></svg>
+</button>
+<div id="ai-panel" class="hidden" role="dialog" aria-label="ForgeTDM Copilot">
+  <div id="ai-head">
+    <div class="ai-id"><span class="ai-dot"></span><b>ForgeTDM Copilot</b></div>
+    <button class="ai-x" onclick="aiToggle()" aria-label="Close">&times;</button>
+  </div>
+  <div id="ai-sub" class="hidden">
+    <select id="ai-provider" onchange="aiPickProvider(this.value)" title="Provider"></select>
+    <input id="ai-model-input" placeholder="model" oninput="aiPickModel(this.value)" title="Model name (editable)">
+  </div>
+  <div id="ai-msgs"></div>
+  <div id="ai-input">
+    <textarea id="ai-text" rows="1" placeholder="Ask about TDM, or describe what you want to run…" onkeydown="aiKey(event)"></textarea>
+    <button id="ai-send" onclick="aiSend()" aria-label="Send">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+    </button>
+  </div>
+</div>
+
+<script src="app.js?v=ds-xchg-1"></script>
+<script src="synth-wizard.js?v=synth-wiz-36"></script>
+<script src="mapping-designer.js?v=map-6"></script>
+<script src="mapping-canvas.js?v=mc-10"></script>
+<script src="ai-chat.js?v=ai-5"></script>
+</body>
+</html>

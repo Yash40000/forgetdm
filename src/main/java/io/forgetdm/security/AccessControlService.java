@@ -1,0 +1,390 @@
+package io.forgetdm.security;
+
+import io.forgetdm.audit.AuditService;
+import io.forgetdm.common.ApiException;
+import jakarta.annotation.PostConstruct;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.SecureRandom;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Timestamp;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+@Service
+public class AccessControlService {
+    public static final String SESSION_COOKIE = "FORGETDM_SESSION";
+    private static final SecureRandom RNG = new SecureRandom();
+
+    private final JdbcTemplate jdbc;
+    private final AuditService audit;
+    private final String bootstrapPassword;
+    private final Duration sessionTtl;
+
+    public AccessControlService(JdbcTemplate jdbc,
+                                AuditService audit,
+                                @Value("${forgetdm.security.bootstrap-password:admin123}") String bootstrapPassword,
+                                @Value("${forgetdm.security.session-hours:12}") long sessionHours) {
+        this.jdbc = jdbc;
+        this.audit = audit;
+        this.bootstrapPassword = bootstrapPassword;
+        this.sessionTtl = Duration.ofHours(Math.max(1, sessionHours));
+    }
+
+    @PostConstruct
+    @Transactional
+    public void bootstrap() {
+        Integer users = jdbc.queryForObject("SELECT COUNT(*) FROM forge_users", Integer.class);
+        if (users != null && users > 0) return;
+
+        String passwordHash = PasswordHasher.hash(bootstrapPassword);
+        Long adminId = insertUser("admin", "Platform Admin", passwordHash, true);
+        jdbc.update("INSERT INTO forge_user_roles(user_id, role_name) VALUES (?, ?)", adminId, "ADMIN");
+        Long groupId = insertGroup("TDM Admins", "Users with complete platform administration access.");
+        jdbc.update("INSERT INTO forge_group_roles(group_id, role_name) VALUES (?, ?)", groupId, "ADMIN");
+        jdbc.update("INSERT INTO forge_user_groups(user_id, group_id) VALUES (?, ?)", adminId, groupId);
+        audit.log("system", "SECURITY_BOOTSTRAP", "Created default admin user and TDM Admins group");
+    }
+
+    public Map<String, Object> roles() {
+        return Map.of("roles", RoleDefinition.ALL);
+    }
+
+    public Optional<AccessPrincipal> principalFromRequest(HttpServletRequest request) {
+        return tokenFromRequest(request).flatMap(this::principalFromToken);
+    }
+
+    public Optional<AccessPrincipal> principalFromToken(String token) {
+        if (token == null || token.isBlank()) return Optional.empty();
+        String hash = tokenHash(token);
+        List<Long> ids = jdbc.query(
+                "SELECT u.id FROM forge_sessions s JOIN forge_users u ON u.id = s.user_id " +
+                        "WHERE s.token_hash = ? AND s.expires_at > ? AND u.active = TRUE",
+                (rs, rowNum) -> rs.getLong(1), hash, ts(Instant.now()));
+        if (ids.isEmpty()) return Optional.empty();
+        jdbc.update("UPDATE forge_sessions SET last_seen_at = ? WHERE token_hash = ?", ts(Instant.now()), hash);
+        return Optional.of(principal(ids.get(0)));
+    }
+
+    @Transactional
+    public LoginResult login(String username, String password) {
+        List<UserSecret> rows = jdbc.query(
+                "SELECT id, username, display_name, password_hash, active FROM forge_users WHERE LOWER(username) = LOWER(?)",
+                (rs, rowNum) -> new UserSecret(
+                        rs.getLong("id"),
+                        rs.getString("username"),
+                        rs.getString("display_name"),
+                        rs.getString("password_hash"),
+                        rs.getBoolean("active")),
+                username == null ? "" : username.trim());
+
+        if (rows.isEmpty() || !rows.get(0).active || !PasswordHasher.verify(password, rows.get(0).passwordHash)) {
+            audit.log(username == null || username.isBlank() ? "anonymous" : username, "LOGIN_FAILED", "Invalid username/password");
+            throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid username or password");
+        }
+
+        UserSecret user = rows.get(0);
+        String token = newToken();
+        Instant now = Instant.now();
+        Instant expires = now.plus(sessionTtl);
+        jdbc.update("INSERT INTO forge_sessions(token_hash, user_id, created_at, expires_at, last_seen_at) VALUES (?, ?, ?, ?, ?)",
+                tokenHash(token), user.id, ts(now), ts(expires), ts(now));
+        AccessPrincipal principal = principal(user.id);
+        audit.log(user.username, "LOGIN_SUCCESS", "User signed in");
+        return new LoginResult(token, expires, principal);
+    }
+
+    @Transactional
+    public void logout(String token) {
+        if (token == null || token.isBlank()) return;
+        principalFromToken(token).ifPresent(p -> audit.log(p.username(), "LOGOUT", "User signed out"));
+        jdbc.update("DELETE FROM forge_sessions WHERE token_hash = ?", tokenHash(token));
+    }
+
+    public AccessPrincipal principal(long userId) {
+        UserView user = jdbc.queryForObject(
+                "SELECT id, username, display_name, active, created_at, updated_at FROM forge_users WHERE id = ?",
+                this::mapUser, userId);
+        if (user == null || !user.active()) throw new ApiException(HttpStatus.UNAUTHORIZED, "User is inactive");
+        Set<String> roles = rolesForUser(user.id());
+        Set<String> permissions = permissionsForRoles(roles);
+        return new AccessPrincipal(user.id(), user.username(), user.displayName(), roles, permissions);
+    }
+
+    public List<UserView> users() {
+        return jdbc.query("SELECT id, username, display_name, active, created_at, updated_at FROM forge_users ORDER BY username", this::mapUser).stream()
+                .map(u -> u.withRolesAndGroups(rolesForUser(u.id()), groupsForUser(u.id())))
+                .toList();
+    }
+
+    public List<GroupView> groups() {
+        return jdbc.query("SELECT id, name, description, created_at FROM forge_groups ORDER BY name", this::mapGroup).stream()
+                .map(g -> g.withRoles(rolesForGroup(g.id())))
+                .toList();
+    }
+
+    @Transactional
+    public UserView createUser(UserRequest req) {
+        requireUsername(req.username());
+        String password = req.password();
+        if (password == null || password.length() < 8) throw ApiException.bad("Password must be at least 8 characters");
+        Long id = insertUser(req.username().trim(), blankToNull(req.displayName()), PasswordHasher.hash(password), req.active() == null || req.active());
+        setUserRoles(id, cleanRoles(req.roles()));
+        setUserGroups(id, cleanIds(req.groupIds()));
+        audit.log(null, "SECURITY_USER_CREATE", "Created user " + req.username());
+        return users().stream().filter(u -> u.id().equals(id)).findFirst().orElseThrow();
+    }
+
+    @Transactional
+    public UserView updateUser(long id, UserRequest req) {
+        requireUser(id);
+        if (req.displayName() != null || req.active() != null) {
+            jdbc.update("UPDATE forge_users SET display_name = COALESCE(?, display_name), active = COALESCE(?, active), updated_at = ? WHERE id = ?",
+                    req.displayName(), req.active(), ts(Instant.now()), id);
+        }
+        if (req.password() != null && !req.password().isBlank()) {
+            if (req.password().length() < 8) throw ApiException.bad("Password must be at least 8 characters");
+            jdbc.update("UPDATE forge_users SET password_hash = ?, updated_at = ? WHERE id = ?",
+                    PasswordHasher.hash(req.password()), ts(Instant.now()), id);
+        }
+        if (req.roles() != null) setUserRoles(id, cleanRoles(req.roles()));
+        if (req.groupIds() != null) setUserGroups(id, cleanIds(req.groupIds()));
+        audit.log(null, "SECURITY_USER_UPDATE", "Updated user id " + id);
+        return users().stream().filter(u -> u.id().equals(id)).findFirst().orElseThrow();
+    }
+
+    @Transactional
+    public void deleteUser(long id) {
+        UserView user = requireUser(id);
+        if ("admin".equalsIgnoreCase(user.username()) && users().stream().filter(UserView::active).count() == 1) {
+            throw ApiException.conflict("Cannot delete the only active admin bootstrap user");
+        }
+        jdbc.update("DELETE FROM forge_users WHERE id = ?", id);
+        audit.log(null, "SECURITY_USER_DELETE", "Deleted user " + user.username());
+    }
+
+    @Transactional
+    public GroupView createGroup(GroupRequest req) {
+        if (req.name() == null || req.name().isBlank()) throw ApiException.bad("Group name is required");
+        Long id = insertGroup(req.name().trim(), blankToNull(req.description()));
+        setGroupRoles(id, cleanRoles(req.roles()));
+        audit.log(null, "SECURITY_GROUP_CREATE", "Created group " + req.name());
+        return groups().stream().filter(g -> g.id().equals(id)).findFirst().orElseThrow();
+    }
+
+    @Transactional
+    public GroupView updateGroup(long id, GroupRequest req) {
+        requireGroup(id);
+        if (req.name() != null || req.description() != null) {
+            jdbc.update("UPDATE forge_groups SET name = COALESCE(?, name), description = COALESCE(?, description) WHERE id = ?",
+                    blankToNull(req.name()), req.description(), id);
+        }
+        if (req.roles() != null) setGroupRoles(id, cleanRoles(req.roles()));
+        audit.log(null, "SECURITY_GROUP_UPDATE", "Updated group id " + id);
+        return groups().stream().filter(g -> g.id().equals(id)).findFirst().orElseThrow();
+    }
+
+    @Transactional
+    public void deleteGroup(long id) {
+        GroupView group = requireGroup(id);
+        jdbc.update("DELETE FROM forge_groups WHERE id = ?", id);
+        audit.log(null, "SECURITY_GROUP_DELETE", "Deleted group " + group.name());
+    }
+
+    private Long insertUser(String username, String displayName, String passwordHash, boolean active) {
+        Long existing = jdbc.query("SELECT id FROM forge_users WHERE LOWER(username) = LOWER(?)",
+                (rs, rowNum) -> rs.getLong(1), username).stream().findFirst().orElse(null);
+        if (existing != null) throw ApiException.conflict("Username already exists");
+        jdbc.update("INSERT INTO forge_users(username, display_name, password_hash, active, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+                username, displayName, passwordHash, active, ts(Instant.now()), ts(Instant.now()));
+        return jdbc.queryForObject("SELECT id FROM forge_users WHERE LOWER(username) = LOWER(?)", Long.class, username);
+    }
+
+    private Long insertGroup(String name, String description) {
+        Long existing = jdbc.query("SELECT id FROM forge_groups WHERE LOWER(name) = LOWER(?)",
+                (rs, rowNum) -> rs.getLong(1), name).stream().findFirst().orElse(null);
+        if (existing != null) throw ApiException.conflict("Group already exists");
+        jdbc.update("INSERT INTO forge_groups(name, description, created_at) VALUES (?, ?, ?)", name, description, ts(Instant.now()));
+        return jdbc.queryForObject("SELECT id FROM forge_groups WHERE LOWER(name) = LOWER(?)", Long.class, name);
+    }
+
+    private UserView requireUser(long id) {
+        return jdbc.query("SELECT id, username, display_name, active, created_at, updated_at FROM forge_users WHERE id = ?",
+                this::mapUser, id).stream().findFirst().orElseThrow(() -> ApiException.notFound("User not found"));
+    }
+
+    private GroupView requireGroup(long id) {
+        return jdbc.query("SELECT id, name, description, created_at FROM forge_groups WHERE id = ?",
+                this::mapGroup, id).stream().findFirst().orElseThrow(() -> ApiException.notFound("Group not found"));
+    }
+
+    private void requireUsername(String username) {
+        if (username == null || username.isBlank()) throw ApiException.bad("Username is required");
+        if (!username.matches("[A-Za-z0-9._@-]{3,120}")) throw ApiException.bad("Username must be 3-120 letters, numbers, dot, underscore, at-sign, or dash");
+    }
+
+    private void setUserRoles(long userId, Set<String> roles) {
+        jdbc.update("DELETE FROM forge_user_roles WHERE user_id = ?", userId);
+        roles.forEach(role -> jdbc.update("INSERT INTO forge_user_roles(user_id, role_name) VALUES (?, ?)", userId, role));
+    }
+
+    private void setGroupRoles(long groupId, Set<String> roles) {
+        jdbc.update("DELETE FROM forge_group_roles WHERE group_id = ?", groupId);
+        roles.forEach(role -> jdbc.update("INSERT INTO forge_group_roles(group_id, role_name) VALUES (?, ?)", groupId, role));
+    }
+
+    private void setUserGroups(long userId, Set<Long> groupIds) {
+        jdbc.update("DELETE FROM forge_user_groups WHERE user_id = ?", userId);
+        for (Long groupId : groupIds) {
+            requireGroup(groupId);
+            jdbc.update("INSERT INTO forge_user_groups(user_id, group_id) VALUES (?, ?)", userId, groupId);
+        }
+    }
+
+    private Set<String> rolesForUser(long userId) {
+        Set<String> roles = new LinkedHashSet<>();
+        roles.addAll(jdbc.query("SELECT role_name FROM forge_user_roles WHERE user_id = ? ORDER BY role_name",
+                (rs, rowNum) -> rs.getString(1), userId));
+        roles.addAll(jdbc.query("SELECT gr.role_name FROM forge_group_roles gr JOIN forge_user_groups ug ON ug.group_id = gr.group_id WHERE ug.user_id = ? ORDER BY gr.role_name",
+                (rs, rowNum) -> rs.getString(1), userId));
+        return roles;
+    }
+
+    private Set<String> rolesForGroup(long groupId) {
+        return new LinkedHashSet<>(jdbc.query("SELECT role_name FROM forge_group_roles WHERE group_id = ? ORDER BY role_name",
+                (rs, rowNum) -> rs.getString(1), groupId));
+    }
+
+    private List<GroupLite> groupsForUser(long userId) {
+        return jdbc.query("SELECT g.id, g.name FROM forge_groups g JOIN forge_user_groups ug ON ug.group_id = g.id WHERE ug.user_id = ? ORDER BY g.name",
+                (rs, rowNum) -> new GroupLite(rs.getLong("id"), rs.getString("name")), userId);
+    }
+
+    private Set<String> permissionsForRoles(Set<String> roles) {
+        Set<String> permissions = new LinkedHashSet<>();
+        for (String role : roles) {
+            RoleDefinition def = RoleDefinition.BY_NAME.get(role);
+            if (def != null) permissions.addAll(def.permissions());
+        }
+        return permissions;
+    }
+
+    private Set<String> cleanRoles(List<String> roles) {
+        if (roles == null) return Set.of();
+        Set<String> clean = new LinkedHashSet<>();
+        for (String role : roles) {
+            if (role == null || role.isBlank()) continue;
+            String normalized = role.trim().toUpperCase();
+            if (!RoleDefinition.BY_NAME.containsKey(normalized)) throw ApiException.bad("Unknown role: " + role);
+            clean.add(normalized);
+        }
+        return clean;
+    }
+
+    private Set<Long> cleanIds(List<Long> ids) {
+        if (ids == null) return Set.of();
+        Set<Long> clean = new LinkedHashSet<>();
+        for (Long id : ids) if (id != null) clean.add(id);
+        return clean;
+    }
+
+    private UserView mapUser(ResultSet rs, int rowNum) throws SQLException {
+        return new UserView(
+                rs.getLong("id"),
+                rs.getString("username"),
+                rs.getString("display_name"),
+                rs.getBoolean("active"),
+                rs.getTimestamp("created_at").toInstant(),
+                rs.getTimestamp("updated_at") == null ? null : rs.getTimestamp("updated_at").toInstant(),
+                List.of(),
+                List.of());
+    }
+
+    private GroupView mapGroup(ResultSet rs, int rowNum) throws SQLException {
+        return new GroupView(
+                rs.getLong("id"),
+                rs.getString("name"),
+                rs.getString("description"),
+                rs.getTimestamp("created_at").toInstant(),
+                List.of());
+    }
+
+    /** Extract the session token (Bearer header or session cookie) from a request. Public so the security filter
+     *  can stash it in {@link AccessContext} for in-process self-calls (the AI assistant's tools). */
+    public Optional<String> tokenFromRequest(HttpServletRequest request) {
+        String auth = request.getHeader("Authorization");
+        if (auth != null && auth.regionMatches(true, 0, "Bearer ", 0, 7)) {
+            String token = auth.substring(7).trim();
+            if (!token.isBlank()) return Optional.of(token);
+        }
+        if (request.getCookies() == null) return Optional.empty();
+        for (Cookie cookie : request.getCookies()) {
+            if (SESSION_COOKIE.equals(cookie.getName())) return Optional.ofNullable(cookie.getValue());
+        }
+        return Optional.empty();
+    }
+
+    private String newToken() {
+        byte[] bytes = new byte[48];
+        RNG.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    }
+
+    private String tokenHash(String token) {
+        try {
+            byte[] digest = MessageDigest.getInstance("SHA-256").digest(token.getBytes(StandardCharsets.UTF_8));
+            return Base64.getEncoder().encodeToString(digest);
+        } catch (Exception e) {
+            throw new IllegalStateException("Unable to hash session token", e);
+        }
+    }
+
+    private String blankToNull(String s) {
+        return s == null || s.isBlank() ? null : s.trim();
+    }
+
+    private Timestamp ts(Instant instant) {
+        return Timestamp.from(instant);
+    }
+
+    public record LoginResult(String token, Instant expiresAt, AccessPrincipal principal) {}
+    private record UserSecret(Long id, String username, String displayName, String passwordHash, boolean active) {}
+    public record GroupLite(Long id, String name) {}
+
+    public record UserView(Long id, String username, String displayName, boolean active, Instant createdAt, Instant updatedAt,
+                           List<String> roles, List<GroupLite> groups) {
+        UserView withRolesAndGroups(Set<String> nextRoles, List<GroupLite> nextGroups) {
+            List<String> sortedRoles = new ArrayList<>(nextRoles);
+            sortedRoles.sort(Comparator.naturalOrder());
+            return new UserView(id, username, displayName, active, createdAt, updatedAt, sortedRoles, nextGroups);
+        }
+    }
+
+    public record GroupView(Long id, String name, String description, Instant createdAt, List<String> roles) {
+        GroupView withRoles(Set<String> nextRoles) {
+            List<String> sortedRoles = new ArrayList<>(nextRoles);
+            sortedRoles.sort(Comparator.naturalOrder());
+            return new GroupView(id, name, description, createdAt, sortedRoles);
+        }
+    }
+
+    public record UserRequest(String username, String displayName, String password, Boolean active, List<String> roles, List<Long> groupIds) {}
+    public record GroupRequest(String name, String description, List<String> roles) {}
+}

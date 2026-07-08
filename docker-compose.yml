@@ -1,0 +1,53 @@
+version: "3.9"
+services:
+  forgetdm-db:                       # ForgeTDM's own config database
+    image: postgres:16
+    environment:
+      POSTGRES_DB: forgetdm
+      POSTGRES_USER: forgetdm
+      POSTGRES_PASSWORD: forgetdm
+    ports: ["5432:5432"]
+    volumes: [forgetdm_data:/var/lib/postgresql/data]
+
+  bank-demo:                         # demo SOURCE database (with PII)
+    image: postgres:16
+    environment:
+      POSTGRES_DB: bankdemo
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+    ports: ["5433:5432"]
+    volumes:
+      - ./demo/bank_demo.sql:/docker-entrypoint-initdb.d/01_bank_demo.sql:ro
+
+  bank-qa:                           # demo TARGET database (same schema, no data)
+    image: postgres:16
+    environment:
+      POSTGRES_DB: bankqa
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+    ports: ["5434:5432"]
+    volumes:
+      - ./demo/bank_schema_only.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+
+  forgetdm:
+    build: .
+    depends_on: [forgetdm-db]
+    environment:
+      FORGETDM_DB_URL: jdbc:postgresql://forgetdm-db:5432/forgetdm
+      FORGETDM_DB_USER: forgetdm
+      FORGETDM_DB_PASS: forgetdm
+      FORGETDM_MASKING_SECRET: rotate-me-in-prod
+      # ForgeTDM Copilot — provide a key for any provider below to make it selectable in the chat.
+      # OpenAI (paid):
+      FORGETDM_AI_API_KEY: ""
+      FORGETDM_AI_MODEL: "gpt-4o-mini"
+      # Groq (FREE tier, fast, OpenAI-compatible, supports tool calling) — get a key at console.groq.com:
+      GROQ_API_KEY: ""
+      GROQ_MODEL: "llama-3.3-70b-versatile"
+      # Local Ollama (FREE, private). From a container, point at the host:
+      OLLAMA_BASE_URL: "http://host.docker.internal:11434/v1"
+      OLLAMA_MODEL: "llama3.2:3b"
+    ports: ["8088:8088"]
+
+volumes:
+  forgetdm_data:

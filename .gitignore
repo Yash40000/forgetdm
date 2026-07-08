@@ -1,0 +1,13 @@
+config/native-loaders.local.ps1
+config/local.env.ps1
+*.local.ps1
+.vscode/
+New Text Document.txt
+demo/*.mv.db
+demo/*.trace.db
+demo/*.log
+demo/pgdemo-data/
+run-codex-*.log
+run-codex-*.err.log
+run.log
+target/

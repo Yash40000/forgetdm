@@ -1,0 +1,158 @@
+==============================================================================
+ ForgeTDM — Running the FULL build (PostgreSQL config DB), not just the H2 demo
+==============================================================================
+
+WHAT "DEMO" vs "ORIGINAL" MEANS
+------------------------------------------------------------------------------
+- Demo profile  (-Dspring-boot.run.profiles=demo)
+    Config database = in-memory H2. Wiped on every restart. Zero setup.
+- Original / default (no demo profile)
+    Config database = PostgreSQL at localhost:5432/forgetdm.
+    Data PERSISTS across restarts. This is the "real" mode.
+
+The app always listens on:   http://localhost:8088
+Flyway automatically creates/updates all tables (migrations V1 .. V14) on startup.
+
+
+PREREQUISITES
+------------------------------------------------------------------------------
+- Java 17+ (you have Java 21 — fine)
+- Maven 3.9+              (check:  mvn -v)
+- One PostgreSQL 16 database for ForgeTDM's config (3 easy ways below)
+- (Optional) Docker Desktop — makes the database trivial
+
+
+==============================================================================
+ OPTION A — EASIEST: full stack with Docker Compose (DB + app together)
+==============================================================================
+This starts ForgeTDM's Postgres config DB, two demo bank databases, and the
+ForgeTDM app, all wired together. Good for a quick "real mode" run.
+
+  1. Open PowerShell in the project folder:
+        cd "D:\forgetdm - Copy"
+
+  2. Build and start everything:
+        docker compose up --build
+
+  3. Wait for the log line:  Started ForgeTdmApplication ... on port 8088
+     Open:  http://localhost:8088
+
+  4. Stop it:           Ctrl+C   then   docker compose down
+     Stop + WIPE data:  docker compose down -v     (fresh DB next time)
+
+Notes:
+  - The app container is built from the Dockerfile, so code changes require
+    "docker compose up --build" again.
+  - Ports used: 8088 (app), 5432 (config DB), 5433 (demo source), 5434 (demo target).
+
+
+==============================================================================
+ OPTION B — RECOMMENDED FOR DEVELOPMENT: Postgres in Docker, app via Maven
+==============================================================================
+Run ONLY the Postgres config DB in Docker, but run the app with Maven so you
+can rebuild/iterate quickly.
+
+  1. Start just the config database:
+        cd "D:\forgetdm - Copy"
+        docker compose up -d forgetdm-db
+
+     (This is Postgres on localhost:5432, db=forgetdm, user=forgetdm, pass=forgetdm —
+      exactly what the app expects by default.)
+
+  2. (Recommended) set a real masking secret for this session.
+     PowerShell:
+        $env:FORGETDM_MASKING_SECRET = "pick-a-long-random-secret"
+
+  3. Build fresh and run (NO demo profile):
+        mvn clean spring-boot:run
+
+  4. Open:  http://localhost:8088
+     Then HARD-REFRESH the browser (Ctrl+Shift+R) so the new tabs show.
+
+  5. Stop the app:  Ctrl+C
+     Stop the DB:    docker compose stop forgetdm-db
+     Wipe the DB:    docker compose down -v
+
+
+==============================================================================
+ OPTION C — You already have PostgreSQL installed locally
+==============================================================================
+Create the database and user ForgeTDM expects, then run with Maven.
+
+  1. In psql (as a superuser), run:
+        CREATE DATABASE forgetdm;
+        CREATE USER forgetdm WITH PASSWORD 'forgetdm';
+        GRANT ALL PRIVILEGES ON DATABASE forgetdm TO forgetdm;
+        -- On PostgreSQL 15+ also run, connected to the forgetdm db:
+        \c forgetdm
+        GRANT ALL ON SCHEMA public TO forgetdm;
+
+  2. (If your DB is not the defaults) point the app at it — PowerShell:
+        $env:FORGETDM_DB_URL  = "jdbc:postgresql://localhost:5432/forgetdm"
+        $env:FORGETDM_DB_USER = "forgetdm"
+        $env:FORGETDM_DB_PASS = "forgetdm"
+        $env:FORGETDM_MASKING_SECRET = "pick-a-long-random-secret"
+
+  3. Build fresh and run:
+        mvn clean spring-boot:run
+
+  4. Open:  http://localhost:8088   (then Ctrl+Shift+R to refresh)
+
+
+==============================================================================
+ CONFIGURATION REFERENCE (environment variables, all optional)
+==============================================================================
+  FORGETDM_DB_URL          default jdbc:postgresql://localhost:5432/forgetdm
+  FORGETDM_DB_USER         default forgetdm
+  FORGETDM_DB_PASS         default forgetdm
+  FORGETDM_MASKING_SECRET  default change-me-in-production
+                           ^ The determinism key. Same secret => same masked
+                             values forever. Set a real one and guard it.
+  Server port              8088 (change in application.yml: server.port)
+
+PowerShell sets env vars with:   $env:NAME = "value"   (current window only)
+cmd.exe sets env vars with:      set NAME=value
+
+
+==============================================================================
+ TROUBLESHOOTING
+==============================================================================
+* "mvn clean" matters
+    Always use "mvn clean spring-boot:run" after code/migration/static changes,
+    so target\classes is rebuilt and old files (e.g. stale migrations or cached
+    app.js) don't linger.
+
+* New "Copybook Studio" / "Mainframe" tabs don't appear
+    Browser cached the old index.html. Hard-refresh: Ctrl+Shift+R, or open
+    http://localhost:8088 in a private/incognito window.
+
+* Flyway error: "Found more than one migration with version N"
+    Two migration files share a version number. Should not happen here
+    (mainframe migration is V14). If you ever add one, use the next free V##.
+
+* Flyway error: validation / checksum mismatch / "Detected ... migration"
+    The config DB's history no longer matches the migration files (this can
+    happen after manual edits to flyway_schema_history). For a DEV database the
+    clean fix is to rebuild it from scratch:
+        Docker DB:        docker compose down -v   then start again
+        Installed Postgres: DROP DATABASE forgetdm;  CREATE DATABASE forgetdm;
+    Then run again — Flyway re-applies V1..V14 cleanly.
+
+* Port 8088 already in use
+    Stop whatever is using it, or change server.port in
+    src\main\resources\application.yml and rebuild.
+
+* Connection refused to localhost:5432
+    The Postgres config DB isn't running. Start it (Option B step 1) or check
+    your local Postgres service.
+
+
+==============================================================================
+ QUICK START (the short version)
+==============================================================================
+  cd "D:\forgetdm - Copy"
+  docker compose up -d forgetdm-db
+  $env:FORGETDM_MASKING_SECRET = "pick-a-long-random-secret"
+  mvn clean spring-boot:run
+  # open http://localhost:8088  and press Ctrl+Shift+R
+==============================================================================

@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ForgeTDM — Demo Deck</title>
+<style>
+  :root{
+    --navy:#0B2545; --navy2:#13315C; --blue:#1D6FB8; --blue2:#2E86DE;
+    --ice:#E8F0FE; --ice2:#F4F8FF; --ink:#15212B; --muted:#5C6B7B;
+    --line:#DCE4ED; --white:#FFFFFF; --good:#1E8E6A; --gold:#C98A1B;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#0a1622;font-family:Calibri,"Segoe UI",Arial,sans-serif;color:var(--ink);overflow:hidden}
+  #stage{position:absolute;top:50%;left:50%;width:1280px;height:720px;transform-origin:center center}
+  .slide{position:absolute;inset:0;width:1280px;height:720px;background:var(--white);display:none;overflow:hidden}
+  .slide.active{display:block}
+  .pad{position:absolute;inset:0;padding:58px 70px}
+  .kicker{font-size:13px;letter-spacing:3px;text-transform:uppercase;color:var(--blue2);font-weight:700}
+  .title{font-family:Cambria,Georgia,serif;font-size:36px;line-height:1.08;color:var(--navy);font-weight:700}
+  .eyebrow{display:inline-block;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--blue);margin-bottom:8px}
+  .shead{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:2px solid var(--line);padding-bottom:12px;margin-bottom:24px}
+  .snum{font-family:Cambria,serif;font-size:15px;color:var(--blue);font-weight:700}
+  .lead{font-size:17px;color:var(--muted);line-height:1.5;max-width:1040px}
+
+  /* cover */
+  .cover{background:linear-gradient(135deg,#0B2545 0%,#13315C 55%,#1D3A6B 100%);color:#fff}
+  .cover .pad{display:flex;flex-direction:column;justify-content:center}
+  .brandrow{display:flex;align-items:center;gap:16px;margin-bottom:28px}
+  .logo{width:60px;height:60px;border-radius:14px;background:linear-gradient(135deg,#2E86DE,#1D6FB8);display:flex;align-items:center;justify-content:center;font-family:Cambria,serif;font-weight:800;font-size:32px;color:#fff;box-shadow:0 10px 26px rgba(46,134,222,.35)}
+  .brandrow .nm{font-family:Cambria,serif;font-size:28px;font-weight:700}
+  .brandrow .nm small{display:block;font-family:Calibri,Arial,sans-serif;font-size:12px;letter-spacing:3px;text-transform:uppercase;color:#9FC2EE;font-weight:600}
+  .cover h1{font-size:54px;line-height:1.05;max-width:1000px;margin:6px 0 16px}
+  .cover .sub{font-size:20px;color:#CBDDF6;max-width:840px;line-height:1.5}
+  .chiprow{display:flex;gap:12px;margin-top:30px;flex-wrap:wrap}
+  .chip{border:1px solid rgba(159,194,238,.4);color:#DCE9FA;border-radius:999px;padding:8px 16px;font-size:14px;font-weight:600}
+  .cover .foot{position:absolute;left:70px;bottom:48px;font-size:13px;color:#86A6CE;letter-spacing:.5px}
+
+  /* grids */
+  .grid{display:grid;gap:16px}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g2{grid-template-columns:repeat(2,1fr)}
+  .card{background:var(--white);border:1px solid var(--line);border-radius:13px;padding:18px 18px;box-shadow:0 6px 16px rgba(11,37,69,.06)}
+  .card.tint{background:var(--ice2)}
+  .ico{width:40px;height:40px;border-radius:10px;background:var(--ice);display:flex;align-items:center;justify-content:center;margin-bottom:11px}
+  .ico svg{width:22px;height:22px;stroke:var(--blue);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+  .card h3{color:var(--navy);font-size:16.5px;margin-bottom:5px}
+  .card p{font-size:13px;color:var(--muted);line-height:1.45}
+  .card .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--blue);margin-bottom:8px}
+
+  /* spec rows */
+  .spec{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 34px}
+  .specrow{display:flex;gap:14px;align-items:flex-start}
+  .specrow .k{flex:0 0 150px;font-weight:700;color:var(--navy);font-size:14.5px}
+  .specrow .v{font-size:14px;color:var(--ink);line-height:1.45}
+  .specrow .v b{color:var(--blue)}
+
+  /* stats */
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:22px}
+  .stat{background:var(--ice2);border:1px solid var(--line);border-radius:13px;padding:20px 16px}
+  .stat .big{font-family:Cambria,serif;font-size:34px;font-weight:800;color:var(--navy);line-height:1}
+  .stat .lab{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.35}
+
+  .badges{display:flex;gap:12px;flex-wrap:wrap;margin-top:8px}
+  .badge{border:1px solid var(--line);background:var(--white);border-radius:9px;padding:9px 15px;font-weight:700;color:var(--navy);font-size:14px;box-shadow:0 4px 12px rgba(11,37,69,.05)}
+
+  /* roadmap timeline */
+  .road{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-top:6px}
+  .phase{background:var(--ice2);border:1px solid var(--line);border-radius:13px;padding:20px 18px}
+  .phase .ph{font-size:12px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:var(--blue);margin-bottom:10px}
+  .phase ul{list-style:none}
+  .phase li{position:relative;padding-left:20px;margin-bottom:9px;font-size:13.5px;color:var(--ink);line-height:1.4}
+  .phase li::before{content:"";position:absolute;left:0;top:7px;width:8px;height:8px;border-radius:3px;background:var(--blue2)}
+
+  .note{font-size:12px;color:var(--muted);margin-top:16px;font-style:italic}
+
+  /* closing */
+  .closing{background:linear-gradient(135deg,#0B2545 0%,#13315C 60%,#1D3A6B 100%);color:#fff}
+  .closing .pad{display:flex;flex-direction:column;justify-content:center}
+  .closing h1{font-size:42px;line-height:1.1;max-width:960px;margin-bottom:16px}
+  .closing .why{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 40px;margin-top:12px;max-width:1000px}
+  .closing .why div{display:flex;gap:13px;align-items:flex-start;font-size:15.5px;color:#D9E6F8;line-height:1.4}
+  .closing .why .n{flex:0 0 auto;width:28px;height:28px;border-radius:8px;background:rgba(127,178,240,.18);color:#9FC2EE;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:14px}
+
+  #hud{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:14px;z-index:50;font-family:Calibri,Arial,sans-serif}
+  #dots{display:flex;gap:7px}
+  #dots b{width:8px;height:8px;border-radius:50%;background:#3a4a5e;cursor:pointer;transition:.2s}
+  #dots b.on{background:#2E86DE;transform:scale(1.25)}
+  #counter{color:#8aa0b8;font-size:13px;font-weight:600;min-width:52px;text-align:center}
+  .navbtn{background:#16263b;color:#cfe0f2;border:1px solid #2a3c54;border-radius:8px;width:34px;height:30px;cursor:pointer;font-size:15px}
+  .navbtn:hover{background:#203450}
+  #hint{position:fixed;top:14px;right:18px;color:#6b8099;font-size:12px;z-index:50;font-family:Calibri,Arial,sans-serif}
+
+  @media print{
+    html,body{overflow:visible;background:#fff}
+    #hud,#hint{display:none}
+    #stage{position:static;transform:none!important;width:auto;height:auto}
+    .slide{display:block!important;position:relative;page-break-after:always;width:1280px;height:720px;box-shadow:none}
+    @page{size:1280px 720px;margin:0}
+  }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- 1 — COVER -->
+  <section class="slide cover active">
+    <div class="pad">
+      <div class="brandrow"><div class="logo">F</div><div class="nm">ForgeTDM<small>Test Data Platform</small></div></div>
+      <div class="kicker">Product Demo</div>
+      <h1>Enterprise Test Data Management — discover, mask, subset, synthesize, deliver</h1>
+      <div class="sub">One governed platform for safe, realistic, on-demand test data across relational and mainframe systems.</div>
+      <div class="chiprow">
+        <div class="chip">Compliant masking</div>
+        <div class="chip">Referential synthetic data</div>
+        <div class="chip">Mainframe-native</div>
+        <div class="chip">AI Copilot</div>
+      </div>
+      <div class="foot">Live demo walkthrough</div>
+    </div>
+  </section>
+
+  <!-- 2 — CAPABILITIES -->
+  <section class="slide">
+    <div class="pad">
+      <div class="shead"><div><div class="eyebrow">What it does</div><div class="title">Capabilities</div></div><div class="snum">02</div></div>
+      <div class="grid g4">
+        <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg></div><h3>PII Discovery</h3><p>Dual-signal scan of names + sampled values; classify, approve, auto-build a policy.</p></div>
+        <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/></svg></div><h3>Masking</h3><p>Deterministic, format-preserving, <b>conditional (WHERE)</b>, and <b>in-place at billion-row scale</b>.</p></div>
+        <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h10M5 17h6"/></svg></div><h3>DataScope &amp; Subsetting</h3><p>Blueprint-driven, right-sized subsets with full referential integrity and per-column overrides.</p></div>
+        <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="6" rx="1"/><rect x="3" y="14" width="18" height="6" rx="1"/></svg></div><h3>Synthetic Data</h3><p>Multi-table, FK-aware with ER view, type-safe generators; load to DB or CSV/JSON/SQL.</p></div>
+        <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/></svg></div><h3>Mainframe</h3><p>COBOL copybooks, EBCDIC &amp; COMP-3 — byte-faithful masking, Zowe delivery.</p></div>
+        <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg></div><h3>Virtualization</h3><p>Space-efficient snapshot &amp; clone — stand up masked environments fast.</p></div>
+        <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><path d="M4 12l5 5L20 6"/></svg></div><h3>Validation</h3><p>Automated leak, format, referential and domain checks prove data is safe and valid.</p></div>
+        <div class="card"><div class="ico"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H8l-4 4V5a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2z"/></svg></div><h3>AI Copilot</h3><p>Pluggable LLM assistant that reads your catalog and runs work — with approval gates.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 — USE CASES -->
+  <section class="slide">
+    <div class="pad">
+      <div class="shead"><div><div class="eyebrow">Where it's used</div><div class="title">Use cases</div></div><div class="snum">03</div></div>
+      <div class="grid g3">
+        <div class="card tint"><div class="tag">Compliance</div><h3>Safe non-production</h3><p>Remove PII from dev/test/QA with consistent, evidenced masking — GDPR, HIPAA, PCI.</p></div>
+        <div class="card tint"><div class="tag">Right-size</div><h3>Referential subsets</h3><p>Carve a small, intact slice of production by a driver + filter, FK closure preserved.</p></div>
+        <div class="card tint"><div class="tag">Greenfield</div><h3>Synthetic environments</h3><p>Generate realistic, related data for a brand-new environment — no source needed.</p></div>
+        <div class="card tint"><div class="tag">Scale</div><h3>In-place masking</h3><p>Mask huge production-clone tables where source = target, chunked and restartable.</p></div>
+        <div class="card tint"><div class="tag">Legacy</div><h3>Mainframe masking</h3><p>Mask fixed/variable EBCDIC datasets from copybooks without leaving the platform.</p></div>
+        <div class="card tint"><div class="tag">QA velocity</div><h3>On-demand &amp; defect repro</h3><p>Self-service data and compliant reproductions of production issues, fast.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 — TECHNICAL SPEC -->
+  <section class="slide">
+    <div class="pad">
+      <div class="shead"><div><div class="eyebrow">Under the hood</div><div class="title">Technical specification</div></div><div class="snum">04</div></div>
+      <div class="spec">
+        <div class="specrow"><div class="k">Platform</div><div class="v">Java 17 &middot; <b>Spring Boot 3</b> service, REST API, browser UI; Flyway-managed schema.</div></div>
+        <div class="specrow"><div class="k">Data engines</div><div class="v"><b>Postgres, Oracle, SQL Server, DB2, MySQL, H2</b> — plus mainframe files via copybook + EBCDIC codecs.</div></div>
+        <div class="specrow"><div class="k">Masking engine</div><div class="v">Deterministic <b>HMAC</b> — same input → same output, irreversible; format-preserving; conditional.</div></div>
+        <div class="specrow"><div class="k">Scale</div><div class="v">Keyset-paginated, <b>per-chunk committed</b> in-place updates via staging join; parallel workers.</div></div>
+        <div class="specrow"><div class="k">Deployment</div><div class="v">Docker / containers, <b>on-prem or in-VPC</b>; metadata in Postgres; env-driven config.</div></div>
+        <div class="specrow"><div class="k">AI integration</div><div class="v">Any <b>OpenAI-compatible</b> endpoint (cloud or local) — metadata only, never raw PII.</div></div>
+        <div class="specrow"><div class="k">Governance</div><div class="v">Full <b>audit trail</b>, human approval gates, reproducible runs, role-ready access.</div></div>
+        <div class="specrow"><div class="k">Integrity</div><div class="v">Auto FK detection, parent-first load order, type-safe generation &amp; length-aware loads.</div></div>
+      </div>
+      <div class="badges"><div class="badge">GDPR</div><div class="badge">HIPAA</div><div class="badge">PCI-DSS</div><div class="badge">REST API / CI-CD ready</div><div class="badge">On-prem / VPC</div></div>
+    </div>
+  </section>
+
+  <!-- 5 — BENEFITS -->
+  <section class="slide">
+    <div class="pad">
+      <div class="shead"><div><div class="eyebrow">Why it matters</div><div class="title">Benefits</div></div><div class="snum">05</div></div>
+      <div class="stats">
+        <div class="stat"><div class="big">Days&#8201;&rarr;&#8201;Hrs</div><div class="lab">Provisioning time, via self-service &amp; chunked delivery.</div></div>
+        <div class="stat"><div class="big">1 platform</div><div class="lab">Replaces scattered scripts across relational &amp; mainframe.</div></div>
+        <div class="stat"><div class="big">100% audit</div><div class="lab">Every masking &amp; AI action logged and explainable.</div></div>
+        <div class="stat"><div class="big">&#8595; risk</div><div class="lab">Consistent, evidenced removal of PII from non-prod.</div></div>
+      </div>
+      <div class="grid g3">
+        <div class="card"><h3>Compliance by design</h3><p>Deterministic masking and an audit trail give auditors the evidence pack on demand.</p></div>
+        <div class="card"><h3>Faster, self-service delivery</h3><p>Teams get right-sized, masked or synthetic data without DBA tickets.</p></div>
+        <div class="card"><h3>Trustworthy data</h3><p>Referential integrity, type-safety and validation mean data that actually works in test.</p></div>
+      </div>
+      <div class="note">Figures are representative value directions, quantified per environment during a pilot.</div>
+    </div>
+  </section>
+
+  <!-- 6 — FUTURE ENHANCEMENTS -->
+  <section class="slide">
+    <div class="pad">
+      <div class="shead"><div><div class="eyebrow">What's next</div><div class="title">Future enhancements</div></div><div class="snum">06</div></div>
+      <div class="road">
+        <div class="phase">
+          <div class="ph">Near term</div>
+          <ul>
+            <li>Shadow-table rebuild for in-place masking of unique-indexed columns</li>
+            <li>Richer generators (currency/code, address packs) with smart suggestions</li>
+            <li>Load-time "uncovered NOT NULL column" warnings</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <div class="ph">Mid term</div>
+          <ul>
+            <li>Agentic provisioning: conversational, end-to-end with approvals</li>
+            <li>Self-healing validation that explains &amp; proposes fixes</li>
+            <li>More connectors (NoSQL, message queues, cloud warehouses)</li>
+          </ul>
+        </div>
+        <div class="phase">
+          <div class="ph">Strategic</div>
+          <ul>
+            <li>Entity-based delivery &amp; refresh, K2View-style</li>
+            <li>Test-case-driven coverage generation</li>
+            <li>Scheduling, approvals &amp; environment lifecycle automation</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 7 — CLOSING -->
+  <section class="slide closing">
+    <div class="pad">
+      <div class="kicker" style="color:#7FB2F0">Let's see it live</div>
+      <h1>Safe, realistic, on-demand test data — from one governed platform</h1>
+      <div class="sub" style="color:#CBDDF6;max-width:900px">Relational and mainframe, masked and synthetic, AI-accelerated and compliance-ready.</div>
+      <div class="why">
+        <div><div class="n">1</div><div><b>Discover &amp; mask</b> sensitive data with deterministic, evidenced rules.</div></div>
+        <div><div class="n">2</div><div><b>Subset or synthesize</b> referentially-intact datasets on demand.</div></div>
+        <div><div class="n">3</div><div><b>Deliver</b> to any target — relational, files, or mainframe.</div></div>
+        <div><div class="n">4</div><div><b>Govern</b> every run with audit, approvals and validation.</div></div>
+      </div>
+      <div style="margin-top:34px;font-size:16px;color:#9FC2EE;font-weight:600">Next step — a scoped pilot on one application.</div>
+    </div>
+  </section>
+
+</div>
+
+<div id="hint">← → or Space · F = fullscreen · P = print/PDF</div>
+<div id="hud">
+  <button class="navbtn" onclick="go(cur-1)">‹</button>
+  <span id="counter"></span>
+  <div id="dots"></div>
+  <button class="navbtn" onclick="go(cur+1)">›</button>
+</div>
+
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  let cur=0;
+  const stage=document.getElementById('stage'), dots=document.getElementById('dots');
+  slides.forEach((_,i)=>{const b=document.createElement('b');b.onclick=()=>go(i);dots.appendChild(b);});
+  function fit(){const s=Math.min(window.innerWidth/1280,window.innerHeight/720);stage.style.transform=`translate(-50%,-50%) scale(${s})`;}
+  function go(i){cur=Math.max(0,Math.min(slides.length-1,i));slides.forEach((s,k)=>s.classList.toggle('active',k===cur));[...dots.children].forEach((d,k)=>d.classList.toggle('on',k===cur));document.getElementById('counter').textContent=(cur+1)+' / '+slides.length;}
+  window.addEventListener('resize',fit);
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){go(cur+1);e.preventDefault();}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){go(cur-1);e.preventDefault();}
+    else if(e.key==='Home'){go(0);}else if(e.key==='End'){go(slides.length-1);}
+    else if(e.key.toLowerCase()==='f'){if(!document.fullscreenElement)document.documentElement.requestFullscreen();else document.exitFullscreen();}
+    else if(e.key.toLowerCase()==='p'){window.print();}
+  });
+  fit();go(0);
+</script>
+</body>
+</html>

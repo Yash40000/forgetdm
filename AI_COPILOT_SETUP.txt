@@ -1,0 +1,66 @@
+ForgeTDM Copilot — enabling the AI assistant
+=============================================
+
+The assistant is OFF until you configure at least one provider; the rest of ForgeTDM runs
+exactly as before. You can configure several providers and pick one from the dropdown in the
+chat panel. Each is an OpenAI-compatible /chat/completions endpoint.
+
+A provider shows up in the chat picker when it has a base-url + model (+ an api-key for remote
+providers; local on-prem providers like Ollama/vLLM need no key).
+
+Privacy: only metadata, schema, IDs and tool results are sent to the model — never raw row
+values / PII. Data-changing actions (discovery, policy gen, jobs, synthetic) only run after you
+click "Run it" on the confirmation card.
+
+FREE options to test with
+-------------------------
+1) Groq — free tier, hosted, fast, supports tool calling (recommended for quick testing):
+     - Get a free key at https://console.groq.com
+     - Set:  GROQ_API_KEY=gsk_...   (optionally GROQ_MODEL=llama-3.3-70b-versatile)
+
+2) Local Ollama — free, fully on-prem (nothing leaves your network), NO API key needed:
+     - Install Ollama, then:  ollama serve   and   ollama pull llama3.2:3b   (or any model)
+     - "Local · Ollama" 🔒 appears in the picker out of the box (base-url http://localhost:11434/v1).
+       Just start Ollama and pick it. Override the model in the chat model box, or set OLLAMA_MODEL.
+
+3) Local vLLM / LM Studio / TGI — any OpenAI-compatible local server, also keyless/on-prem:
+     - Serve a model, then set VLLM_MODEL to the served model name (and VLLM_BASE_URL if not :8000).
+     - "Local · vLLM" 🔒 then appears in the picker.
+
+Paid / enterprise
+-----------------
+  OpenAI:        set FORGETDM_AI_API_KEY=sk-...   (FORGETDM_AI_MODEL=gpt-4o-mini)
+  Azure OpenAI:  set FORGETDM_AI_BASE_URL=https://<resource>.openai.azure.com/openai/deployments/<deployment>
+                 and FORGETDM_AI_API_KEY + FORGETDM_AI_MODEL
+
+Run it (local)
+--------------
+  Windows (PowerShell):
+    $env:GROQ_API_KEY="gsk_...your free key..."
+    mvn spring-boot:run
+
+  macOS/Linux:
+    export GROQ_API_KEY=gsk_...your free key...
+    mvn spring-boot:run
+
+Then hard-refresh the browser (Ctrl+F5), click the chat button (bottom-right), and if you
+configured more than one provider, choose it from the "Model" dropdown.
+
+Environment variables
+----------------------
+  OpenAI:  FORGETDM_AI_API_KEY, FORGETDM_AI_MODEL, FORGETDM_AI_BASE_URL
+  Groq:    GROQ_API_KEY, GROQ_MODEL, GROQ_BASE_URL (default https://api.groq.com/openai/v1)
+  Ollama:  OLLAMA_MODEL, OLLAMA_BASE_URL (no key needed — on-prem, local:true)
+  vLLM:    VLLM_MODEL (required to enable), VLLM_BASE_URL (no key needed)
+  Shared:  FORGETDM_AI_PROVIDER (default provider id: openai|groq|ollama|vllm),
+           FORGETDM_AI_SELF_BASE_URL (default http://localhost:8088)
+
+Docker
+------
+Set the keys in the forgetdm service env in docker-compose.yml (GROQ_API_KEY etc.).
+For local Ollama from a container, OLLAMA_BASE_URL is preset to host.docker.internal.
+
+Try
+---
+"What data sources do I have?",  "Suggest masking rules for the CUSTOMER table",
+"Mask a copy of bankdemo into bankqa using policy X".

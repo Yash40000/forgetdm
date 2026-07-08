@@ -1,0 +1,100 @@
+server:
+  port: 8088
+spring:
+  application:
+    name: forgetdm
+  datasource:
+    url: ${FORGETDM_DB_URL:jdbc:postgresql://localhost:5432/forgetdm}
+    username: ${FORGETDM_DB_USER:forgetdm}
+    password: ${FORGETDM_DB_PASS:forgetdm}
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+  flyway:
+    enabled: true
+    out-of-order: true
+forgetdm:
+  # Master secret drives deterministic masking (HMAC). Override in prod!
+  masking-secret: ${FORGETDM_MASKING_SECRET:change-me-in-production}
+  # AI assistant (ForgeTDM Copilot). Multiple selectable providers — each an OpenAI-compatible
+  # /chat/completions endpoint. A provider is shown in the chat picker only when it has a key/base-url/model.
+  # Real data values are never sent to any model — only metadata + tool results.
+  ai:
+    self-base-url: "${FORGETDM_AI_SELF_BASE_URL:http://localhost:${server.port:8088}}"
+    default-provider: ${FORGETDM_AI_PROVIDER:openai}
+    timeout-seconds: ${FORGETDM_AI_TIMEOUT:180}
+    lean-local-prompt: true
+    providers:
+      openai:
+        label: OpenAI
+        base-url: ${FORGETDM_AI_BASE_URL:https://api.openai.com/v1}
+        api-key: ${FORGETDM_AI_API_KEY:}
+        model: ${FORGETDM_AI_MODEL:gpt-4o-mini}
+      groq:
+        label: Groq (free tier)
+        base-url: ${GROQ_BASE_URL:https://api.groq.com/openai/v1}
+        api-key: ${GROQ_API_KEY:}
+        model: ${GROQ_MODEL:llama-3.3-70b-versatile}
+      ollama:
+        label: "Local · Ollama"
+        base-url: ${OLLAMA_BASE_URL:http://localhost:11434/v1}
+        api-key: ${OLLAMA_API_KEY:}
+        model: "${OLLAMA_MODEL:qwen2.5:3b}"
+        local: true
+      vllm:
+        label: "Local · vLLM"
+        base-url: ${VLLM_BASE_URL:http://localhost:8000/v1}
+        model: ${VLLM_MODEL:}
+        api-key: ${VLLM_API_KEY:}
+        local: true
+  # Maker-checker governance for real-data provisioning (MASK_COPY / SUBSET_MASK).
+  governance:
+    # prod-only (default) = approval required when the SOURCE data source is tagged PROD; always | never
+    require-provision-approval: ${FORGETDM_GOVERNANCE_REQUIRE_APPROVAL:prod-only}
+    # additionally require approval when the DataScope has approved-PII columns with no masking
+    require-approval-on-unmasked-pii: ${FORGETDM_GOVERNANCE_APPROVAL_ON_UNMASKED_PII:false}
+    # refuse outright a PROD-source job with no masking policy anywhere (job default or per-table)
+    block-unmasked-prod-copy: ${FORGETDM_GOVERNANCE_BLOCK_UNMASKED_PROD:true}
+  provisioning:
+    batch-size: 5000
+    worker-threads: 4
+  discovery:
+    sample-rows: 100
+  virtualization:
+    zfs:
+      # Delphix-style engine host: a Linux box with OpenZFS + Docker, reached over SSH.
+      # Leave host empty to run zfs/docker locally (ForgeTDM running ON the engine host).
+      host: ${FORGETDM_ZFS_HOST:}
+      ssh-user: ${FORGETDM_ZFS_SSH_USER:root}
+      ssh-port: ${FORGETDM_ZFS_SSH_PORT:22}
+      # parent dataset for everything ForgeTDM manages (must exist: zfs create -p <pool>)
+      pool: ${FORGETDM_ZFS_POOL:tank/forgetdm}
+      # how the engine host reaches a source registered as localhost on this machine
+      localhost-alias: ${FORGETDM_ZFS_LOCALHOST_ALIAS:}
+      # SQL Server: path on the source host where BACKUP DATABASE writes, and where engine mounts it
+      mssql-source-backup-dir: ${FORGETDM_ZFS_MSSQL_SOURCE_BACKUP_DIR:/var/opt/mssql/backup}
+      mssql-backup-mount: ${FORGETDM_ZFS_MSSQL_BACKUP_MOUNT:}
+      mssql-image: ${FORGETDM_ZFS_MSSQL_IMAGE:mcr.microsoft.com/mssql/server:2022-latest}
+      # DB2 LUW / DB2 z/OS: VDB container image and db2inst1 password
+      db2-image: ${FORGETDM_ZFS_DB2_IMAGE:icr.io/db2_community/db2:11.5.9.0}
+      db2-instance-password: ${FORGETDM_ZFS_DB2_INSTANCE_PASSWORD:Forgetdm!Str0ng1}
+      # Oracle: VDB container image and SYS/SYSTEM password
+      oracle-image: ${FORGETDM_ZFS_ORACLE_IMAGE:gvenzl/oracle-free:23-slim}
+      oracle-sys-password: ${FORGETDM_ZFS_ORACLE_SYS_PASSWORD:Forgetdm1Oracle}
+      use-sudo: ${FORGETDM_ZFS_USE_SUDO:false}
+      docker-network: ${FORGETDM_ZFS_DOCKER_NETWORK:}
+---
+# Quick-start profile: zero-install demo with embedded H2 config DB
+spring:
+  config:
+    activate:
+      on-profile: demo
+  datasource:
+    url: jdbc:h2:mem:forgetdm;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DEFAULT_NULL_ORDERING=HIGH
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  flyway:
+    enabled: true
+    out-of-order: true
