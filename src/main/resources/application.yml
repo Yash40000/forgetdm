@@ -17,6 +17,8 @@ spring:
 forgetdm:
   # Master secret drives deterministic masking (HMAC). Override in prod!
   masking-secret: ${FORGETDM_MASKING_SECRET:change-me-in-production}
+  # Master secret for Micro-DB capsule payload encryption (AES-256-GCM, per-capsule derived keys). Override in prod!
+  capsule-secret: ${FORGETDM_CAPSULE_SECRET:${FORGETDM_MASKING_SECRET:change-me-in-production}}
   # AI assistant (ForgeTDM Copilot). Multiple selectable providers — each an OpenAI-compatible
   # /chat/completions endpoint. A provider is shown in the chat picker only when it has a key/base-url/model.
   # Real data values are never sent to any model — only metadata + tool results.
@@ -56,6 +58,8 @@ forgetdm:
     require-approval-on-unmasked-pii: ${FORGETDM_GOVERNANCE_APPROVAL_ON_UNMASKED_PII:false}
     # refuse outright a PROD-source job with no masking policy anywhere (job default or per-table)
     block-unmasked-prod-copy: ${FORGETDM_GOVERNANCE_BLOCK_UNMASKED_PROD:true}
+    # require an attached Micro-DB capsule (with a valid access grant) on Business Entity execution plans
+    require-capsule-on-execution-plans: ${FORGETDM_GOVERNANCE_REQUIRE_CAPSULE_ON_PLANS:false}
   provisioning:
     batch-size: 5000
     worker-threads: 4

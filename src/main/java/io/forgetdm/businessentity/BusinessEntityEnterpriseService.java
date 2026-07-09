@@ -13,6 +13,7 @@ import io.forgetdm.provision.ProvisioningService;
 import io.forgetdm.provision.SyntheticGenService;
 import io.forgetdm.provision.loader.NativeLoadRegistry;
 import io.forgetdm.provision.loader.NativeLoadStrategy;
+import io.forgetdm.config.ForgeProps;
 import io.forgetdm.security.AccessContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -39,6 +40,8 @@ public class BusinessEntityEnterpriseService {
     private final DataSetDefinitionRepository datasets;
     private final SyntheticGenService synthetic;
     private final NativeLoadRegistry loaders;
+    private final BusinessEntityCapsuleService capsules;
+    private final ForgeProps props;
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
 
     private record DataScopeFanOutSlice(String sliceKey,
@@ -56,7 +59,9 @@ public class BusinessEntityEnterpriseService {
                                            ProvisioningService provisioning,
                                            DataSetDefinitionRepository datasets,
                                            SyntheticGenService synthetic,
-                                           NativeLoadRegistry loaders) {
+                                           NativeLoadRegistry loaders,
+                                           BusinessEntityCapsuleService capsules,
+                                           ForgeProps props) {
         this.jdbc = jdbc;
         this.entities = entities;
         this.dataSources = dataSources;
@@ -65,6 +70,8 @@ public class BusinessEntityEnterpriseService {
         this.datasets = datasets;
         this.synthetic = synthetic;
         this.loaders = loaders;
+        this.capsules = capsules;
+        this.props = props;
     }
 
     public record IssuePackageRequest(String issueKey, String title, String severity, String sourceEnvironment,
@@ -77,7 +84,7 @@ public class BusinessEntityEnterpriseService {
     public record DecisionRequest(String reviewer, String comments, String eSignature) {}
     public record ExecutionPlanRequest(String name, String operationType, String sourceEnvironment,
                                        String targetEnvironment, String mode, Long issuePackageId,
-                                       Long lookalikeProfileId) {}
+                                       Long lookalikeProfileId, Long capsuleInstanceId) {}
     public record OperationalPackageRequest(String name, Long executionPlanId, String packageType,
                                             String targetEnvironment) {}
     public record PackageVersionRequest(String retentionPolicy, Integer retentionDays, String changeNote) {}
@@ -304,6 +311,16 @@ public class BusinessEntityEnterpriseService {
         validation.put("requiresApproval", approved == null);
         validation.put("approvedRequestId", approved);
         validation.put("preflightChecks", List.of("catalog synced", "reservation conflict check", "PII policy coverage", "target loader availability"));
+        // Micro-DB governance gate: a plan can (or, when configured, MUST) attach an ACTIVE capsule
+        // the requester holds a valid access grant on. Verified here, recorded as plan evidence.
+        Long capsuleInstanceId = request == null ? null : request.capsuleInstanceId();
+        if (capsuleInstanceId == null && props.getGovernance().isRequireCapsuleOnExecutionPlans()) {
+            throw ApiException.bad("Governance requires a Micro-DB capsule on execution plans: materialize a capsule "
+                    + "for this entity and pass capsuleInstanceId.");
+        }
+        if (capsuleInstanceId != null) {
+            validation.put("capsuleEvidence", capsules.planAttachmentEvidence(entityId, capsuleInstanceId));
+        }
         long id = insert("""
                 INSERT INTO be_entity_execution_plans(entity_id, name, operation_type, source_environment,
                     target_environment, mode, status, issue_package_id, lookalike_profile_id, approved_request_id,

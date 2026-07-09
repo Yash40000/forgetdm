@@ -382,7 +382,8 @@ let businessEntitySnapshots = [], businessEntityReservations = [], businessEntit
 let businessEntitySyncPolicies = [], businessEntitySyncRun = null, selectedBusinessEntitySyncPolicyId = null;
 let businessEntityEnterprise = { issuePackages: [], lookalikeProfiles: [], catalogAssets: [], governanceRequests: [], executionPlans: [], operationalPackages: [], packageVersions: [], packagePromotions: [], executionRuns: [], loaderStrategies: [] };
 let businessEntityFlows = [], businessEntityFlowDraft = null, selectedBusinessEntityFlowId = null, selectedBusinessEntityFlowNodeKey = null, businessEntityFlowDebugRun = null, businessEntityFlowValidation = null;
-let businessEntityActiveTab = localStorage.getItem('forgetdm.be.tab') || 'model';
+let businessEntityCapsules = [], selectedBusinessEntityCapsuleId = null, businessEntityCapsuleDetail = null;
+let businessEntityActiveTab = localStorage.getItem('forgetdm.be.tab') || 'overview';
 let adPiiCoverage = null, adDrift = null;   // pre-provision guardrails: PII masking coverage + schema drift
 let adDirty = false;   // staged-but-unsaved DataScope edits (profiles grid, custom PKs) — guards blueprint switches
 let relCanvasColumns = {};        // tableName → [colName, ...]
@@ -5658,19 +5659,24 @@ function renderBusinessEntities() {
 async function selectBusinessEntity(id, showToast = false) {
   selectedBusinessEntityId = id;
   try {
-    [businessEntityDetail, businessEntitySnapshots, businessEntityReservations, businessEntityEnterprise, businessEntityFlows, businessEntityIdentities, businessEntitySyncPolicies] = await Promise.all([
+    [businessEntityDetail, businessEntitySnapshots, businessEntityReservations, businessEntityEnterprise, businessEntityFlows, businessEntityIdentities, businessEntitySyncPolicies, businessEntityCapsules] = await Promise.all([
       api.get('/api/business-entities/' + id),
       api.get('/api/business-entities/' + id + '/snapshots'),
       api.get('/api/business-entities/' + id + '/reservations'),
       api.get('/api/business-entities/' + id + '/enterprise'),
       api.get('/api/business-entities/' + id + '/flows'),
       api.get('/api/business-entities/' + id + '/identities'),
-      api.get('/api/business-entities/' + id + '/sync-policies')
+      api.get('/api/business-entities/' + id + '/sync-policies'),
+      api.get('/api/business-entities/' + id + '/capsules').catch(() => [])
     ]);
     selectedBusinessEntitySyncPolicyId = businessEntitySyncPolicies.some(p => String(p.id) === String(selectedBusinessEntitySyncPolicyId))
       ? selectedBusinessEntitySyncPolicyId
       : (businessEntitySyncPolicies[0]?.id || null);
     businessEntitySyncRun = null;
+    selectedBusinessEntityCapsuleId = businessEntityCapsules.some(c => String(c.id) === String(selectedBusinessEntityCapsuleId))
+      ? selectedBusinessEntityCapsuleId
+      : null;
+    businessEntityCapsuleDetail = null;
     await hydrateBusinessEntityFlowDraft();
     try { virtualDbs = await api.get('/api/virtualization/vdbs'); } catch {}
     renderBusinessEntities();
@@ -5733,6 +5739,9 @@ function resetBusinessEntityForm(updateList = true) {
   selectedBusinessEntityFlowNodeKey = null;
   businessEntityFlowDebugRun = null;
   businessEntityFlowValidation = null;
+  businessEntityCapsules = [];
+  selectedBusinessEntityCapsuleId = null;
+  businessEntityCapsuleDetail = null;
   if (updateList) renderBusinessEntities();
   renderBusinessEntityDetail();
 }
@@ -5758,6 +5767,7 @@ function renderBusinessEntityDetail() {
   const members = detail.members || [];
   if (!e.id && businessEntityActiveTab !== 'model') businessEntityActiveTab = 'model';
   el.innerHTML = `
+    <datalist id="be-dl"></datalist>
     <div class="be-editor-head">
       <div>
         <h3>${esc(e.name || (e.id ? 'Business Entity' : 'New Business Entity'))}</h3>
@@ -5769,7 +5779,126 @@ function renderBusinessEntityDetail() {
       </div>
     </div>
     ${renderBusinessEntityTabs(e, members)}
+    ${renderBusinessEntityStageStrip(e)}
     <div class="be-tab-pane">${renderBusinessEntityActivePane(e, members)}</div>`;
+}
+
+/* ------- Business Entity guided journey ------- */
+
+const BE_STAGES = [
+  { id: 'model',      phase: '1 · Define',  label: 'Model',          goal: 'Describe the business object: which tables, in which systems, joined by which keys.' },
+  { id: 'identity',   phase: '1 · Define',  label: 'Identity',       goal: 'Map one canonical key (e.g. CUST-10025) to every application’s own identifier.' },
+  { id: 'freshness',  phase: '2 · Trust',   label: 'Freshness',      goal: 'Prove each source slice is current enough to use, with watermarks and SLAs.' },
+  { id: 'time',       phase: '2 · Trust',   label: 'Time & Reserve', goal: 'Bookmark points in time and reserve entities so test teams never collide.' },
+  { id: 'microdb',    phase: '2 · Trust',   label: 'Micro-DB',       goal: 'Keep each customer/account as a governed, encrypted, reusable capsule.' },
+  { id: 'data',       phase: '3 · Deliver', label: 'Build Data',     goal: 'Recreate production issues or plan privacy-safe look-alike data.' },
+  { id: 'flow',       phase: '3 · Deliver', label: 'Flow Studio',    goal: 'Draw the delivery pipeline visually and dry-run it step by step.' },
+  { id: 'run',        phase: '3 · Deliver', label: 'Run & Packages', goal: 'Execute entity-level plans and export scheduler-ready packages.' },
+  { id: 'governance', phase: '4 · Govern',  label: 'Governance',     goal: 'Catalog the entity and enforce maker-checker approval before releases.' },
+  { id: 'evidence',   phase: '4 · Govern',  label: 'Evidence',       goal: 'Audit trail: every run, loader decision, version, and promotion.' }
+];
+
+/** Live state per stage: done = configured/used, count = things in it, attention = needs action. */
+function beStageStates() {
+  const detail = businessEntityDetail || {};
+  const e = detail.entity || {};
+  const members = detail.members || [];
+  const ent = businessEntityEnterprise || {};
+  const pendingGov = (ent.governanceRequests || []).filter(r => r.status === 'PENDING').length;
+  const activeRes = (businessEntityReservations || []).filter(r => r.status === 'ACTIVE').length;
+  return {
+    model:      { done: !!(e.id && members.length && e.businessKeyColumns), count: members.length, hint: members.length ? `${members.length} table(s)` : 'start here' },
+    identity:   { done: businessEntityIdentities.length > 0, count: businessEntityIdentities.length, hint: businessEntityIdentities.length ? `${businessEntityIdentities.length} crosswalk(s)` : 'optional' },
+    freshness:  { done: businessEntitySyncPolicies.length > 0, count: businessEntitySyncPolicies.length, hint: businessEntitySyncPolicies.length ? `${businessEntitySyncPolicies.length} polic${businessEntitySyncPolicies.length === 1 ? 'y' : 'ies'}` : 'recommended' },
+    time:       { done: businessEntitySnapshots.length > 0 || activeRes > 0, count: businessEntitySnapshots.length + activeRes, hint: `${businessEntitySnapshots.length} snap · ${activeRes} reserved` },
+    microdb:    { done: businessEntityCapsules.length > 0, count: businessEntityCapsules.length, hint: businessEntityCapsules.length ? `${businessEntityCapsules.length} capsule(s)` : 'reusable entity store' },
+    data:       { done: (ent.issuePackages || []).length + (ent.lookalikeProfiles || []).length > 0, count: (ent.issuePackages || []).length + (ent.lookalikeProfiles || []).length, hint: 'issues & look-alikes' },
+    flow:       { done: businessEntityFlows.length > 0, count: businessEntityFlows.length, hint: businessEntityFlows.length ? `${businessEntityFlows.length} flow(s)` : 'visual pipeline' },
+    run:        { done: (ent.executionPlans || []).length > 0, count: (ent.executionPlans || []).length, hint: `${(ent.executionPlans || []).length} plan(s)` },
+    governance: { done: (ent.governanceRequests || []).length > 0 && !pendingGov, count: (ent.governanceRequests || []).length, attention: pendingGov, hint: pendingGov ? `${pendingGov} pending approval` : 'maker-checker' },
+    evidence:   { done: (ent.executionRuns || []).length > 0, count: (ent.executionRuns || []).length, hint: `${(ent.executionRuns || []).length} run(s)` }
+  };
+}
+
+function beNextStage() {
+  const states = beStageStates();
+  return BE_STAGES.find(s => !states[s.id]?.done) || null;
+}
+
+function renderBusinessEntityStageStrip(e) {
+  if (!e.id || businessEntityActiveTab === 'overview') return '';
+  const idx = BE_STAGES.findIndex(s => s.id === businessEntityActiveTab);
+  if (idx < 0) return '';
+  const stage = BE_STAGES[idx];
+  const prev = BE_STAGES[idx - 1], next = BE_STAGES[idx + 1];
+  return `<div class="be-stage-strip">
+    <button class="ghost small" onclick="setBusinessEntityTab('overview')">⌂ Overview</button>
+    <span class="be-stage-pos">Step ${idx + 1} of ${BE_STAGES.length}</span>
+    <span class="be-stage-goal"><b>${esc(stage.label)}</b> — ${esc(stage.goal)}</span>
+    <span class="be-stage-nav">
+      ${prev ? `<button class="ghost small" onclick="setBusinessEntityTab('${prev.id}')">← ${esc(prev.label)}</button>` : ''}
+      ${next ? `<button class="ghost small" onclick="setBusinessEntityTab('${next.id}')">${esc(next.label)} →</button>` : ''}
+    </span>
+  </div>`;
+}
+
+function renderBusinessEntityOverviewPane(e, members) {
+  const states = beStageStates();
+  const next = beNextStage();
+  const phases = [];
+  for (const s of BE_STAGES) {
+    let ph = phases[phases.length - 1];
+    if (!ph || ph.name !== s.phase) { ph = { name: s.phase, stages: [] }; phases.push(ph); }
+    ph.stages.push(s);
+  }
+  const phaseBlocks = phases.map((ph, pi) => `
+    <div class="be-journey-phase">
+      <div class="be-journey-phase-name">${esc(ph.name)}</div>
+      <div class="be-journey-stages">
+        ${ph.stages.map(s => {
+          const st = states[s.id] || {};
+          const cls = st.attention ? 'attention' : (st.done ? 'done' : (next && next.id === s.id ? 'next' : ''));
+          const badge = st.attention ? `<span class="pill warn">${st.attention} pending</span>`
+            : st.done ? '<span class="be-journey-check">✓</span>'
+            : (next && next.id === s.id ? '<span class="pill info">next step</span>' : '');
+          return `<button type="button" class="be-journey-stage ${cls}" onclick="setBusinessEntityTab('${s.id}')">
+            <div class="be-journey-stage-head"><b>${esc(s.label)}</b>${badge}</div>
+            <span>${esc(s.goal)}</span>
+            <em>${esc(st.hint || '')}</em>
+          </button>`;
+        }).join('<div class="be-journey-arrow">→</div>')}
+      </div>
+    </div>`).join('<div class="be-journey-phase-arrow">→</div>');
+  const rootKey = e.businessKeyColumns || 'not set yet';
+  return `<div class="be-ops">
+    <div class="be-test-card">
+      <b>What this page achieves</b>
+      <span>One <b>${esc(e.name || 'business object')}</b> — for example a single customer with all their accounts, cards, and payments across every application — becomes a governed unit you can keep fresh, reserve for a test team, capture as a masked reusable capsule, deliver to lower environments, and prove to an auditor. Work through the phases below left to right; each card is clickable.</span>
+    </div>
+    <div class="be-journey">${phaseBlocks}</div>
+    ${next ? `<div class="be-next-step">
+      <b>Recommended next step: ${esc(next.label)}</b>
+      <span>${esc(next.goal)}</span>
+      <button class="small" onclick="setBusinessEntityTab('${next.id}')">Go to ${esc(next.label)}</button>
+    </div>` : `<div class="be-next-step done"><b>All stages have activity.</b><span>Use Evidence to review the audit trail, or Governance to approve pending requests.</span></div>`}
+    <div class="be-mini-grid">
+      <div class="be-op-card">
+        <h3>At a glance</h3>
+        <div class="be-kv">
+          <span class="be-kv-item"><b>Root table</b>${esc(e.rootTable || '—')}</span>
+          <span class="be-kv-item"><b>Business key</b>${esc(rootKey)}</span>
+          <span class="be-kv-item"><b>Member tables</b>${members.length}</span>
+          <span class="be-kv-item"><b>Systems</b>${new Set(members.map(m => m.dataSourceId).filter(Boolean)).size}</span>
+          <span class="be-kv-item"><b>Capsules</b>${businessEntityCapsules.length}</span>
+          <span class="be-kv-item"><b>Active reservations</b>${(businessEntityReservations || []).filter(r => r.status === 'ACTIVE').length}</span>
+        </div>
+      </div>
+      <div class="be-op-card">
+        <h3>How the pieces fit</h3>
+        <span class="sub tight">You <b>Model</b> the entity once. <b>Identity</b> lets any system’s key find it. <b>Freshness</b> tells you the sources are current. <b>Time & Reserve</b> and <b>Micro-DB</b> make single entities safe to hand out. <b>Build Data / Flow / Run</b> deliver masked or synthetic data to test environments. <b>Governance</b> approves it and <b>Evidence</b> proves it happened.</span>
+      </div>
+    </div>
+  </div>`;
 }
 
 function businessEntitySubtitle(e, members) {
@@ -5781,33 +5910,35 @@ function businessEntitySubtitle(e, members) {
 }
 
 function renderBusinessEntityTabs(e, members) {
-  const ent = businessEntityEnterprise || {};
-  const tabs = [
-    ['model', 'Model', `${members.length} table${members.length === 1 ? '' : 's'}`],
-    ['identity', 'Identity', `${businessEntityIdentities.length} key${businessEntityIdentities.length === 1 ? '' : 's'}`],
-    ['freshness', 'Freshness', `${businessEntitySyncPolicies.length} polic${businessEntitySyncPolicies.length === 1 ? 'y' : 'ies'}`],
-    ['time', 'Time & Reserve', `${businessEntitySnapshots.length} snap / ${businessEntityReservations.filter(r => r.status === 'ACTIVE').length} active`],
-    ['data', 'Build Data', `${(ent.issuePackages || []).length + (ent.lookalikeProfiles || []).length} item${((ent.issuePackages || []).length + (ent.lookalikeProfiles || []).length) === 1 ? '' : 's'}`],
-    ['governance', 'Governance', `${(ent.governanceRequests || []).filter(r => r.status === 'PENDING').length} pending`],
-    ['flow', 'Flow Studio', `${businessEntityFlows.length || (businessEntityFlowDraft ? 1 : 0)} flow${(businessEntityFlows.length || (businessEntityFlowDraft ? 1 : 0)) === 1 ? '' : 's'}`],
-    ['run', 'Run & Packages', `${(ent.executionPlans || []).length} plan${(ent.executionPlans || []).length === 1 ? '' : 's'}`],
-    ['evidence', 'Evidence', `${(ent.executionRuns || []).length} run${(ent.executionRuns || []).length === 1 ? '' : 's'}`]
-  ];
+  const states = beStageStates();
   const locked = !e.id;
-  return `<div class="be-tabs">${tabs.map(([id, label, meta]) => {
+  const tabBtn = (id, label, meta, cls = '') => {
     const disabled = locked && id !== 'model';
-    return `<button type="button" class="be-tab ${businessEntityActiveTab === id ? 'active' : ''}" ${disabled ? 'disabled' : `onclick="setBusinessEntityTab('${id}')"`}>
+    return `<button type="button" class="be-tab ${cls} ${businessEntityActiveTab === id ? 'active' : ''}" ${disabled ? 'disabled' : `onclick="setBusinessEntityTab('${id}')"`}>
       <b>${esc(label)}</b><span>${esc(disabled ? 'save entity first' : meta)}</span>
     </button>`;
-  }).join('')}</div>`;
+  };
+  const groups = new Map();
+  for (const s of BE_STAGES) {
+    if (!groups.has(s.phase)) groups.set(s.phase, []);
+    const st = states[s.id] || {};
+    const mark = st.attention ? '! ' : (st.done ? '✓ ' : '');
+    groups.get(s.phase).push(tabBtn(s.id, mark + s.label, st.hint || '', st.attention ? 'attention' : (st.done ? 'done' : '')));
+  }
+  return `<div class="be-tabs grouped">
+    ${tabBtn('overview', 'Overview', 'journey map', 'overview-tab')}
+    ${[...groups.entries()].map(([phase, btns]) => `<div class="be-tab-group"><em>${esc(phase)}</em><div>${btns.join('')}</div></div>`).join('')}
+  </div>`;
 }
 
 function renderBusinessEntityActivePane(e, members) {
   if (!e.id && businessEntityActiveTab !== 'model') return renderBusinessEntityModelPane(e, members);
   switch (businessEntityActiveTab) {
+    case 'overview': return renderBusinessEntityOverviewPane(e, members);
     case 'identity': return renderBusinessEntityIdentityPane();
     case 'freshness': return renderBusinessEntityFreshnessPane();
     case 'time': return renderBusinessEntityTimePane(e);
+    case 'microdb': return renderBusinessEntityMicrodbPane();
     case 'data': return renderBusinessEntityDataPane();
     case 'governance': return renderBusinessEntityGovernancePane();
     case 'flow': return renderBusinessEntityFlowPane();
@@ -5821,8 +5952,8 @@ function renderBusinessEntityActivePane(e, members) {
 function renderBusinessEntityModelPane(e, members) {
   return `
     <div class="be-test-card">
-      <b>What to test here</b>
-      <span>Start from a DataScope blueprint when you already know the tables. Use New blank when you want to manually define a business object across systems.</span>
+      <b>Define the business object</b>
+      <span>Tell ForgeTDM what a "${esc(e.name || 'Customer')}" is made of: the root table that owns the business key, plus every member table across your systems that belongs to it. Everything else on this page — freshness, reservations, capsules, delivery — is built from this model. Tip: start from a DataScope blueprint if the tables are already mapped there; fields below suggest real tables and columns from your connected sources when you focus them.</span>
     </div>
     <div class="be-form-grid">
       <div><label>Name</label><input id="be-name" value="${esc(e.name || '')}" placeholder="Customer 360"></div>
@@ -5832,8 +5963,8 @@ function renderBusinessEntityModelPane(e, members) {
       </select></div>
       <div><label>Owner</label><input id="be-owner" value="${esc(e.ownerUsername || '')}" placeholder="current user"></div>
       <div><label>Primary DataScope</label><select id="be-primary-dataset">${beDatasetOptions(e.primaryDatasetId, 'No primary blueprint')}</select></div>
-      <div><label>Root table</label><input id="be-root" value="${esc(e.rootTable || '')}" placeholder="customers"></div>
-      <div class="grow"><label>Business key columns</label><input id="be-key-cols" value="${esc(e.businessKeyColumns || '')}" placeholder="customer_id or region,customer_no"></div>
+      <div><label>Root table</label><input id="be-root" value="${esc(e.rootTable || '')}" placeholder="customers" list="be-dl" onfocus="beSuggestRootTable(this)"></div>
+      <div class="grow"><label>Business key columns</label><input id="be-key-cols" value="${esc(e.businessKeyColumns || '')}" placeholder="customer_id or region,customer_no" list="be-dl" onfocus="beSuggestRootKeyColumns(this)"></div>
       <div class="grow"><label>Description</label><input id="be-desc" value="${esc(e.description || '')}" placeholder="What this business entity represents"></div>
     </div>
     <div class="be-members-head">
@@ -5851,8 +5982,8 @@ function renderBusinessEntityIdentityPane() {
   const linkRows = members.length ? members.slice(0, 4) : [{ logicalRole: 'customer', tableName: businessEntityDetail?.entity?.rootTable || 'customers', keyColumns: businessEntityDetail?.entity?.businessKeyColumns || 'customer_id' }];
   return `<div class="be-ops">
     <div class="be-test-card">
-      <b>Cross-application identity crosswalk</b>
-      <span>Store the real mapping from one canonical business key to DB2, Oracle, CRM, and other application identifiers. Resolve from any system key back to the full Business Entity identity.</span>
+      <b>One customer, every system's ID</b>
+      <span>The same customer is "10025" in DB2, "C-9981" in the CRM, and a card ref in Oracle. Store that mapping once here, and anyone (or any tool) holding ANY of those keys can resolve back to the full business entity. This powers cross-system capture, subsetting, and issue recreation.</span>
     </div>
     <div class="be-op-card">
       <div class="be-members-head">
@@ -5951,8 +6082,8 @@ function renderBusinessEntityFreshnessPane() {
   const policy = currentBusinessEntitySyncPolicy();
   return `<div class="be-ops">
     <div class="be-test-card">
-      <b>Freshness and source sync policy</b>
-      <span>Define how current each application slice must be. ForgeTDM can read source watermarks directly through JDBC, or accept heartbeat watermarks from CDC, file, mainframe, or scheduler jobs.</span>
+      <b>Can I trust this data today?</b>
+      <span>Answer that question automatically: set how current each source table must be (SLA), point at a watermark column like updated_at, and ForgeTDM checks it — by polling JDBC directly, on a schedule, or from CDC heartbeats. Stale sources are flagged here, on capsule watermarks, and before runs.</span>
     </div>
     <div class="be-op-card">
       <div class="be-members-head">
@@ -6036,9 +6167,9 @@ function renderBusinessEntitySyncMemberInput(m, idx) {
     <div><label>System</label><input class="be-sync-system" value="${esc(m.systemName || '')}" placeholder="Core DB2 / Cards Oracle"></div>
     <div><label>Source DB</label><select class="be-sync-source">${beDataSourceOptions(m.dataSourceId)}</select></div>
     <div><label>Schema</label><input class="be-sync-schema" value="${esc(m.schemaName || '')}" placeholder="optional"></div>
-    <div><label>Table</label><input class="be-sync-table" value="${esc(m.tableName || '')}" placeholder="customers"></div>
-    <div><label>Keys</label><input class="be-sync-keys" value="${esc(m.keyColumns || '')}" placeholder="customer_id"></div>
-    <div><label>Watermark</label><input class="be-sync-watermark" value="${esc(m.watermarkColumn || '')}" placeholder="updated_at"></div>
+    <div><label>Table</label><input class="be-sync-table" value="${esc(m.tableName || '')}" placeholder="customers" list="be-dl" onfocus="beSuggestSyncTable(this)"></div>
+    <div><label>Keys</label><input class="be-sync-keys" value="${esc(m.keyColumns || '')}" placeholder="customer_id" list="be-dl" onfocus="beSuggestSyncColumns(this)"></div>
+    <div><label>Watermark</label><input class="be-sync-watermark" value="${esc(m.watermarkColumn || '')}" placeholder="updated_at" list="be-dl" onfocus="beSuggestSyncColumns(this)"></div>
     <div><label>SLA seconds</label><input class="be-sync-member-lag" type="number" min="1" value="${esc(m.maxLagSeconds || '')}" placeholder="policy default"></div>
     <div><label>Mode</label><select class="be-sync-member-mode">${['POLLING','REALTIME','SCHEDULED','ON_DEMAND','HEARTBEAT'].map(s => `<option value="${s}"${(m.syncMode || 'POLLING') === s ? ' selected' : ''}>${s}</option>`).join('')}</select></div>
     <div class="grow"><label>Filter</label><input class="be-sync-filter" value="${esc(m.queryFilter || '')}" placeholder="region = 'US'"></div>
@@ -6097,9 +6228,9 @@ function renderBusinessEntityMembers(members) {
         <input class="be-m-role" value="${esc(m.logicalRole || '')}" placeholder="customer">
         <select class="be-m-source">${beDataSourceOptions(m.dataSourceId)}</select>
         <input class="be-m-schema" value="${esc(m.schemaName || '')}" placeholder="schema">
-        <input class="be-m-table" value="${esc(m.tableName || '')}" placeholder="table">
-        <input class="be-m-keys" value="${esc(m.keyColumns || '')}" placeholder="id or key1,key2">
-        <input class="be-m-join" value="${esc(m.joinToRole || '')}" placeholder="parent role">
+        <input class="be-m-table" value="${esc(m.tableName || '')}" placeholder="table" list="be-dl" onfocus="beSuggestMemberTable(this)">
+        <input class="be-m-keys" value="${esc(m.keyColumns || '')}" placeholder="id or key1,key2" list="be-dl" onfocus="beSuggestMemberColumns(this)">
+        <input class="be-m-join" value="${esc(m.joinToRole || '')}" placeholder="parent role" list="be-dl" onfocus="beSuggestMemberRoles(this)">
         <span class="be-member-use">
           <label class="check tight"><input class="be-m-subset" type="checkbox" ${m.includeInSubset === false ? '' : 'checked'}>Subset</label>
           <label class="check tight"><input class="be-m-synth" type="checkbox" ${m.includeInSynthetic === false ? '' : 'checked'}>Synthetic</label>
@@ -6108,7 +6239,9 @@ function renderBusinessEntityMembers(members) {
         <div class="be-member-extra">
           <input class="be-m-alias" value="${esc(m.tableAlias || '')}" placeholder="Target/alias table">
           <select class="be-m-dataset">${beDatasetOptions(m.datasetId, 'No blueprint')}</select>
-          <textarea class="be-m-rel" placeholder="Relationship evidence JSON">${esc(m.relationshipJson || '')}</textarea>
+          <details class="be-advanced"${(m.relationshipJson || '').trim() ? ' open' : ''}><summary>Advanced: relationship evidence (JSON, optional)</summary>
+            <textarea class="be-m-rel" placeholder='e.g. {"fk":"orders.customer_id -> customers.id"}'>${esc(m.relationshipJson || '')}</textarea>
+          </details>
         </div>
       </div>`).join('')}
     </div>`;
@@ -6117,8 +6250,8 @@ function renderBusinessEntityMembers(members) {
 function renderBusinessEntityTimePane(entity) {
   return `<div class="be-ops">
     <div class="be-test-card">
-      <b>How to test this tab</b>
-      <span>Create an Evidence-only snapshot first. Then create a short reservation with count 1 and release it. Physical snapshot rollback needs Virtualization snapshots to exist.</span>
+      <b>Bookmark it, and stop test teams colliding</b>
+      <span>Snapshots bookmark the entity at a point in time so you can compare or roll back later (Physical mode rolls back real VDBs via Virtualization). Reservations hand a whole business object — the customer AND all their related rows — to one team with a TTL, so two teams never mutate the same test customer. Reserving can also auto-materialize a Micro-DB capsule.</span>
     </div>
     <div class="be-op-card">
       <div class="be-members-head">
@@ -6147,6 +6280,7 @@ function renderBusinessEntityTimePane(entity) {
         <div><label>Environment</label><input id="be-res-env" placeholder="UAT"></div>
         <div class="grow"><label>Criteria</label><input id="be-res-criteria" placeholder="region = 'US'"></div>
         <div class="grow"><label>Purpose</label><input id="be-res-purpose" placeholder="Test cycle / defect / team"></div>
+        <div><label>Micro-DB capsule</label><select id="be-res-capsule"><option value="">Don't materialize</option>${(policiesList || []).map(p => `<option value="${p.id}">Materialize masked (${esc(p.name)})</option>`).join('')}<option value="0">Materialize (row-count pointer only)</option></select></div>
         <button onclick="createBusinessEntityReservation()">Reserve entity</button>
       </div>
       <div id="be-reservation-list">${renderBusinessEntityReservations()}</div>
@@ -6154,12 +6288,156 @@ function renderBusinessEntityTimePane(entity) {
   </div>`;
 }
 
+function renderBusinessEntityMicrodbPane() {
+  const rows = businessEntityCapsules || [];
+  return `<div class="be-ops">
+    <div class="be-test-card">
+      <b>Every customer as its own governed micro-database</b>
+      <span>Pick one real business key (one customer, one account) and ForgeTDM captures that entity's rows from every member table into a capsule: versioned and restorable, encrypted at rest with its own key, freshness-watermarked, and readable only by people you grant access to. Raw PII is never stored — payloads are masked (pick a policy) or kept as row-count pointers. Once captured, the capsule itself can provision test data without touching production again. ON_DEMAND capsules even refresh themselves when read stale.</span>
+    </div>
+    <div class="be-op-card">
+      <div class="be-members-head">
+        <div><h3>Materialize / refresh a capsule</h3><p class="sub tight">Enter the root business key column(s) and value(s) exactly as configured on the Model tab. Re-running with the same key refreshes it as a new version.</p></div>
+      </div>
+      <div class="be-op-form">
+        <div class="grow"><label>Business key (col=value, comma-separated for composite keys)</label><input id="be-cap-key" placeholder="${esc((businessEntityDetail?.entity?.businessKeyColumns || 'customer_id').split(',')[0].trim() + '=CUST-10025')}" list="be-dl" onfocus="beSuggestCapsuleKey(this)"></div>
+        <div><label>Masking policy</label><select id="be-cap-policy"><option value="">No policy (row-count pointer only)</option>${(policiesList || []).map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></div>
+        <div><label>Sync mode</label><select id="be-cap-sync"><option value="MANUAL">MANUAL (refresh explicitly)</option><option value="ON_DEMAND">ON_DEMAND (refresh when read stale)</option></select></div>
+        <div><label>Stale after (min)</label><input id="be-cap-stale" type="number" min="1" placeholder="e.g. 60"></div>
+        <div class="grow"><label>Notes</label><input id="be-cap-notes" placeholder="optional"></div>
+        <button onclick="materializeBusinessEntityCapsule()">Materialize</button>
+      </div>
+    </div>
+    <div class="be-op-card">
+      <div class="be-members-head">
+        <div><h3>Capsule instances</h3><p class="sub tight">One row per materialized business key.</p></div>
+        <span class="pill info">${rows.length} instance${rows.length === 1 ? '' : 's'}</span>
+      </div>
+      ${renderBusinessEntityCapsuleList(rows)}
+    </div>
+    ${selectedBusinessEntityCapsuleId ? renderBusinessEntityCapsuleDetail() : ''}
+  </div>`;
+}
+
+function renderBusinessEntityCapsuleList(rows) {
+  if (!rows.length) return '<div class="empty">No capsule instances materialized yet.</div>';
+  return `<div class="be-op-list">` + rows.map(r => `
+    <div class="be-op-row">
+      <div>
+        <b>${esc(r.canonicalKey)}</b> ${statusPill(r.status)}
+        <div class="be-card-meta">#${r.id} · v${r.currentVersion || 0} · ${r.fragmentCount || 0} fragment(s) · ${r.totalRows || 0} row(s)</div>
+        <div class="be-card-meta">${r.lastMaterializedAt ? 'materialized ' + esc(new Date(r.lastMaterializedAt).toLocaleString()) + ' by ' + esc(r.lastMaterializedBy || '') : 'not yet materialized'}</div>
+      </div>
+      <div class="be-actions">
+        <button class="ghost small" onclick="viewBusinessEntityCapsule(${r.id})">${String(selectedBusinessEntityCapsuleId) === String(r.id) ? 'Refresh' : 'View'}</button>
+        ${r.status === 'ACTIVE' ? `<button class="ghost small danger" onclick="retireBusinessEntityCapsule(${r.id})">Retire</button>` : ''}
+      </div>
+    </div>`).join('') + `</div>`;
+}
+
+function renderBusinessEntityCapsuleDetail() {
+  const d = businessEntityCapsuleDetail;
+  if (!d) return `<div class="be-op-card"><div class="empty">Loading capsule…</div></div>`;
+  const inst = d.instance || {};
+  return `<div class="be-op-card">
+    <div class="be-members-head">
+      <div><h3>Capsule #${inst.id} — ${esc(inst.canonicalKey || '')}</h3><p class="sub tight">${esc(inst.status || '')} · version ${inst.currentVersion || 0} · policy ${inst.policyId ? '#' + inst.policyId : 'none (row-count pointer only)'} · sync ${esc(inst.syncMode || 'MANUAL')}${inst.staleAfterMinutes ? ' (stale after ' + inst.staleAfterMinutes + ' min)' : ''}</p></div>
+      <button class="ghost small" onclick="closeBusinessEntityCapsule()">Close</button>
+    </div>
+    <div class="be-mini-grid">
+      <div><b>Fragments</b>${renderBeCapsuleFragments(d.fragments)}</div>
+      <div><b>Versions</b>${renderBeCapsuleVersions(d.versions)}</div>
+    </div>
+    <div class="be-mini-grid">
+      <div><b>Watermarks</b>${renderBeCapsuleWatermarks(d.watermarks)}</div>
+      <div><b>Lineage</b>${renderBeCapsuleLineage(d.lineage)}</div>
+    </div>
+    <div class="be-members-head">
+      <div><h3>Provision from capsule</h3><p class="sub tight">Use this capsule as the row source: load its MASKED fragment rows into a target data source without touching the live source system. Requires a PROVISION grant.</p></div>
+    </div>
+    <div class="be-op-form compact">
+      <div><label>Target data source</label><select id="be-cap-prov-target">${(dataSources || []).map(ds => `<option value="${ds.id}">${esc(ds.name)}</option>`).join('')}</select></div>
+      <div><label>Target schema</label><input id="be-cap-prov-schema" placeholder="optional (defaults per fragment)"></div>
+      <div><label>Replace by key first</label><select id="be-cap-prov-delete"><option value="true">Yes (idempotent re-provision)</option><option value="false">No (append only)</option></select></div>
+      <button class="ghost small" onclick="provisionBusinessEntityCapsule(${inst.id})">Provision</button>
+    </div>
+    <div class="be-members-head">
+      <div><h3>Access grants</h3><p class="sub tight">ENFORCED: reading, provisioning, or managing this capsule requires an active grant (or admin). Scope hierarchy: READ &lt; PROVISION &lt; MANAGE &lt; OWNER. The materializing user holds an implicit OWNER grant.</p></div>
+    </div>
+    <div class="be-op-form compact">
+      <div><label>Grantee type</label><select id="be-cap-grantee-type"><option>USER</option><option>ROLE</option></select></div>
+      <div><label>Grantee</label><input id="be-cap-grantee" placeholder="username or role"></div>
+      <div><label>Scope</label><select id="be-cap-scope"><option>READ</option><option>PROVISION</option><option>MANAGE</option><option>OWNER</option></select></div>
+      <div><label>TTL hours</label><input id="be-cap-grant-ttl" type="number" min="1" placeholder="optional"></div>
+      <button class="ghost small" onclick="grantBusinessEntityCapsuleAccess(${inst.id})">Grant</button>
+    </div>
+    ${renderBeCapsuleGrants(d.grants)}
+  </div>`;
+}
+
+function renderBeCapsuleFragments(rows) {
+  rows = rows || [];
+  if (!rows.length) return '<div class="empty small-empty">None yet.</div>';
+  return `<div class="be-op-list compact-list">` + rows.map(f => `
+    <div class="be-op-row compact-row"><div>
+      <b>${esc(f.tableName)}</b> ${statusPill(f.fragmentType)} ${f.status === 'SUPERSEDED' ? '<span class="pill dim">superseded</span>' : ''}${f.encrypted ? ' <span class="pill info">encrypted</span>' : ''}${f.truncated ? ' <span class="pill warn">truncated</span>' : ''}
+      <div class="be-card-meta">v${f.versionNo || 0} · ${f.rowCount || 0} row(s)${f.message ? ' · ' + esc(f.message) : ''}</div>
+    </div></div>`).join('') + `</div>`;
+}
+
+function renderBeCapsuleVersions(rows) {
+  rows = rows || [];
+  if (!rows.length) return '<div class="empty small-empty">None yet.</div>';
+  const inst = businessEntityCapsuleDetail?.instance || {};
+  return `<div class="be-op-list compact-list">` + rows.map(v => `
+    <div class="be-op-row compact-row">
+      <div>
+        <b>v${v.versionNo}</b> ${esc(v.kind)}${v.versionNo === inst.currentVersion ? ' <span class="pill info">current</span>' : ''}
+        <div class="be-card-meta">${v.fragmentCount || 0} fragment(s) · ${v.totalRows || 0} row(s) · ${esc(new Date(v.createdAt).toLocaleString())}</div>
+      </div>
+      <div class="be-actions">${v.versionNo !== inst.currentVersion && inst.status === 'ACTIVE' ? `<button class="ghost small" onclick="restoreBusinessEntityCapsuleVersion(${inst.id}, ${v.versionNo})">Restore</button>` : ''}</div>
+    </div>`).join('') + `</div>`;
+}
+
+function renderBeCapsuleWatermarks(rows) {
+  rows = rows || [];
+  if (!rows.length) return '<div class="empty small-empty">No watermark evidence yet.</div>';
+  return `<div class="be-op-list compact-list">` + rows.map(w => `
+    <div class="be-op-row compact-row"><div>
+      <b>${esc(w.tableName || '')}</b> ${statusPill(w.status)}
+      <div class="be-card-meta">${esc(w.watermarkColumn || '')} = ${esc(w.watermarkValue || '-')} · source ${esc(w.source)} · ${esc(new Date(w.checkedAt).toLocaleString())}</div>
+    </div></div>`).join('') + `</div>`;
+}
+
+function renderBeCapsuleLineage(rows) {
+  rows = rows || [];
+  if (!rows.length) return '<div class="empty small-empty">No lineage events yet.</div>';
+  return `<div class="be-op-list compact-list">` + rows.slice(0, 12).map(l => `
+    <div class="be-op-row compact-row"><div>
+      <b>${esc(l.eventType)}</b>
+      <div class="be-card-meta">${esc(l.actor || '')} · ${esc(new Date(l.occurredAt).toLocaleString())}</div>
+    </div></div>`).join('') + `</div>`;
+}
+
+function renderBeCapsuleGrants(rows) {
+  rows = rows || [];
+  if (!rows.length) return '<div class="empty small-empty">No access grants yet.</div>';
+  return `<div class="be-op-list compact-list">` + rows.map(g => `
+    <div class="be-op-row compact-row">
+      <div>
+        <b>${esc(g.grantee)}</b> (${esc(g.granteeType)}) — ${esc(g.scope)} ${g.revoked ? '<span class="pill dim">revoked</span>' : (g.expiresAt && new Date(g.expiresAt) < new Date() ? '<span class="pill warn">expired</span>' : statusPill('ACTIVE'))}
+        <div class="be-card-meta">granted by ${esc(g.grantedBy || '')}${g.expiresAt ? ' · expires ' + esc(new Date(g.expiresAt).toLocaleString()) : ''}</div>
+      </div>
+      <div class="be-actions">${!g.revoked ? `<button class="ghost small danger" onclick="revokeBusinessEntityCapsuleAccess(${g.id})">Revoke</button>` : ''}</div>
+    </div>`).join('') + `</div>`;
+}
+
 function renderBusinessEntityDataPane() {
   const e = businessEntityEnterprise || {};
   return `<div class="be-ops">
     <div class="be-test-card">
-      <b>How this uses DataScope and Synthetic</b>
-      <span>Business Entity does not replace those pages. It stores the business object and creates packages/plans that later call DataScope subset-mask or Synthetic look-alike generation.</span>
+      <b>Turn the entity into test data</b>
+      <span>Two ways to build data from this entity: recreate a production issue as a privacy-safe replayable package (masked subset, synthetic replay, or hybrid), or plan AI-assisted look-alike data that keeps the shape of production with zero raw values. Both hand off to DataScope / Synthetic for the actual run — this page keeps the entity-level intent and evidence.</span>
       <div class="be-actions"><button class="ghost small" onclick="goTo('datasets')">Open DataScope</button><button class="ghost small" onclick="goTo('synthetic')">Open Synthetic</button></div>
     </div>
     <div class="be-op-card">
@@ -6198,8 +6476,8 @@ function renderBusinessEntityGovernancePane() {
   const e = businessEntityEnterprise || {};
   return `<div class="be-ops">
     <div class="be-test-card">
-      <b>How to test this tab</b>
-      <span>Click Sync catalog, then create a governance request. You can approve or reject the pending request from the list below to verify maker-checker evidence.</span>
+      <b>Four-eyes control before anything ships</b>
+      <span>Publish the entity into the searchable catalog (ownership, lineage, certification), and require a second person to approve releases, runs, exports, and promotions. Every decision is signed and kept as evidence — the requester can never approve their own request.</span>
     </div>
     <div class="be-op-card">
       <div class="be-members-head">
@@ -6229,11 +6507,14 @@ function renderBusinessEntityFlowPane() {
   const f = businessEntityFlowDraft;
   return `<div class="be-ops">
     <div class="be-test-card">
-      <b>How to use Flow Studio</b>
-      <span>Build the enterprise run as a visual flow, save it, then use Debug dry-run to step through approvals, loops, fan-out, exception routes, and two-phase commit without changing target data.</span>
+      <b>Draw the pipeline, then rehearse it</b>
+      <span>Drag steps onto the canvas to describe how this entity's data gets delivered — approvals, loops over reserved keys, exception routes, two-phase commit. Debug dry-run walks the graph step by step WITHOUT touching any target data, so you can rehearse the whole release before running it for real.</span>
     </div>
     <div class="be-flow-studio">
-      <div class="be-flow-side">
+      <div class="be-flow-main">
+        ${renderBusinessEntityFlowCanvas()}
+      </div>
+      <div class="be-flow-panels">
         <div class="be-flow-panel">
           <div class="be-members-head">
             <div><h3>Saved flows</h3><p class="sub tight">Reusable orchestration per Business Entity.</p></div>
@@ -6255,11 +6536,6 @@ function renderBusinessEntityFlowPane() {
           ${renderBusinessEntityFlowValidation()}
         </div>
         ${renderBusinessEntityFlowPalette()}
-      </div>
-      <div class="be-flow-main">
-        ${renderBusinessEntityFlowCanvas()}
-      </div>
-      <div class="be-flow-side">
         ${renderBusinessEntityFlowInspector()}
         ${renderBusinessEntityFlowDebugger()}
       </div>
@@ -6337,7 +6613,10 @@ function renderBusinessEntityFlowInspector() {
     <div class="be-flow-form">
       <label>Step label</label><input id="be-flow-node-label" value="${esc(node.label || '')}">
       <label>Step type</label><input value="${esc(node.type || '')}" disabled>
-      <label>Config JSON</label><textarea id="be-flow-node-config">${esc(JSON.stringify(node.config || {}, null, 2))}</textarea>
+      ${beKVChips(node.config)}
+      <details class="be-advanced"><summary>Advanced: step configuration (JSON)</summary>
+        <textarea id="be-flow-node-config">${esc(JSON.stringify(node.config || {}, null, 2))}</textarea>
+      </details>
       <label class="inline-check"><input id="be-flow-node-breakpoint" type="checkbox" ${node.breakpoint ? 'checked' : ''}> Pause debugger here</label>
     </div>
     <div class="be-actions">
@@ -6391,7 +6670,8 @@ function renderBusinessEntityFlowEvents() {
   const rows = (run.events || []).map(e => `<div class="be-flow-event ${String(e.status || '').toLowerCase()}">
     <div><b>${esc(e.sequence)}. ${esc(e.label || e.stepKey)}</b>${statusPill(e.status || 'PASSED')}</div>
     <p>${esc(e.message || '')}</p>
-    <pre>${esc(JSON.stringify(e.details || {}, null, 2))}</pre>
+    ${beKVChips(e.details)}
+    ${e.details && Object.keys(e.details).length ? `<details class="be-advanced"><summary>Raw details (JSON)</summary><pre>${esc(JSON.stringify(e.details || {}, null, 2))}</pre></details>` : ''}
   </div>`).join('');
   return `<div class="be-flow-run-head">${statusPill(run.status || 'COMPLETED')}<span>run #${esc(run.id || '-')} / ${esc(run.mode || 'DEBUG_DRY_RUN')}</span></div>
     <div class="be-flow-events">${rows}</div>`;
@@ -6401,8 +6681,8 @@ function renderBusinessEntityRunPane() {
   const e = businessEntityEnterprise || {};
   return `<div class="be-ops">
     <div class="be-test-card">
-      <b>How to test this tab</b>
-      <span>Create an execution plan in PLAN_ONLY mode first. SUBSET_MASK/ISSUE_RECREATE launch one DataScope run per application slice. Leave Target DB blank to use each blueprint target, or select a target to override all slices.</span>
+      <b>Execute and operationalize</b>
+      <span>Create an execution plan (start with PLAN_ONLY — it validates without running), launch it across every application slice at once, and export scheduler-ready packages with versioning and promotion between environments. SUBSET_MASK / ISSUE_RECREATE fan out one DataScope run per slice; leave Target DB blank to use each blueprint's own target.</span>
     </div>
     <div class="be-op-card">
       <div class="be-members-head">
@@ -6451,8 +6731,8 @@ function renderBusinessEntityEvidencePane() {
   const e = businessEntityEnterprise || {};
   return `<div class="be-ops">
     <div class="be-test-card">
-      <b>What this tab proves</b>
-      <span>This is the audit/evidence view: loader decisions, execution run links, immutable package versions, and promotion records.</span>
+      <b>Prove it to an auditor</b>
+      <span>Everything the other tabs did leaves a record here: which loader strategy was chosen and why, every execution run with its engine link, immutable package versions with content hashes, and who promoted what where. Nothing on this tab is editable — it is the evidence trail.</span>
     </div>
     <div class="be-mini-grid">
       <div><b>Loader strategy evidence</b>${enterpriseRows(e.loaderStrategies, r => `${esc(r.role)} / ${esc(r.table)}<div class="be-card-meta">${esc(r.engine)} / ${esc(r.strategy)} / fallback ${esc(r.fallback)}</div>`)}</div>
@@ -6467,6 +6747,115 @@ function beJson(value) {
   if (!value) return null;
   if (typeof value === 'object') return value;
   try { return JSON.parse(value); } catch { return null; }
+}
+
+/** Human-friendly key:value chips out of a JSON object (nested values are summarized). */
+function beKVChips(obj) {
+  const o = beJson(obj) || {};
+  const entries = Object.entries(o)
+    .filter(([, v]) => v !== null && v !== undefined && v !== '')
+    .slice(0, 10)
+    .map(([k, v]) => [k, typeof v === 'object' ? (Array.isArray(v) ? v.length + ' item(s)' : Object.keys(v).length + ' field(s)') : String(v)]);
+  if (!entries.length) return '';
+  return `<div class="be-kv">${entries.map(([k, v]) => `<span class="be-kv-item"><b>${esc(k)}</b>${esc(v)}</span>`).join('')}</div>`;
+}
+
+/* ------- smart field suggestions (live tables/columns from connected sources) ------- */
+
+const beMetaCache = { tables: {}, columns: {} };
+
+function beFillSuggest(values) {
+  const dl = $('be-dl');
+  if (dl) dl.innerHTML = [...new Set((values || []).filter(Boolean))].slice(0, 300)
+    .map(v => `<option value="${esc(v)}"></option>`).join('');
+}
+
+async function beFetchTables(dsId, schema) {
+  if (!dsId) return [];
+  const key = `${dsId}|${schema || ''}`;
+  if (!beMetaCache.tables[key]) {
+    try {
+      const rows = await api.get(`/api/datasources/${dsId}/tables${schema ? '?schema=' + encodeURIComponent(schema) : ''}`);
+      beMetaCache.tables[key] = rows.map(r => r.table || r.name).filter(Boolean);
+    } catch { beMetaCache.tables[key] = []; }
+  }
+  return beMetaCache.tables[key];
+}
+
+async function beFetchColumns(dsId, schema, table) {
+  if (!dsId || !table) return [];
+  const key = `${dsId}|${schema || ''}|${table}`;
+  if (!beMetaCache.columns[key]) {
+    try {
+      const rows = await api.get(`/api/datasources/${dsId}/tables/${encodeURIComponent(table)}/columns${schema ? '?schema=' + encodeURIComponent(schema) : ''}`);
+      beMetaCache.columns[key] = rows.map(c => c.column || c.name).filter(Boolean);
+    } catch { beMetaCache.columns[key] = []; }
+  }
+  return beMetaCache.columns[key];
+}
+
+async function beSuggestRootTable(input) {
+  const members = businessEntityDetail?.members || [];
+  const names = members.map(m => m.tableName).filter(Boolean);
+  const withDs = members.find(m => m.dataSourceId);
+  const fetched = withDs ? await beFetchTables(withDs.dataSourceId, withDs.schemaName) : [];
+  beFillSuggest([...names, ...fetched]);
+}
+
+async function beSuggestRootKeyColumns(input) {
+  const rootTable = ($('be-root')?.value || businessEntityDetail?.entity?.rootTable || '').trim();
+  const members = businessEntityDetail?.members || [];
+  const member = members.find(m => rootTable && (m.tableName || '').toLowerCase() === rootTable.toLowerCase())
+    || members.find(m => m.dataSourceId);
+  if (!member?.dataSourceId) return;
+  beFillSuggest(await beFetchColumns(member.dataSourceId, member.schemaName, rootTable || member.tableName));
+}
+
+async function beSuggestMemberTable(input) {
+  const row = input.closest('.be-member-row');
+  if (!row) return;
+  const dsId = row.querySelector('.be-m-source')?.value;
+  const schema = row.querySelector('.be-m-schema')?.value?.trim();
+  beFillSuggest(await beFetchTables(dsId, schema));
+}
+
+async function beSuggestMemberColumns(input) {
+  const row = input.closest('.be-member-row');
+  if (!row) return;
+  const dsId = row.querySelector('.be-m-source')?.value;
+  const schema = row.querySelector('.be-m-schema')?.value?.trim();
+  const table = row.querySelector('.be-m-table')?.value?.trim();
+  beFillSuggest(await beFetchColumns(dsId, schema, table));
+}
+
+function beSuggestMemberRoles(input) {
+  const roles = (businessEntityDetail?.members || []).map(m => m.logicalRole).filter(Boolean);
+  beFillSuggest(roles);
+}
+
+async function beSuggestSyncTable(input) {
+  const row = input.closest('.be-sync-member-row');
+  if (!row) return;
+  const dsId = row.querySelector('.be-sync-source')?.value;
+  const schema = row.querySelector('.be-sync-schema')?.value?.trim();
+  beFillSuggest(await beFetchTables(dsId, schema));
+}
+
+async function beSuggestSyncColumns(input) {
+  const row = input.closest('.be-sync-member-row');
+  if (!row) return;
+  const dsId = row.querySelector('.be-sync-source')?.value;
+  const schema = row.querySelector('.be-sync-schema')?.value?.trim();
+  const table = row.querySelector('.be-sync-table')?.value?.trim();
+  beFillSuggest(await beFetchColumns(dsId, schema, table));
+}
+
+/** Prefill the capsule business-key input from the entity's configured key columns. */
+function beSuggestCapsuleKey(input) {
+  const keyCols = (businessEntityDetail?.entity?.businessKeyColumns || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!keyCols.length) return;
+  if (!input.value.trim()) input.value = keyCols.map(c => c + '=').join(', ');
+  beFillSuggest(keyCols.map(c => c + '='));
 }
 
 function businessEntityDataScopeSlices(plan) {
@@ -6562,6 +6951,7 @@ function renderBusinessEntityOps(entity) {
         <div><label>Environment</label><input id="be-res-env" placeholder="UAT"></div>
         <div class="grow"><label>Criteria</label><input id="be-res-criteria" placeholder="region = 'US'"></div>
         <div class="grow"><label>Purpose</label><input id="be-res-purpose" placeholder="Test cycle / defect / team"></div>
+        <div><label>Micro-DB capsule</label><select id="be-res-capsule"><option value="">Don't materialize</option>${(policiesList || []).map(p => `<option value="${p.id}">Materialize masked (${esc(p.name)})</option>`).join('')}<option value="0">Materialize (row-count pointer only)</option></select></div>
         <button onclick="createBusinessEntityReservation()">Reserve entity</button>
       </div>
       <div id="be-reservation-list">${renderBusinessEntityReservations()}</div>
@@ -7268,12 +7658,114 @@ async function createBusinessEntityReservation() {
       ttlHours: beInt($('be-res-ttl')?.value) || 24,
       environment: $('be-res-env')?.value.trim() || null,
       criteria: $('be-res-criteria')?.value.trim() || null,
-      purpose: $('be-res-purpose')?.value.trim() || null
+      purpose: $('be-res-purpose')?.value.trim() || null,
+      materializeCapsules: ($('be-res-capsule')?.value ?? '') !== '',
+      capsulePolicyId: (() => { const v = $('be-res-capsule')?.value; return v && v !== '0' ? Number(v) : null; })()
     });
     ['be-res-name','be-res-env','be-res-criteria','be-res-purpose'].forEach(id => { if ($(id)) $(id).value = ''; });
     businessEntityReservations = await api.get('/api/business-entities/' + selectedBusinessEntityId + '/reservations');
     renderBusinessEntityDetail();
     toast('Entity reservation created #' + detail.reservation.id, 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function materializeBusinessEntityCapsule() {
+  if (!selectedBusinessEntityId) return toast('Save or select a Business Entity first', 'err');
+  const raw = ($('be-cap-key')?.value || '').trim();
+  if (!raw) return toast('Enter the root business key, e.g. customer_id=CUST-10025', 'err');
+  const businessKey = {};
+  for (const part of raw.split(',')) {
+    const eq = part.indexOf('=');
+    if (eq <= 0) return toast(`Bad business key segment "${part.trim()}" — expected col=value`, 'err');
+    businessKey[part.slice(0, eq).trim()] = part.slice(eq + 1).trim();
+  }
+  try {
+    const policyId = $('be-cap-policy')?.value || null;
+    const stale = ($('be-cap-stale')?.value || '').trim();
+    const resp = await api.post('/api/business-entities/' + selectedBusinessEntityId + '/capsules/materialize', {
+      businessKey, policyId: policyId ? Number(policyId) : null, notes: $('be-cap-notes')?.value.trim() || null,
+      syncMode: $('be-cap-sync')?.value || 'MANUAL',
+      staleAfterMinutes: stale ? beInt(stale) : null
+    });
+    businessEntityCapsules = await api.get('/api/business-entities/' + selectedBusinessEntityId + '/capsules');
+    businessEntityCapsuleDetail = resp;
+    selectedBusinessEntityCapsuleId = resp?.instance?.id || null;
+    renderBusinessEntityDetail();
+    toast('Capsule materialized (v' + (resp?.instance?.currentVersion || 1) + ')', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function viewBusinessEntityCapsule(id) {
+  try {
+    businessEntityCapsuleDetail = await api.get('/api/business-entities/capsules/' + id);
+    selectedBusinessEntityCapsuleId = id;
+    renderBusinessEntityDetail();
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+function closeBusinessEntityCapsule() {
+  selectedBusinessEntityCapsuleId = null;
+  businessEntityCapsuleDetail = null;
+  renderBusinessEntityDetail();
+}
+
+async function retireBusinessEntityCapsule(id) {
+  try {
+    await api.post('/api/business-entities/capsules/' + id + '/retire', {});
+    businessEntityCapsules = await api.get('/api/business-entities/' + selectedBusinessEntityId + '/capsules');
+    if (String(selectedBusinessEntityCapsuleId) === String(id)) {
+      businessEntityCapsuleDetail = await api.get('/api/business-entities/capsules/' + id);
+    }
+    renderBusinessEntityDetail();
+    toast('Capsule retired', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function grantBusinessEntityCapsuleAccess(instanceId) {
+  try {
+    const ttl = ($('be-cap-grant-ttl')?.value || '').trim();
+    businessEntityCapsuleDetail = await api.post('/api/business-entities/capsules/' + instanceId + '/access-grants', {
+      granteeType: $('be-cap-grantee-type')?.value || 'USER',
+      grantee: ($('be-cap-grantee')?.value || '').trim(),
+      scope: $('be-cap-scope')?.value || 'READ',
+      ttlHours: ttl ? beInt(ttl) : null
+    });
+    if ($('be-cap-grantee')) $('be-cap-grantee').value = '';
+    renderBusinessEntityDetail();
+    toast('Access granted', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function restoreBusinessEntityCapsuleVersion(instanceId, versionNo) {
+  try {
+    businessEntityCapsuleDetail = await api.post('/api/business-entities/capsules/' + instanceId + '/versions/' + versionNo + '/restore', {});
+    businessEntityCapsules = await api.get('/api/business-entities/' + selectedBusinessEntityId + '/capsules');
+    renderBusinessEntityDetail();
+    toast('Restored v' + versionNo + ' as v' + (businessEntityCapsuleDetail?.instance?.currentVersion || '?'), 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function provisionBusinessEntityCapsule(instanceId) {
+  const targetId = $('be-cap-prov-target')?.value;
+  if (!targetId) return toast('Pick a target data source', 'err');
+  try {
+    const resp = await api.post('/api/business-entities/capsules/' + instanceId + '/provision', {
+      targetDataSourceId: Number(targetId),
+      targetSchema: ($('be-cap-prov-schema')?.value || '').trim() || null,
+      deleteExistingByKey: ($('be-cap-prov-delete')?.value || 'true') === 'true'
+    });
+    businessEntityCapsuleDetail = await api.get('/api/business-entities/capsules/' + instanceId);
+    renderBusinessEntityDetail();
+    toast('Provisioned ' + (resp?.rowsInserted || 0) + ' row(s) from ' + (resp?.fragmentsLoaded || 0) + ' fragment(s)', 'ok');
+  } catch (e) { toast(e.message, 'err'); }
+}
+
+async function revokeBusinessEntityCapsuleAccess(grantId) {
+  try {
+    await api.post('/api/business-entities/capsule-access-grants/' + grantId + '/revoke', {});
+    if (selectedBusinessEntityCapsuleId) businessEntityCapsuleDetail = await api.get('/api/business-entities/capsules/' + selectedBusinessEntityCapsuleId);
+    renderBusinessEntityDetail();
+    toast('Access revoked', 'ok');
   } catch (e) { toast(e.message, 'err'); }
 }
 

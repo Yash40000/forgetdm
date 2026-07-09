@@ -35,7 +35,8 @@ class BusinessEntitySyncServiceTest {
         entities = mock(BusinessEntityService.class);
         dataSources = mock(DataSourceRepository.class);
         audit = mock(AuditService.class);
-        service = new BusinessEntitySyncService(jdbc, entities, dataSources, new ConnectionFactory(), audit);
+        service = new BusinessEntitySyncService(jdbc, entities, dataSources, new ConnectionFactory(), audit,
+                mock(BusinessEntityCapsuleService.class));
 
         BusinessEntityDefinitionEntity entity = new BusinessEntityDefinitionEntity();
         entity.setId(1L);

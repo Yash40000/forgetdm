@@ -5,6 +5,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/business-entities")
@@ -16,6 +17,7 @@ public class BusinessEntityController {
     private final BusinessEntityFlowService flows;
     private final BusinessEntityIdentityService identities;
     private final BusinessEntitySyncService sync;
+    private final BusinessEntityCapsuleService capsules;
 
     public BusinessEntityController(BusinessEntityService svc,
                                     BusinessEntitySnapshotService snapshots,
@@ -23,7 +25,8 @@ public class BusinessEntityController {
                                     BusinessEntityEnterpriseService enterprise,
                                     BusinessEntityFlowService flows,
                                     BusinessEntityIdentityService identities,
-                                    BusinessEntitySyncService sync) {
+                                    BusinessEntitySyncService sync,
+                                    BusinessEntityCapsuleService capsules) {
         this.svc = svc;
         this.snapshots = snapshots;
         this.reservations = reservations;
@@ -31,6 +34,7 @@ public class BusinessEntityController {
         this.flows = flows;
         this.identities = identities;
         this.sync = sync;
+        this.capsules = capsules;
     }
 
     @GetMapping
@@ -351,5 +355,62 @@ public class BusinessEntityController {
             @PathVariable Long packageId,
             @RequestBody BusinessEntityEnterpriseService.PromotionRequest body) {
         return enterprise.promotePackageVersion(packageId, body);
+    }
+
+    // ---------- Micro-Database / Entity Capsules ----------
+
+    @GetMapping("/{id}/capsules")
+    public List<BeEntityInstanceEntity> listCapsules(@PathVariable Long id) {
+        return capsules.list(id);
+    }
+
+    @PostMapping("/{id}/capsules/materialize")
+    public BusinessEntityCapsuleService.CapsuleDetail materializeCapsule(
+            @PathVariable Long id,
+            @RequestBody BusinessEntityCapsuleService.MaterializeRequest body) {
+        return capsules.materialize(id, body);
+    }
+
+    @GetMapping("/capsules/{instanceId}")
+    public BusinessEntityCapsuleService.CapsuleDetail capsuleDetail(@PathVariable Long instanceId) {
+        // Honors sync-on-demand: a stale ON_DEMAND capsule refreshes transparently at access time.
+        return capsules.detailWithSync(instanceId);
+    }
+
+    @GetMapping("/capsules/{instanceId}/versions/{versionNo}/fragments")
+    public List<BeEntityFragmentEntity> capsuleVersionFragments(@PathVariable Long instanceId,
+                                                                @PathVariable int versionNo) {
+        return capsules.versionFragments(instanceId, versionNo);
+    }
+
+    @PostMapping("/capsules/{instanceId}/versions/{versionNo}/restore")
+    public BusinessEntityCapsuleService.CapsuleDetail restoreCapsuleVersion(@PathVariable Long instanceId,
+                                                                            @PathVariable int versionNo) {
+        return capsules.restoreVersion(instanceId, versionNo);
+    }
+
+    @PostMapping("/capsules/{instanceId}/provision")
+    public Map<String, Object> provisionFromCapsule(
+            @PathVariable Long instanceId,
+            @RequestBody BusinessEntityCapsuleService.ProvisionFromCapsuleRequest body) {
+        return capsules.provisionToTarget(instanceId, body);
+    }
+
+    @PostMapping("/capsules/{instanceId}/retire")
+    public BusinessEntityCapsuleService.CapsuleDetail retireCapsule(@PathVariable Long instanceId) {
+        return capsules.retire(instanceId);
+    }
+
+    @PostMapping("/capsules/{instanceId}/access-grants")
+    public BusinessEntityCapsuleService.CapsuleDetail grantCapsuleAccess(
+            @PathVariable Long instanceId,
+            @RequestBody BusinessEntityCapsuleService.AccessGrantRequest body) {
+        return capsules.grantAccess(instanceId, body);
+    }
+
+    @PostMapping("/capsule-access-grants/{grantId}/revoke")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void revokeCapsuleAccess(@PathVariable Long grantId) {
+        capsules.revokeAccess(grantId);
     }
 }

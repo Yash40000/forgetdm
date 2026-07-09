@@ -5,6 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "forgetdm")
 public class ForgeProps {
     private String maskingSecret = "change-me-in-production";
+    /** Master secret for Micro-DB capsule payload encryption (AES-256-GCM key derivation). Override in prod! */
+    private String capsuleSecret = "change-me-in-production";
     private Provisioning provisioning = new Provisioning();
     private Discovery discovery = new Discovery();
     private Virtualization virtualization = new Virtualization();
@@ -90,16 +92,22 @@ public class ForgeProps {
         private boolean requireApprovalOnUnmaskedPii = false;
         /** Hard-block submitting a PROD-source job that has no masking policy anywhere. */
         private boolean blockUnmaskedProdCopy = true;
+        /** Require an attached Micro-DB capsule (with a valid access grant) on Business Entity execution plans. */
+        private boolean requireCapsuleOnExecutionPlans = false;
         public String getRequireProvisionApproval() { return requireProvisionApproval; }
         public void setRequireProvisionApproval(String v) { requireProvisionApproval = v; }
         public boolean isRequireApprovalOnUnmaskedPii() { return requireApprovalOnUnmaskedPii; }
         public void setRequireApprovalOnUnmaskedPii(boolean v) { requireApprovalOnUnmaskedPii = v; }
         public boolean isBlockUnmaskedProdCopy() { return blockUnmaskedProdCopy; }
         public void setBlockUnmaskedProdCopy(boolean v) { blockUnmaskedProdCopy = v; }
+        public boolean isRequireCapsuleOnExecutionPlans() { return requireCapsuleOnExecutionPlans; }
+        public void setRequireCapsuleOnExecutionPlans(boolean v) { requireCapsuleOnExecutionPlans = v; }
     }
 
     public String getMaskingSecret() { return maskingSecret; }
     public void setMaskingSecret(String v) { maskingSecret = v; }
+    public String getCapsuleSecret() { return capsuleSecret; }
+    public void setCapsuleSecret(String v) { capsuleSecret = v; }
     public Provisioning getProvisioning() { return provisioning; }
     public void setProvisioning(Provisioning p) { provisioning = p; }
     public Discovery getDiscovery() { return discovery; }

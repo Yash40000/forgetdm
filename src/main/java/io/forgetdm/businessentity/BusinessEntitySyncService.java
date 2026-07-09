@@ -7,6 +7,7 @@ import io.forgetdm.datasource.ConnectionFactory;
 import io.forgetdm.datasource.DataSourceEntity;
 import io.forgetdm.datasource.DataSourceRepository;
 import io.forgetdm.security.AccessContext;
+import io.forgetdm.subset.SubsetService;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -28,6 +29,7 @@ public class BusinessEntitySyncService {
     private final DataSourceRepository dataSources;
     private final ConnectionFactory connections;
     private final AuditService audit;
+    private final BusinessEntityCapsuleService capsules;
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
 
     public record SyncPolicyRequest(Long id, String name, String syncMode, String status, Integer maxLagSeconds,
@@ -40,12 +42,13 @@ public class BusinessEntitySyncService {
 
     public BusinessEntitySyncService(JdbcTemplate jdbc, BusinessEntityService entities,
                                      DataSourceRepository dataSources, ConnectionFactory connections,
-                                     AuditService audit) {
+                                     AuditService audit, BusinessEntityCapsuleService capsules) {
         this.jdbc = jdbc;
         this.entities = entities;
         this.dataSources = dataSources;
         this.connections = connections;
         this.audit = audit;
+        this.capsules = capsules;
     }
 
     public List<Map<String, Object>> listPolicies(Long entityId) {
@@ -138,6 +141,9 @@ public class BusinessEntitySyncService {
                 """, entityId, policyId, status, writeJson(runResult), currentUsername(), ts(Instant.now()));
         audit.log(currentUsername(), "BUSINESS_ENTITY_SYNC_FRESHNESS_CHECK",
                 "policy=" + policyId + " status=" + status + " members=" + memberResults.size());
+        // Best-effort: push this check's per-member freshness onto any Micro-DB capsule instance that
+        // already tracks a watermark for that member (captured at materialize time).
+        try { capsules.propagateFreshness(entityId, memberResults); } catch (Exception ignored) {}
         return getRun(runId);
     }
 
@@ -219,6 +225,7 @@ public class BusinessEntitySyncService {
         String schema = blank((String) member.get("schemaName"));
         String table = required((String) member.get("tableName"), "Sync member table name");
         String filter = blank((String) member.get("queryFilter"));
+        if (filter != null) SubsetService.guardFilter(filter);
         String sql = "SELECT MAX(" + q(watermarkColumn) + ") FROM " + q(schema, table)
                 + (filter == null ? "" : " WHERE " + filter);
         try (Connection c = connections.openPooled(ds);

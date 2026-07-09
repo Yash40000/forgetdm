@@ -89,17 +89,18 @@ class BusinessEntityEnterpriseOpsTest {
         when(reservationMembers.saveAll(any())).thenAnswer(inv -> new ArrayList<>(inv.getArgument(0)));
 
         BusinessEntityReservationService service = new BusinessEntityReservationService(
-                entities, reservations, reservationMembers, snapshots, dataSources, new ConnectionFactory(), audit);
+                entities, reservations, reservationMembers, snapshots, dataSources, new ConnectionFactory(), audit,
+                mock(BusinessEntityCapsuleService.class));
         BusinessEntityReservationService.ReservationDetail first = service.reserve(1L,
                 new BusinessEntityReservationService.ReservationRequest("cycle", null, "qa1", null,
-                        "testing", "UAT", "status = 'ACTIVE'", 1, 24, "BLOCK", null, null));
+                        "testing", "UAT", "status = 'ACTIVE'", 1, 24, "BLOCK", null, null, null, null));
 
         assertEquals("ACTIVE", first.reservation().getStatus());
         assertTrue(first.reservation().getBusinessKeyValuesJson().contains("100"));
 
         var conflict = assertThrows(io.forgetdm.common.ApiException.class, () -> service.reserve(1L,
                 new BusinessEntityReservationService.ReservationRequest("cycle2", null, "qa2", null,
-                        "testing", "UAT", "status = 'ACTIVE'", 1, 24, "BLOCK", null, null)));
+                        "testing", "UAT", "status = 'ACTIVE'", 1, 24, "BLOCK", null, null, null, null)));
         assertTrue(conflict.getMessage().contains("already reserved"));
         assertEquals(Instant.class, first.reservation().getExpiresAt().getClass());
     }

@@ -45,7 +45,8 @@ class BusinessEntityEnterpriseServiceTest {
         datasets = mock(DataSetDefinitionRepository.class);
         synthetic = mock(SyntheticGenService.class);
         loaders = new NativeLoadRegistry();
-        service = new BusinessEntityEnterpriseService(jdbc, entities, dataSources, audit, provisioning, datasets, synthetic, loaders);
+        service = new BusinessEntityEnterpriseService(jdbc, entities, dataSources, audit, provisioning, datasets, synthetic, loaders,
+                mock(BusinessEntityCapsuleService.class), new io.forgetdm.config.ForgeProps());
 
         BusinessEntityDefinitionEntity entity = new BusinessEntityDefinitionEntity();
         entity.setId(1L);
@@ -89,7 +90,7 @@ class BusinessEntityEnterpriseServiceTest {
 
         Map<String, Object> plan = service.createExecutionPlan(1L,
                 new BusinessEntityEnterpriseService.ExecutionPlanRequest("Customer release", "SUBSET_MASK", "PROD", "UAT",
-                        "PLAN_ONLY", ((Number) issue.get("id")).longValue(), ((Number) lookalike.get("id")).longValue()));
+                        "PLAN_ONLY", ((Number) issue.get("id")).longValue(), ((Number) lookalike.get("id")).longValue(), null));
         assertEquals("APPROVED", plan.get("status"));
         assertTrue(String.valueOf(plan.get("loaderStrategyJson")).contains("POSTGRES_COPY"));
 
@@ -122,7 +123,7 @@ class BusinessEntityEnterpriseServiceTest {
     void launchBlocksUnapprovedPlan() {
         Map<String, Object> plan = service.createExecutionPlan(1L,
                 new BusinessEntityEnterpriseService.ExecutionPlanRequest("Unapproved", "SUBSET_MASK", "PROD", "UAT",
-                        "PLAN_ONLY", null, null));
+                        "PLAN_ONLY", null, null, null));
         assertEquals("READY_FOR_APPROVAL", plan.get("status"));
         var ex = assertThrows(io.forgetdm.common.ApiException.class, () -> service.launchExecutionPlan(((Number) plan.get("id")).longValue(),
                 new BusinessEntityEnterpriseService.LaunchRequest(102L, "public", null, "seed1",
@@ -141,7 +142,7 @@ class BusinessEntityEnterpriseServiceTest {
 
         Map<String, Object> plan = service.createExecutionPlan(1L,
                 new BusinessEntityEnterpriseService.ExecutionPlanRequest("Approved subset", "SUBSET_MASK", "PROD", "UAT",
-                        "APPROVED_RUN_READY", null, null));
+                        "APPROVED_RUN_READY", null, null, null));
         Map<String, Object> launch = service.launchExecutionPlan(((Number) plan.get("id")).longValue(),
                 new BusinessEntityEnterpriseService.LaunchRequest(102L, "uat", null, "seed1",
                         "REPLACE", "DELETE", 100, null, 99L, "SINGLE", null, "status = 'ACTIVE'"));
@@ -194,7 +195,7 @@ class BusinessEntityEnterpriseServiceTest {
 
         Map<String, Object> plan = service.createExecutionPlan(1L,
                 new BusinessEntityEnterpriseService.ExecutionPlanRequest("Customer multi-app release",
-                        "SUBSET_MASK", "PROD", "UAT", "APPROVED_RUN_READY", null, null));
+                        "SUBSET_MASK", "PROD", "UAT", "APPROVED_RUN_READY", null, null, null));
         Map<String, Object> launch = service.launchExecutionPlan(((Number) plan.get("id")).longValue(),
                 new BusinessEntityEnterpriseService.LaunchRequest(null, null, null, "seed1",
                         "REPLACE", "DELETE", 100, null, 99L, "SINGLE", null, null));
@@ -224,7 +225,7 @@ class BusinessEntityEnterpriseServiceTest {
         when(synthetic.startGenerate(any(SyntheticGenService.GenPlan.class))).thenReturn(Map.of("id", "syn-1", "status", "PENDING"));
         Map<String, Object> plan = service.createExecutionPlan(1L,
                 new BusinessEntityEnterpriseService.ExecutionPlanRequest("Approved synthetic", "SYNTHETIC_LOOKALIKE", "DEV", "UAT",
-                        "APPROVED_RUN_READY", null, ((Number) lookalike.get("id")).longValue()));
+                        "APPROVED_RUN_READY", null, ((Number) lookalike.get("id")).longValue(), null));
 
         Map<String, Object> launch = service.launchExecutionPlan(((Number) plan.get("id")).longValue(),
                 new BusinessEntityEnterpriseService.LaunchRequest(102L, "uat", null, null,

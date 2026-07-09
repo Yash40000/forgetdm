@@ -29,6 +29,7 @@ public class BusinessEntityReservationService {
     private final DataSourceService dataSources;
     private final ConnectionFactory connections;
     private final AuditService audit;
+    private final BusinessEntityCapsuleService capsules;
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
 
     public BusinessEntityReservationService(BusinessEntityService entities,
@@ -37,7 +38,8 @@ public class BusinessEntityReservationService {
                                             BusinessEntitySnapshotRepository snapshots,
                                             DataSourceService dataSources,
                                             ConnectionFactory connections,
-                                            AuditService audit) {
+                                            AuditService audit,
+                                            BusinessEntityCapsuleService capsules) {
         this.entities = entities;
         this.reservations = reservations;
         this.reservationMembers = reservationMembers;
@@ -45,12 +47,14 @@ public class BusinessEntityReservationService {
         this.dataSources = dataSources;
         this.connections = connections;
         this.audit = audit;
+        this.capsules = capsules;
     }
 
     public record ReservationRequest(String name, Long snapshotId, String reservedBy, String ownerGroup,
                                      String purpose, String environment, String criteria, Integer count,
                                      Integer ttlHours, String conflictPolicy, List<Map<String, Object>> businessKeys,
-                                     Map<String, String> memberCriteria) {}
+                                     Map<String, String> memberCriteria,
+                                     Boolean materializeCapsules, Long capsulePolicyId) {}
     public record ReservationDetail(BusinessEntityReservationEntity reservation,
                                     List<BusinessEntityReservationMemberEntity> members) {}
 
@@ -127,6 +131,18 @@ public class BusinessEntityReservationService {
         audit.log(r.getReservedBy(), "BUSINESS_ENTITY_RESERVED",
                 "entity=" + detail.entity().getName() + " reservation=" + r.getId()
                         + " keys=" + businessKeys.size() + " expires=" + r.getExpiresAt());
+        // Opt-in: materialize (or refresh) a Micro-DB capsule for each reserved business key, so the
+        // reserved entity is immediately available as a governed, reusable row source. Best-effort —
+        // a capture failure never breaks the reservation itself.
+        if (request != null && Boolean.TRUE.equals(request.materializeCapsules())) {
+            for (Map<String, Object> key : businessKeys) {
+                capsules.materializeForSystem(entityId, key, request.capsulePolicyId(),
+                        "auto-materialized by reservation #" + r.getId());
+            }
+        }
+        // Best-effort: if a Micro-DB capsule already exists for any of these business keys, record this
+        // reservation on its lineage trail. Never creates a new capsule unless opted in above.
+        capsules.recordLineageForKeys(entityId, businessKeys, "RESERVED", "reservation=" + r.getId());
         return new ReservationDetail(r, memberRows);
     }
 
