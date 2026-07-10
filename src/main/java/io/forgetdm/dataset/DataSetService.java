@@ -117,7 +117,8 @@ public class DataSetService {
             existing.setName(req.getName().trim());
         }
         if (req.getDescription() != null) existing.setDescription(req.getDescription());
-        if (req.getSchemaName() != null)  existing.setSchemaName(req.getSchemaName());
+        if (req.getDataSourceId() != null) existing.setDataSourceId(req.getDataSourceId());
+        if (req.getSchemaName() != null)  existing.setSchemaName(blankToNull(req.getSchemaName()));
         if (req.getTargetDataSourceId() != null) existing.setTargetDataSourceId(req.getTargetDataSourceId());
         if (req.getTargetSchemaName() != null) existing.setTargetSchemaName(blankToNull(req.getTargetSchemaName()));
         if (req.getPolicyId() != null) existing.setPolicyId(req.getPolicyId());
@@ -750,8 +751,21 @@ public class DataSetService {
     public List<SubsetService.TableDirective> toDirectives(List<TableProfileEntity> tableProfiles) {
         return tableProfiles.stream().map(p -> new SubsetService.TableDirective(
                 p.getTableName(), p.isIncluded(), p.getFilterExpr(),
-                p.getReferentialStrategy(), p.getQ1Override(), p.getQ2Override(), p.getRowLimit()
+                p.getReferentialStrategy(),
+                effectiveQMode(p.getQ1Mode(), p.getQ1Override()),
+                effectiveQMode(p.getQ2Mode(), p.getQ2Override()),
+                p.getRowLimit()
         )).collect(Collectors.toList());
+    }
+
+    /** New-style q1/q2 mode (YES/NO/DEFER) wins; otherwise fall back to the classic console's boolean override. */
+    private static String effectiveQMode(String mode, Boolean legacyOverride) {
+        if (mode != null && !mode.isBlank()) {
+            String clean = mode.trim().toUpperCase(java.util.Locale.ROOT);
+            if (clean.equals("YES") || clean.equals("NO") || clean.equals("DEFER")) return clean;
+        }
+        if (legacyOverride == null) return null;
+        return legacyOverride ? "YES" : "NO";
     }
 
     public List<SubsetService.UserRelEdge> toUserEdges(List<UserDefinedRelationshipEntity> rels) {

@@ -51,12 +51,14 @@ public class SubsetService {
      * @param included            false = exclude from extract and FK traversal
      * @param filterExpr          SQL WHERE expression (guards are applied); null = no extra filter
      * @param referentialStrategy INHERIT | FOLLOW_PARENT | INDEPENDENT
-     * @param q1Override          null = use global; true/false = per-table Q1 (include parents)
-     * @param q2Override          null = use global; true/false = per-table Q2 (include children)
+     * @param q1Mode              null = use global; YES/NO = per-table Q1 (include parents);
+     *                            DEFER = Q1 only after the primary closure converges (Optim defer)
+     * @param q2Mode              null = use global; YES/NO = per-table Q2 (include children);
+     *                            DEFER = Q2 only after the primary closure converges (Optim defer)
      * @param rowLimit            optional per-table sampling cap; null/0 = no table-specific cap
      */
     public record TableDirective(String table, boolean included, String filterExpr,
-                                 String referentialStrategy, Boolean q1Override, Boolean q2Override,
+                                 String referentialStrategy, String q1Mode, String q2Mode,
                                  Integer rowLimit) {}
 
     public record TableSlice(String table, String pkColumn, LinkedHashSet<String> pkValues,
@@ -210,9 +212,16 @@ public class SubsetService {
                 }
             }
 
-            // 3) FK closure with per-table Q1/Q2 and strategy
-            boolean changed = true; int guard = 0;
+            // 3) FK closure with per-table Q1/Q2 and strategy.
+            //    Optim-style DEFER runs as a second phase: deferred directions sit out the primary
+            //    closure entirely, then activate once every primary extraction path has converged.
+            //    Their consequences (new rows pulling further parents/children) still cascade,
+            //    because the phase itself loops to convergence under the same guard.
             int guardLimit = Math.max(12, edges.size() * 2 + plan.slices.size() + 4);
+            boolean[] phases = hasDeferredDirectives(dmap.values()) ? new boolean[]{false, true} : new boolean[]{false};
+            boolean exhausted = false;
+            for (boolean deferPhase : phases) {
+            boolean changed = true; int guard = 0;
             while (changed && guard++ < guardLimit) {
                 changed = false;
 
@@ -225,7 +234,7 @@ public class SubsetService {
                     TableDirective parentDir = dmap.get(e.parentTable().toLowerCase(Locale.ROOT));
                     String edgeKeyQ2 = e.parentTable().toLowerCase(Locale.ROOT) + "->" + e.childTable().toLowerCase(Locale.ROOT);
                     String dirQ2 = traversalDirections.get(edgeKeyQ2);
-                    boolean q2 = dirQ2 != null ? ("BOTH".equals(dirQ2) || "Q2_ONLY".equals(dirQ2)) : resolveQ2(parentDir, globalQ2);
+                    boolean q2 = dirQ2 != null ? ("BOTH".equals(dirQ2) || "Q2_ONLY".equals(dirQ2)) : resolveQ2(parentDir, globalQ2, deferPhase);
                     if (!q2) continue;
                     // Is child excluded?
                     TableDirective childDir = dmap.get(e.childTable().toLowerCase(Locale.ROOT));
@@ -256,7 +265,7 @@ public class SubsetService {
                     TableDirective childDir = dmap.get(e.childTable().toLowerCase(Locale.ROOT));
                     String edgeKeyQ1 = e.parentTable().toLowerCase(Locale.ROOT) + "->" + e.childTable().toLowerCase(Locale.ROOT);
                     String dirQ1 = traversalDirections.get(edgeKeyQ1);
-                    boolean q1 = dirQ1 != null ? ("BOTH".equals(dirQ1) || "Q1_ONLY".equals(dirQ1)) : resolveQ1(childDir, globalQ1);
+                    boolean q1 = dirQ1 != null ? ("BOTH".equals(dirQ1) || "Q1_ONLY".equals(dirQ1)) : resolveQ1(childDir, globalQ1, deferPhase);
                     if (!q1) continue;
                     // Is parent excluded?
                     TableDirective parentDir = dmap.get(e.parentTable().toLowerCase(Locale.ROOT));
@@ -275,7 +284,9 @@ public class SubsetService {
                     changed |= merge(plan, e.parentTable(), parentPk.get(), parentKeys);
                 }
             }
-            if (changed) warnOnce(plan, "Traversal stopped after " + guardLimit + " passes. Review FK cycles or directive settings.");
+            exhausted |= changed;
+            }
+            if (exhausted) warnOnce(plan, "Traversal stopped after " + guardLimit + " passes. Review FK cycles or directive settings.");
 
             // Build a canonical lower-case → actual-key map for case-insensitive lookup into plan.slices
             Map<String, String> sliceKeyMap = new HashMap<>();
@@ -687,14 +698,30 @@ public class SubsetService {
         return result;
     }
 
-    private static boolean resolveQ1(TableDirective dir, boolean globalQ1) {
-        if (dir == null || dir.q1Override() == null) return globalQ1;
-        return dir.q1Override();
+    /** Effective Q1 for a child table in the given phase. DEFER counts as OFF during the
+     *  primary closure and ON once all primary extraction paths have converged. */
+    private static boolean resolveQ1(TableDirective dir, boolean globalQ1, boolean deferPhase) {
+        return resolveQMode(dir == null ? null : dir.q1Mode(), globalQ1, deferPhase);
     }
 
-    private static boolean resolveQ2(TableDirective dir, boolean globalQ2) {
-        if (dir == null || dir.q2Override() == null) return globalQ2;
-        return dir.q2Override();
+    /** Effective Q2 for a parent table in the given phase (see {@link #resolveQ1}). */
+    private static boolean resolveQ2(TableDirective dir, boolean globalQ2, boolean deferPhase) {
+        return resolveQMode(dir == null ? null : dir.q2Mode(), globalQ2, deferPhase);
+    }
+
+    private static boolean resolveQMode(String mode, boolean globalDefault, boolean deferPhase) {
+        if (mode == null || mode.isBlank()) return globalDefault;
+        return switch (mode.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "YES" -> true;
+            case "NO" -> false;
+            case "DEFER" -> deferPhase;
+            default -> globalDefault;
+        };
+    }
+
+    private static boolean hasDeferredDirectives(Collection<TableDirective> directives) {
+        return directives.stream().anyMatch(d ->
+                "DEFER".equalsIgnoreCase(String.valueOf(d.q1Mode())) || "DEFER".equalsIgnoreCase(String.valueOf(d.q2Mode())));
     }
 
     private static void warnOnce(SubsetPlan plan, String warning) {

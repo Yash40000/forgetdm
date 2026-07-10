@@ -11,3 +11,7 @@ run-codex-*.log
 run-codex-*.err.log
 run.log
 target/
+frontend/.next/
+frontend/node_modules/
+frontend/out/
+frontend/.env*.local

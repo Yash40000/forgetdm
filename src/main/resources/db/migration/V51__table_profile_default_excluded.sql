@@ -1,0 +1,1 @@
+ALTER TABLE table_profiles ALTER COLUMN included SET DEFAULT FALSE;

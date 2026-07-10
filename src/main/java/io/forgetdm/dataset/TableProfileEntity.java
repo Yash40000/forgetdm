@@ -23,16 +23,20 @@ public class TableProfileEntity {
     @Column(name = "target_table_name")        private String targetTableName;
     @Column(name = "policy_id")                private Long policyId;
     /** FALSE = completely excluded from extract and FK traversal. */
-    @Column(nullable = false)                       private boolean included = true;
+    @Column(nullable = false)                       private boolean included = false;
     /** SQL WHERE expression applied when selecting rows for this table. */
     @Column(name = "filter_expr", columnDefinition = "text") private String filterExpr;
     /** Optional cap for rows loaded from this table. NULL/0 = no table-specific cap. */
     @Column(name = "row_limit")                    private Integer rowLimit;
     @Column(name = "referential_strategy", nullable = false) private String referentialStrategy = "INHERIT";
-    /** NULL = use global Q1; TRUE/FALSE = explicit override for this table only. */
+    /** LEGACY (classic console): NULL = use global Q1; TRUE/FALSE = explicit override. Superseded by q1Mode when set. */
     @Column(name = "q1_override")                   private Boolean q1Override;
-    /** NULL = use global Q2; TRUE/FALSE = explicit override for this table only. */
+    /** LEGACY (classic console): NULL = use global Q2; TRUE/FALSE = explicit override. Superseded by q2Mode when set. */
     @Column(name = "q2_override")                   private Boolean q2Override;
+    /** Optim-style Q1 mode: NULL = global, YES, NO, DEFER (activate only after primary closure converges). */
+    @Column(name = "q1_mode")                       private String q1Mode;
+    /** Optim-style Q2 mode: NULL = global, YES, NO, DEFER (activate only after primary closure converges). */
+    @Column(name = "q2_mode")                       private String q2Mode;
     /** Optional explicit load ordering hint. NULL = auto topological. */
     @Column(name = "load_priority")                 private Integer loadPriority;
     @Column(columnDefinition = "text")              private String note;
@@ -63,6 +67,10 @@ public class TableProfileEntity {
     public void setQ1Override(Boolean v) { q1Override = v; }
     public Boolean getQ2Override() { return q2Override; }
     public void setQ2Override(Boolean v) { q2Override = v; }
+    public String getQ1Mode() { return q1Mode; }
+    public void setQ1Mode(String v) { q1Mode = v; }
+    public String getQ2Mode() { return q2Mode; }
+    public void setQ2Mode(String v) { q2Mode = v; }
     public Integer getLoadPriority() { return loadPriority; }
     public void setLoadPriority(Integer v) { loadPriority = v; }
     public String getNote() { return note; }
