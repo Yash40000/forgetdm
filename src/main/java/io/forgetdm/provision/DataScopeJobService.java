@@ -2,10 +2,13 @@ package io.forgetdm.provision;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.forgetdm.audit.AuditService;
 import io.forgetdm.common.ApiException;
+import io.forgetdm.subset.SubsetService;
 import io.forgetdm.security.AccessContext;
 import io.forgetdm.security.AccessPrincipal;
+import io.forgetdm.platform.ClusterLeaseService;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -35,12 +38,15 @@ public class DataScopeJobService {
     private final JdbcTemplate jdbc;
     private final ProvisioningService provisioning;
     private final AuditService audit;
+    private final ClusterLeaseService leases;
     private final ObjectMapper json = new ObjectMapper();
 
-    public DataScopeJobService(JdbcTemplate jdbc, ProvisioningService provisioning, AuditService audit) {
+    public DataScopeJobService(JdbcTemplate jdbc, ProvisioningService provisioning, AuditService audit,
+                               ClusterLeaseService leases) {
         this.jdbc = jdbc;
         this.provisioning = provisioning;
         this.audit = audit;
+        this.leases = leases;
     }
 
     public record SavedJobRequest(String name, String description, JsonNode spec) {}
@@ -132,10 +138,34 @@ public class DataScopeJobService {
         return runInternal(id, saved, "manual");
     }
 
-    /** Rebuild the provisioning job from the saved spec and submit it through the normal gates. */
+    /** Execute an explicitly published self-service template. Caller identity still owns the resulting run. */
+    public Map<String, Object> runSelfService(String id) {
+        return runSelfService(id, Map.of());
+    }
+
+    /**
+     * Execute a published self-service template, applying requester-supplied parameters so the run actually
+     * shapes the data: {@code filter}/{@code criteria} scopes the subset, {@code targetSchema} redirects the
+     * load, and {@code seed}/{@code maskingSeed} makes it reproducible. Unknown/blank params are ignored.
+     */
+    public Map<String, Object> runSelfService(String id, Map<String, Object> overrides) {
+        List<Map<String, Object>> rows = jdbc.query(
+                "SELECT id, name, self_service_enabled FROM datascope_saved_jobs WHERE id = ?",
+                (rs, n) -> Map.of("id", rs.getString("id"), "name", rs.getString("name"),
+                        "enabled", rs.getBoolean("self_service_enabled")), id);
+        if (rows.isEmpty()) throw ApiException.notFound("Self-service template " + id + " not found");
+        if (!Boolean.TRUE.equals(rows.get(0).get("enabled"))) throw ApiException.bad("This template is not published for self-service");
+        return runInternal(id, rows.get(0), "self-service", overrides);
+    }
+
     private Map<String, Object> runInternal(String id, Map<String, Object> saved, String trigger) {
+        return runInternal(id, saved, trigger, Map.of());
+    }
+
+    /** Rebuild the provisioning job from the saved spec (with any overrides) and submit it through the normal gates. */
+    private Map<String, Object> runInternal(String id, Map<String, Object> saved, String trigger, Map<String, Object> overrides) {
         JsonNode spec = readSpec(id);
-        ProvisionJobEntity job = buildJob(spec, String.valueOf(saved.get("name")));
+        ProvisionJobEntity job = buildJob(spec, String.valueOf(saved.get("name")), overrides);
         ProvisionJobEntity submitted = provisioning.submit(job);
         jdbc.update("UPDATE datascope_saved_jobs SET last_run_job_id = ?, updated_at = ? WHERE id = ?",
                 submitted.getId(), Timestamp.from(Instant.now()), id);
@@ -151,6 +181,10 @@ public class DataScopeJobService {
     }
 
     private ProvisionJobEntity buildJob(JsonNode spec, String fallbackName) {
+        return buildJob(spec, fallbackName, Map.of());
+    }
+
+    private ProvisionJobEntity buildJob(JsonNode spec, String fallbackName, Map<String, Object> overrides) {
         ProvisionJobEntity job = new ProvisionJobEntity();
         job.setName(text(spec, "name", fallbackName));
         job.setJobType(text(spec, "jobType", "SUBSET_MASK"));
@@ -159,8 +193,45 @@ public class DataScopeJobService {
         job.setPolicyId(longOrNull(spec, "policyId"));
         job.setDatasetId(longOrNull(spec, "datasetId"));
         JsonNode sj = spec.get("specJson");
-        if (sj != null && !sj.isNull()) job.setSpecJson(sj.isTextual() ? sj.asText() : sj.toString());
+        String specJson = sj == null || sj.isNull() ? null : (sj.isTextual() ? sj.asText() : sj.toString());
+        specJson = applySelfServiceOverrides(specJson, overrides);
+        if (specJson != null) job.setSpecJson(specJson);
         return job;
+    }
+
+    /** Merge requester-supplied self-service parameters into the saved spec (subset filter, target schema, seed). */
+    private String applySelfServiceOverrides(String specJson, Map<String, Object> overrides) {
+        if (overrides == null || overrides.isEmpty()) return specJson;
+        try {
+            ObjectNode node = specJson == null || specJson.isBlank()
+                    ? json.createObjectNode()
+                    : (ObjectNode) json.readTree(specJson);
+            String filter = firstOverride(overrides, "filter", "criteria");
+            if (filter != null) {
+                SubsetService.guardFilter(filter);   // reject unsafe SQL before it reaches the engine
+                node.put("filter", filter);
+            }
+            String targetSchema = firstOverride(overrides, "targetSchema", "schema");
+            if (targetSchema != null) node.put("targetSchema", targetSchema);
+            String seed = firstOverride(overrides, "seed", "maskingSeed");
+            if (seed != null) {
+                node.put("maskingSeed", seed);
+                node.put("seed", seed);
+            }
+            return json.writeValueAsString(node);
+        } catch (ApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw ApiException.bad("Could not apply self-service parameters: " + e.getMessage());
+        }
+    }
+
+    private static String firstOverride(Map<String, Object> overrides, String... keys) {
+        for (String key : keys) {
+            Object value = overrides.get(key);
+            if (value != null && !String.valueOf(value).isBlank()) return String.valueOf(value).trim();
+        }
+        return null;
     }
 
     // ─────────────────────────── Scheduling ───────────────────────────
@@ -218,10 +289,11 @@ public class DataScopeJobService {
      */
     @Scheduled(fixedDelay = 30_000)
     public void runDueSchedules() {
+        if (!leases.acquire("datascope-saved-job-scheduler", java.time.Duration.ofSeconds(25))) return;
         List<Map<String, Object>> due;
         try {
             due = jdbc.query(
-                    "SELECT id, name, owner_username, schedule_cron, schedule_zone FROM datascope_saved_jobs " +
+                    "SELECT id, name, owner_username, schedule_cron, schedule_zone, next_run_at FROM datascope_saved_jobs " +
                             "WHERE schedule_enabled = TRUE AND next_run_at IS NOT NULL AND next_run_at <= ?",
                     (rs, n) -> {
                         Map<String, Object> m = new HashMap<>();
@@ -230,6 +302,7 @@ public class DataScopeJobService {
                         m.put("owner", rs.getString("owner_username"));
                         m.put("cron", rs.getString("schedule_cron"));
                         m.put("zone", rs.getString("schedule_zone"));
+                        m.put("dueAt", rs.getTimestamp("next_run_at"));
                         return m;
                     }, Timestamp.from(Instant.now()));
         } catch (Exception e) {
@@ -242,10 +315,11 @@ public class DataScopeJobService {
             // Advance next_run_at FIRST so a slow/failing run can't cause a tight re-fire loop.
             Instant next = null;
             try { next = computeNextRun(cron, zone, Instant.now()); } catch (Exception ignore) { /* bad cron → disable below */ }
-            jdbc.update("UPDATE datascope_saved_jobs SET next_run_at = ?, last_scheduled_run_at = ?, " +
-                            "schedule_enabled = ?, updated_at = ? WHERE id = ?",
+            int claimed = jdbc.update("UPDATE datascope_saved_jobs SET next_run_at = ?, last_scheduled_run_at = ?, " +
+                            "schedule_enabled = ?, updated_at = ? WHERE id = ? AND next_run_at = ? AND schedule_enabled = TRUE",
                     next == null ? null : Timestamp.from(next), Timestamp.from(Instant.now()),
-                    next != null, Timestamp.from(Instant.now()), id);
+                    next != null, Timestamp.from(Instant.now()), id, row.get("dueAt"));
+            if (claimed != 1) continue;
             try {
                 Map<String, Object> saved = new HashMap<>();
                 saved.put("name", row.get("name"));
@@ -289,6 +363,8 @@ public class DataScopeJobService {
         putIfNotBlank(out, "scheduleCron", rs.getString("schedule_cron"));
         putIfNotBlank(out, "scheduleZone", rs.getString("schedule_zone"));
         out.put("scheduleEnabled", rs.getBoolean("schedule_enabled"));
+        out.put("selfServiceEnabled", rs.getBoolean("self_service_enabled"));
+        putIfNotBlank(out, "selfServiceLabel", rs.getString("self_service_label"));
         putIfNotBlank(out, "nextRunAt", instantString(rs.getTimestamp("next_run_at")));
         putIfNotBlank(out, "lastScheduledRunAt", instantString(rs.getTimestamp("last_scheduled_run_at")));
         out.put("createdAt", instantString(rs.getTimestamp("created_at")));

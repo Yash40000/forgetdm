@@ -18,20 +18,19 @@ public class DiscoveryController {
     public List<ClassificationEntity> scan(@PathVariable Long dataSourceId,
                                            @RequestParam(required = false) String schema,
                                            @RequestBody(required = false) Map<String, Object> body) {
-        java.util.Set<String> types = new java.util.HashSet<>();
-        if (body != null && body.get("piiTypes") instanceof List<?> list)
-            for (Object o : list) if (o != null) types.add(String.valueOf(o));
-        return svc.scan(dataSourceId, schema, types.isEmpty() ? null : types);
+        Set<String> types = stringSet(body, "piiTypes");
+        Set<String> tables = stringSet(body, "tableNames");
+        return svc.scan(dataSourceId, schema, types.isEmpty() ? null : types,
+                tables.isEmpty() ? null : tables, null);
     }
 
     @PostMapping("/scan-jobs/{dataSourceId}")
     public DiscoveryJobService.JobSnapshot startScanJob(@PathVariable Long dataSourceId,
                                                         @RequestParam(required = false) String schema,
                                                         @RequestBody(required = false) Map<String, Object> body) {
-        java.util.Set<String> types = new java.util.HashSet<>();
-        if (body != null && body.get("piiTypes") instanceof List<?> list)
-            for (Object o : list) if (o != null) types.add(String.valueOf(o));
-        return jobs.start(dataSourceId, schema, types);
+        Set<String> types = stringSet(body, "piiTypes");
+        Set<String> tables = stringSet(body, "tableNames");
+        return jobs.start(dataSourceId, schema, types, tables);
     }
 
     @GetMapping("/scan-jobs")
@@ -105,6 +104,13 @@ public class DiscoveryController {
                 body.get("suggestedParam2"));
     }
 
+    public record BulkClassificationRequest(List<Long> ids, String status) {}
+
+    @PostMapping("/classifications/bulk")
+    public Map<String, Object> bulkUpdateClassifications(@RequestBody BulkClassificationRequest body) {
+        return Map.of("count", svc.bulkUpdateClassifications(body.ids(), body.status()));
+    }
+
     @PostMapping("/generate-policy/{dataSourceId}")
     public MaskingPolicyEntity generatePolicy(@PathVariable Long dataSourceId,
                                               @RequestParam(required = false) String schema,
@@ -118,6 +124,16 @@ public class DiscoveryController {
         for (String item : raw) {
             if (item == null) continue;
             for (String part : item.split(",")) if (!part.isBlank()) out.add(part.trim());
+        }
+        return out;
+    }
+
+    private static Set<String> stringSet(Map<String, Object> body, String key) {
+        Set<String> out = new java.util.LinkedHashSet<>();
+        if (body != null && body.get(key) instanceof List<?> list) {
+            for (Object value : list) {
+                if (value != null && !String.valueOf(value).isBlank()) out.add(String.valueOf(value).trim());
+            }
         }
         return out;
     }

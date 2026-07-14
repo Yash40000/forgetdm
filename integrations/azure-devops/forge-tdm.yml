@@ -1,0 +1,20 @@
+parameters:
+  - name: templateId
+    type: string
+  - name: environment
+    type: string
+    default: QA
+
+steps:
+  - task: PowerShell@2
+    displayName: Request governed ForgeTDM data
+    inputs:
+      filePath: scripts/forge-tdm-request.ps1
+      arguments: >
+        -BaseUrl "$(FORGETDM_URL)"
+        -Token "$(FORGETDM_TOKEN)"
+        -TemplateId "${{ parameters.templateId }}"
+        -Purpose "Azure DevOps $(Build.DefinitionName) run $(Build.BuildNumber)"
+        -Environment "${{ parameters.environment }}"
+    env:
+      FORGETDM_TOKEN: $(FORGETDM_TOKEN)

@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
+  ActionIcon,
   Alert,
   Badge,
   Button,
   Checkbox,
+  Collapse,
   Drawer,
   Group,
   Loader,
@@ -17,11 +19,20 @@ import {
   SimpleGrid,
   Stack,
   Text,
-  TextInput
+  TextInput,
+  Tooltip
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
-import { IconAlertTriangle, IconPlus } from '@tabler/icons-react';
+import {
+  IconAdjustmentsHorizontal,
+  IconAlertTriangle,
+  IconArrowRight,
+  IconChevronDown,
+  IconDatabase,
+  IconFolderOpen,
+  IconPlus
+} from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
 
@@ -69,7 +80,8 @@ export function TableMapWorkspace({
   overrides,
   dataSources,
   policies,
-  loading
+  loading,
+  onDirtyChange
 }: {
   blueprint: DataSetDefinition;
   rows: TableProfile[];
@@ -77,6 +89,7 @@ export function TableMapWorkspace({
   dataSources: DataSource[];
   policies: MaskingPolicy[];
   loading: boolean;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const queryClient = useQueryClient();
   const blueprintDefaults = useMemo(() => defaultsFromBlueprint(blueprint, dataSources), [blueprint, dataSources]);
@@ -88,6 +101,15 @@ export function TableMapWorkspace({
   const [targetBrowseOpened, targetBrowse] = useDisclosure(false);
   const [sourceSchemaBrowseOpened, sourceSchemaBrowse] = useDisclosure(false);
   const [targetSchemaBrowseOpened, targetSchemaBrowse] = useDisclosure(false);
+  const [subsetControlsOpen, subsetControls] = useDisclosure(
+    Boolean(
+      blueprintDefaults.driverTable ||
+        blueprintDefaults.driverFilter ||
+        blueprintDefaults.maxDriverRows ||
+        !blueprintDefaults.globalQ1 ||
+        !blueprintDefaults.globalQ2
+    )
+  );
   const [mapOpened, mapDrawer] = useDisclosure(false);
   const [columnProfile, setColumnProfile] = useState<TableProfile | null>(null);
   const [columnOpened, columnDrawer] = useDisclosure(false);
@@ -105,6 +127,14 @@ export function TableMapWorkspace({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDefaults(blueprintDefaults);
   }, [blueprintDefaults, dirty]);
+
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty, onDirtyChange]);
 
   const patchRow = (index: number, patch: Partial<TableProfile>) => {
     setDirty(true);
@@ -180,12 +210,13 @@ export function TableMapWorkspace({
       await apiPut<DataSetDefinition>(`/api/datasets/${blueprint.id}`, definitionPayload(blueprint, defaults, dataSources));
       return apiPut<TableProfile[]>(`/api/datasets/${blueprint.id}/profiles`, normalizeProfilesForSave(draftRows, effectiveBlueprint));
     },
-    onSuccess: async () => {
+    onSuccess: async (savedRows) => {
       notifications.show({ color: 'green', title: 'DataScope profile saved', message: 'Defaults and table mappings were updated.' });
-      setDirty(false); // draft is now the saved truth; allow the refetch below to resync it
+      setDraftRows(savedRows);
       await queryClient.invalidateQueries({ queryKey: keys.datascope.blueprints });
       await queryClient.invalidateQueries({ queryKey: keys.datascope.blueprint(blueprint.id) });
       await queryClient.invalidateQueries({ queryKey: keys.datascope.profiles(blueprint.id) });
+      setDirty(false); // the refetch has caught up, so future server changes may resync this clean draft
     },
     onError: (error) => {
       notifications.show({ color: 'red', title: 'Could not save profile setup', message: error.message });
@@ -316,111 +347,178 @@ export function TableMapWorkspace({
     </Group>
   );
 
-  const renderDefaultControls = () => (
-    <SimpleGrid cols={{ base: 1, md: 4 }}>
-      <Group align="flex-end" wrap="nowrap">
-        <TextInput
-          {...technicalInputProps}
-          label="Source DB"
-          placeholder="source name or id"
-          value={defaults.sourceDataSourceId}
-          error={sourceDefaultError}
-          onChange={(event) => updateDefault({ sourceDataSourceId: event.currentTarget.value, sourceSchemaName: '' })}
-          style={{ flex: 1 }}
-        />
-        <Button variant="light" onClick={sourceBrowse.open}>
-          Browse
-        </Button>
-      </Group>
-      <Group align="flex-end" wrap="nowrap">
-        <TextInput
-          {...technicalInputProps}
-          label="Source schema"
-          placeholder="schema"
-          value={defaults.sourceSchemaName}
-          error={sourceSchemaDefaultError}
-          onChange={(event) => updateDefault({ sourceSchemaName: event.currentTarget.value })}
-          style={{ flex: 1 }}
-        />
-        <Button variant="light" disabled={!commonSourceId} loading={sourceSchemasQuery.isFetching} onClick={sourceSchemaBrowse.open}>
-          Browse
-        </Button>
-      </Group>
-      <Group align="flex-end" wrap="nowrap">
-        <TextInput
-          {...technicalInputProps}
-          label="Target DB"
-          placeholder="target name or id"
-          value={defaults.targetDataSourceId}
-          error={targetDefaultError}
-          onChange={(event) => updateDefault({ targetDataSourceId: event.currentTarget.value, targetSchemaName: '' })}
-          style={{ flex: 1 }}
-        />
-        <Button variant="light" onClick={targetBrowse.open}>
-          Browse
-        </Button>
-      </Group>
-      <Group align="flex-end" wrap="nowrap">
-        <TextInput
-          {...technicalInputProps}
-          label="Target schema"
-          placeholder="schema"
-          value={defaults.targetSchemaName}
-          error={targetSchemaDefaultError}
-          onChange={(event) => updateDefault({ targetSchemaName: event.currentTarget.value })}
-          style={{ flex: 1 }}
-        />
-        <Button variant="light" disabled={!commonTargetId} loading={targetSchemasQuery.isFetching} onClick={targetSchemaBrowse.open}>
-          Browse
-        </Button>
-      </Group>
-      <Select
-        label="Driver table"
-        description="Subsetting starts here: its rows seed the FK closure."
-        data={driverOptions}
-        value={defaults.driverTable}
-        searchable
-        error={driverMissing ? 'Driver is not in this profile anymore. Pick another table.' : null}
-        onChange={(value) => updateDefault({ driverTable: value || '' })}
-      />
-      <TextInput
-        {...technicalInputProps}
-        label="Driver filter"
-        description="Optional WHERE on the driver rows."
-        placeholder="status = 'ACTIVE'"
-        value={defaults.driverFilter}
-        disabled={!defaults.driverTable.trim()}
-        onChange={(event) => updateDefault({ driverFilter: event.currentTarget.value })}
-      />
-      <NumberInput
-        label="Max driver rows"
-        description="Optional cap on seed rows."
-        min={1}
-        value={defaults.maxDriverRows === '' ? '' : Number(defaults.maxDriverRows)}
-        disabled={!defaults.driverTable.trim()}
-        onChange={(value) => updateDefault({ maxDriverRows: value === '' || value === null ? '' : String(value) })}
-      />
-      <Select
-        label="Q1 — pull parents"
-        description="Child-to-parent: every selected child row brings its parent row, so no orphans (relational integrity)."
-        data={[
-          { value: 'yes', label: 'Yes (keep RI, default)' },
-          { value: 'no', label: 'No (parents already in target)' }
-        ]}
-        value={defaults.globalQ1 ? 'yes' : 'no'}
-        onChange={(value) => updateDefault({ globalQ1: value !== 'no' })}
-      />
-      <Select
-        label="Q2 — pull children"
-        description="Parent-to-child: every selected parent row cascades to all its child rows (bigger subset)."
-        data={[
-          { value: 'yes', label: 'Yes (full cascade)' },
-          { value: 'no', label: 'No (keep the subset small)' }
-        ]}
-        value={defaults.globalQ2 ? 'yes' : 'no'}
-        onChange={(value) => updateDefault({ globalQ2: value !== 'no' })}
-      />
-    </SimpleGrid>
+  const browseButton = (label: string, action: () => void, disabled = false, loadingState = false) => (
+    <Tooltip label={label} withArrow>
+      <ActionIcon
+        aria-label={label}
+        title={label}
+        variant="light"
+        size={36}
+        disabled={disabled}
+        loading={loadingState}
+        onClick={action}
+      >
+        <IconFolderOpen size={17} />
+      </ActionIcon>
+    </Tooltip>
+  );
+
+  const renderConnectionDefaults = () => (
+    <div className="ds-profile-path">
+      <div className="ds-profile-endpoint">
+        <Group gap={7} mb={6}>
+          <IconDatabase size={15} />
+          <Text size="xs" fw={750} tt="uppercase" c="dimmed">
+            Source
+          </Text>
+        </Group>
+        <div className="ds-profile-endpoint-fields">
+          <Group align="flex-end" wrap="nowrap" gap="xs">
+            <TextInput
+              {...technicalInputProps}
+              label="Database"
+              placeholder="name or id"
+              value={defaults.sourceDataSourceId}
+              error={sourceDefaultError}
+              onChange={(event) => updateDefault({ sourceDataSourceId: event.currentTarget.value, sourceSchemaName: '' })}
+              style={{ flex: 1 }}
+            />
+            {browseButton('Browse source databases', sourceBrowse.open)}
+          </Group>
+          <Group align="flex-end" wrap="nowrap" gap="xs">
+            <TextInput
+              {...technicalInputProps}
+              label="Schema"
+              placeholder="schema"
+              value={defaults.sourceSchemaName}
+              error={sourceSchemaDefaultError}
+              onChange={(event) => updateDefault({ sourceSchemaName: event.currentTarget.value })}
+              style={{ flex: 1 }}
+            />
+            {browseButton('Browse source schemas', sourceSchemaBrowse.open, !commonSourceId, sourceSchemasQuery.isFetching)}
+          </Group>
+        </div>
+      </div>
+
+      <IconArrowRight className="ds-profile-path-arrow" size={20} aria-hidden />
+
+      <div className="ds-profile-endpoint">
+        <Group gap={7} mb={6}>
+          <IconDatabase size={15} />
+          <Text size="xs" fw={750} tt="uppercase" c="dimmed">
+            Target
+          </Text>
+        </Group>
+        <div className="ds-profile-endpoint-fields">
+          <Group align="flex-end" wrap="nowrap" gap="xs">
+            <TextInput
+              {...technicalInputProps}
+              label="Database"
+              placeholder="name or id"
+              value={defaults.targetDataSourceId}
+              error={targetDefaultError}
+              onChange={(event) => updateDefault({ targetDataSourceId: event.currentTarget.value, targetSchemaName: '' })}
+              style={{ flex: 1 }}
+            />
+            {browseButton('Browse target databases', targetBrowse.open)}
+          </Group>
+          <Group align="flex-end" wrap="nowrap" gap="xs">
+            <TextInput
+              {...technicalInputProps}
+              label="Schema"
+              placeholder="schema"
+              value={defaults.targetSchemaName}
+              error={targetSchemaDefaultError}
+              onChange={(event) => updateDefault({ targetSchemaName: event.currentTarget.value })}
+              style={{ flex: 1 }}
+            />
+            {browseButton('Browse target schemas', targetSchemaBrowse.open, !commonTargetId, targetSchemasQuery.isFetching)}
+          </Group>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderSubsetControls = () => (
+    <>
+      <button
+        type="button"
+        className="ds-subset-toggle"
+        aria-expanded={subsetControlsOpen}
+        aria-controls="datascope-subset-controls"
+        onClick={subsetControls.toggle}
+      >
+        <span className="ds-subset-toggle-copy">
+          <IconAdjustmentsHorizontal size={17} aria-hidden />
+          <span>
+            <strong>Subset behavior</strong>
+            <small>Choose a driver only when this profile should extract a relational subset.</small>
+          </span>
+        </span>
+        <span className="ds-subset-summary" aria-hidden>
+          <Badge size="sm" variant="light" color={defaults.driverTable ? 'blue' : 'gray'}>
+            {defaults.driverTable ? `Driver: ${defaults.driverTable}` : 'No driver'}
+          </Badge>
+          <Badge size="sm" variant="light" color={defaults.globalQ1 ? 'green' : 'gray'}>
+            Parents {defaults.globalQ1 ? 'included' : 'off'}
+          </Badge>
+          <Badge size="sm" variant="light" color={defaults.globalQ2 ? 'blue' : 'gray'}>
+            Children {defaults.globalQ2 ? 'included' : 'off'}
+          </Badge>
+          <IconChevronDown className={subsetControlsOpen ? 'is-open' : ''} size={17} />
+        </span>
+      </button>
+      <Collapse in={subsetControlsOpen}>
+        <SimpleGrid id="datascope-subset-controls" cols={{ base: 1, sm: 2, md: 3 }} mt="sm">
+          <Select
+            label="Driver table"
+            description="Rows from this table start the subset."
+            data={driverOptions}
+            value={defaults.driverTable}
+            searchable
+            error={driverMissing ? 'Driver is not in this profile anymore. Pick another table.' : null}
+            onChange={(value) => updateDefault({ driverTable: value || '' })}
+          />
+          <TextInput
+            {...technicalInputProps}
+            label="Driver filter"
+            description="Optional SQL WHERE condition."
+            placeholder="status = 'ACTIVE'"
+            value={defaults.driverFilter}
+            disabled={!defaults.driverTable.trim()}
+            onChange={(event) => updateDefault({ driverFilter: event.currentTarget.value })}
+          />
+          <NumberInput
+            label="Maximum seed rows"
+            description="Optional limit on starting rows."
+            min={1}
+            value={defaults.maxDriverRows === '' ? '' : Number(defaults.maxDriverRows)}
+            disabled={!defaults.driverTable.trim()}
+            onChange={(value) => updateDefault({ maxDriverRows: value === '' || value === null ? '' : String(value) })}
+          />
+          <Select
+            label="Include required parents"
+            description="Q1: keeps selected child rows from becoming orphans."
+            data={[
+              { value: 'yes', label: 'Yes - preserve relationships' },
+              { value: 'no', label: 'No - parents already exist' }
+            ]}
+            value={defaults.globalQ1 ? 'yes' : 'no'}
+            onChange={(value) => updateDefault({ globalQ1: value !== 'no' })}
+          />
+          <Select
+            label="Include dependent children"
+            description="Q2: expands selected parents to their child rows."
+            data={[
+              { value: 'yes', label: 'Yes - cascade to children' },
+              { value: 'no', label: 'No - keep subset smaller' }
+            ]}
+            value={defaults.globalQ2 ? 'yes' : 'no'}
+            onChange={(value) => updateDefault({ globalQ2: value !== 'no' })}
+          />
+        </SimpleGrid>
+      </Collapse>
+    </>
   );
 
   if (loading) {
@@ -457,19 +555,23 @@ export function TableMapWorkspace({
           </Alert>
         ) : null}
 
-        <Paper className="forge-card" p="md">
+        <Paper className="forge-card ds-profile-defaults" p="md">
           <Stack gap="sm">
             <Group justify="space-between" align="flex-start">
               <div>
-                <Text fw={800}>Common source, target, and driver</Text>
+                <Group gap="xs">
+                  <Badge size="sm" variant="filled" color="blue">
+                    1
+                  </Badge>
+                  <Text fw={800}>Choose source and target</Text>
+                </Group>
                 <Text size="sm" c="dimmed">
-                  New rows inherit these defaults. Individual table rows can still override source DB, source schema, and target table.
-                  The driver table is where subsetting starts — pick it here or with the radio in the table list below.
+                  Tables inherit this path by default. You can override it later for any individual table.
                 </Text>
               </div>
-              <Badge variant="light">defaults</Badge>
             </Group>
-            {renderDefaultControls()}
+            {renderConnectionDefaults()}
+            {renderSubsetControls()}
           </Stack>
         </Paper>
 
@@ -477,7 +579,12 @@ export function TableMapWorkspace({
           <Stack gap="sm">
             <Group justify="space-between" align="flex-start">
               <div>
-                <Text fw={800}>Add tables to profile</Text>
+                <Group gap="xs">
+                  <Badge size="sm" variant="filled" color="blue">
+                    2
+                  </Badge>
+                  <Text fw={800}>Add tables to profile</Text>
+                </Group>
                 <Text size="sm" c="dimmed">
                   Browse the selected schema and add only the tables needed for this DataScope. Added rows start unchecked in the final Use flag.
                 </Text>
@@ -528,8 +635,23 @@ export function TableMapWorkspace({
           </Stack>
         </Paper>
 
-        <div className="forge-grid-panel">
-          <table className="forge-table">
+        <div>
+          <Group justify="space-between" align="flex-end" mb="xs">
+            <div>
+              <Group gap="xs">
+                <Badge size="sm" variant="filled" color="blue">
+                  3
+                </Badge>
+                <Text fw={800}>Review included tables</Text>
+              </Group>
+              <Text size="sm" c="dimmed">
+                Select Use for tables that should run, choose an optional driver, then open Table Map for detailed mappings.
+              </Text>
+            </div>
+            <Badge variant="light">{draftRows.length} profiled</Badge>
+          </Group>
+          <div className="forge-grid-panel">
+            <table className="forge-table">
             <thead>
               <tr>
                 <th>Use</th>
@@ -601,7 +723,8 @@ export function TableMapWorkspace({
                 </tr>
               )}
             </tbody>
-          </table>
+            </table>
+          </div>
         </div>
       </Stack>
 
@@ -620,7 +743,10 @@ export function TableMapWorkspace({
                 {renderSaveButton()}
               </Group>
             </Group>
-            <div style={{ marginTop: 12 }}>{renderDefaultControls()}</div>
+            <Stack gap="sm" mt="sm">
+              {renderConnectionDefaults()}
+              {renderSubsetControls()}
+            </Stack>
           </Paper>
 
           {duplicates.size ? (
@@ -732,7 +858,7 @@ export function TableMapWorkspace({
                           <td>
                             <NumberInput
                               min={0}
-                              value={profile.rowLimit || ''}
+                              value={profile.rowLimit ?? ''}
                               onChange={(value) => patchRow(idx, { rowLimit: numberOrNull(value) })}
                             />
                           </td>

@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { Badge, Group, Paper, Progress, Text } from '@mantine/core';
+import { ActionIcon, Badge, Group, Paper, Progress, Text, Tooltip } from '@mantine/core';
+import { IconRepeat, IconX } from '@tabler/icons-react';
 
 import type { SyntheticJob, SyntheticPlan, SyntheticPartition } from '../types';
 import { formatRows, formatTime, generationStages, isJobDone, jobTone, progressDetail } from '../utils';
@@ -19,9 +20,10 @@ type FootballProgressProps = {
   job?: SyntheticJob | null;
   plan?: SyntheticPlan | null;
   title?: string;
+  onPartitionAction?: (partitionId: string, action: 'cancel' | 'retry') => void;
 };
 
-export function FootballProgress({ job, plan, title = 'Synthetic generation progress' }: FootballProgressProps) {
+export function FootballProgress({ job, plan, title = 'Synthetic generation progress', onPartitionAction }: FootballProgressProps) {
   const percent = clamp(Math.round(Number(job?.percent || 0)), 0, 100);
   const status = String(job?.status || 'IDLE').toUpperCase();
   const done = isJobDone(job?.status) && status === 'COMPLETED';
@@ -124,7 +126,7 @@ export function FootballProgress({ job, plan, title = 'Synthetic generation prog
         </div>
       </div>
 
-      <PartitionDeck partitions={job?.partitions || []} stats={partitionStats} cancelled={cancelled} />
+      <PartitionDeck partitions={job?.partitions || []} stats={partitionStats} cancelled={cancelled} onPartitionAction={onPartitionAction} />
     </Paper>
   );
 }
@@ -158,11 +160,13 @@ function ProgressBlock({ label, value, detail }: { label: string; value: number;
 function PartitionDeck({
   partitions,
   stats,
-  cancelled
+  cancelled,
+  onPartitionAction
 }: {
   partitions: SyntheticPartition[];
   stats: ReturnType<typeof partitionSummary>;
   cancelled: boolean;
+  onPartitionAction?: (partitionId: string, action: 'cancel' | 'retry') => void;
 }) {
   if (!stats.total) {
     return (
@@ -190,7 +194,7 @@ function PartitionDeck({
       </Group>
       <div className="syn-partition-table-grid">
         {groupPartitionsByTable(partitions).map((group) => (
-          <PartitionTableCard key={group.table} group={group} />
+          <PartitionTableCard key={group.table} group={group} onPartitionAction={onPartitionAction} />
         ))}
       </div>
     </div>
@@ -207,7 +211,7 @@ type PartitionTableGroup = {
   failed: number;
 };
 
-function PartitionTableCard({ group }: { group: PartitionTableGroup }) {
+function PartitionTableCard({ group, onPartitionAction }: { group: PartitionTableGroup; onPartitionAction?: (partitionId: string, action: 'cancel' | 'retry') => void }) {
   const pct = percentOf(group.rowsCompleted, group.plannedRows) ?? 0;
   const status = group.failed ? 'FAILED' : group.running ? 'RUNNING' : group.completed === group.partitions.length ? 'COMPLETED' : 'QUEUED';
   return (
@@ -236,16 +240,18 @@ function PartitionTableCard({ group }: { group: PartitionTableGroup }) {
       </summary>
       <div className="syn-partition-detail-grid">
         {group.partitions.map((partition) => (
-          <PartitionPill key={partition.id} partition={partition} />
+          <PartitionPill key={partition.id} partition={partition} onPartitionAction={onPartitionAction} />
         ))}
       </div>
     </details>
   );
 }
 
-function PartitionPill({ partition }: { partition: SyntheticPartition }) {
+function PartitionPill({ partition, onPartitionAction }: { partition: SyntheticPartition; onPartitionAction?: (partitionId: string, action: 'cancel' | 'retry') => void }) {
   const pct = percentOf(partition.rowsCompleted, partition.plannedRows) ?? 0;
   const status = String(partition.status || 'QUEUED').toUpperCase();
+  const canCancel = !['COMPLETED', 'FAILED', 'CANCELLED', 'CANCELED'].includes(status);
+  const canRetry = ['FAILED', 'CANCELLED', 'CANCELED'].includes(status);
   return (
     <div className={`syn-partition-mini is-${status.toLowerCase()}`}>
       <Group justify="space-between" gap={6}>
@@ -260,6 +266,29 @@ function PartitionPill({ partition }: { partition: SyntheticPartition }) {
       <Text size="xs" c="dimmed" truncate>
         {formatRows(partition.rowsCompleted)} / {formatRows(partition.plannedRows)} - {partition.workerId || 'waiting'}
       </Text>
+      {partition.error ? (
+        <Text size="xs" c="red" lineClamp={2} title={partition.error}>
+          {partition.error}
+        </Text>
+      ) : null}
+      {onPartitionAction && (canCancel || canRetry) ? (
+        <Group justify="flex-end" gap={4} mt={5}>
+          {canCancel ? (
+            <Tooltip label="Cancel partition">
+              <ActionIcon size="sm" color="red" variant="light" aria-label={`Cancel ${partition.table || 'partition'} ${partition.number ?? ''}`} onClick={() => onPartitionAction(partition.id, 'cancel')}>
+                <IconX size={14} />
+              </ActionIcon>
+            </Tooltip>
+          ) : null}
+          {canRetry ? (
+            <Tooltip label="Retry partition">
+              <ActionIcon size="sm" color="blue" variant="light" aria-label={`Retry ${partition.table || 'partition'} ${partition.number ?? ''}`} onClick={() => onPartitionAction(partition.id, 'retry')}>
+                <IconRepeat size={14} />
+              </ActionIcon>
+            </Tooltip>
+          ) : null}
+        </Group>
+      ) : null}
     </div>
   );
 }

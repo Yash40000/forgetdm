@@ -50,6 +50,9 @@ public class BusinessEntityService {
                                        String primaryDatasetName,
                                        Map<Long, String> dataSourceNames) {}
     public record FromDatasetRequest(String name, String description, String domain) {}
+    public record ImportDatasetRequest(Boolean makePrimary, String systemName) {}
+    public record DatasetImportResult(BusinessEntityDetail detail, Long datasetId, String datasetName,
+                                      String systemName, int addedMembers, int skippedDuplicates) {}
 
     public List<BusinessEntitySummary> list() {
         Map<Long, String> datasetNames = datasets.findAll().stream()
@@ -113,6 +116,7 @@ public class BusinessEntityService {
     public void delete(Long id) {
         BusinessEntityDefinitionEntity existing = get(id);
         members.deleteByEntityId(id);
+        members.flush();
         defs.delete(existing);
         audit.log("system", "BUSINESS_ENTITY_DELETE", "Deleted " + existing.getName());
     }
@@ -120,8 +124,25 @@ public class BusinessEntityService {
     @Transactional
     public List<BusinessEntityMemberEntity> replaceMembers(Long entityId, List<BusinessEntityMemberEntity> incoming) {
         BusinessEntityDefinitionEntity entity = get(entityId);
-        members.deleteByEntityId(entityId);
+        List<BusinessEntityMemberEntity> existing = members.findByEntityIdOrderByOrdinalNoAscIdAsc(entityId);
+        Map<String, BusinessEntityMemberEntity> existingByLogicalKey = existing.stream()
+                .collect(Collectors.toMap(this::memberKey, m -> m, (first, ignored) -> first, LinkedHashMap::new));
         List<BusinessEntityMemberEntity> clean = cleanMembers(entityId, incoming == null ? List.of() : incoming);
+        Set<Long> retainedIds = new HashSet<>();
+        for (BusinessEntityMemberEntity member : clean) {
+            BusinessEntityMemberEntity prior = existingByLogicalKey.get(memberKey(member));
+            if (prior != null) {
+                member.setId(prior.getId());
+                retainedIds.add(prior.getId());
+            }
+        }
+        List<BusinessEntityMemberEntity> removed = existing.stream()
+                .filter(member -> !retainedIds.contains(member.getId()))
+                .toList();
+        if (!removed.isEmpty()) {
+            members.deleteAll(removed);
+            members.flush();
+        }
         List<BusinessEntityMemberEntity> saved = members.saveAll(clean);
         entity.setUpdatedAt(Instant.now());
         defs.save(entity);
@@ -144,6 +165,72 @@ public class BusinessEntityService {
         BusinessEntityDefinitionEntity saved = create(body);
         replaceMembers(saved.getId(), membersFromDataset(ds));
         return getDetail(saved.getId());
+    }
+
+    /**
+     * Attach another DataScope blueprint to an existing Business Entity. A Business Entity has one
+     * canonical (primary) blueprint, but any number of application blueprints; every imported member
+     * retains its own dataset/data-source identity. Re-importing is idempotent and role names are made
+     * unique so cross-application tables with the same physical name remain unambiguous.
+     */
+    @Transactional
+    public DatasetImportResult importDataset(Long entityId, Long datasetId, ImportDatasetRequest request) {
+        BusinessEntityDefinitionEntity entity = get(entityId);
+        DataSetDefinitionEntity dataset = dataSetService.get(datasetId);
+        List<BusinessEntityMemberEntity> existing = members.findByEntityIdOrderByOrdinalNoAscIdAsc(entityId);
+        List<BusinessEntityMemberEntity> candidates = membersFromDataset(dataset);
+        String requestedSystem = trimToNull(request == null ? null : request.systemName());
+        String systemName = requestedSystem != null ? requestedSystem : dataset.getName();
+
+        Set<String> physicalMembers = existing.stream()
+                .map(this::physicalMemberKey)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        Set<String> usedRoles = existing.stream()
+                .map(BusinessEntityMemberEntity::getLogicalRole)
+                .filter(Objects::nonNull)
+                .map(BusinessEntityService::norm)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+
+        List<BusinessEntityMemberEntity> imported = new ArrayList<>();
+        Map<String, String> importedRoles = new LinkedHashMap<>();
+        int skipped = 0;
+        for (BusinessEntityMemberEntity candidate : candidates) {
+            if (!physicalMembers.add(physicalMemberKey(candidate))) {
+                skipped++;
+                continue;
+            }
+            String oldRole = candidate.getLogicalRole();
+            String role = uniqueRole(oldRole, systemName, usedRoles);
+            importedRoles.put(norm(oldRole), role);
+            candidate.setLogicalRole(role);
+            candidate.setSystemName(systemName);
+            imported.add(candidate);
+        }
+        for (BusinessEntityMemberEntity candidate : imported) {
+            String parentRole = trimToNull(candidate.getJoinToRole());
+            if (parentRole != null && importedRoles.containsKey(norm(parentRole))) {
+                candidate.setJoinToRole(importedRoles.get(norm(parentRole)));
+            }
+        }
+
+        boolean makePrimary = entity.getPrimaryDatasetId() == null
+                || (request != null && Boolean.TRUE.equals(request.makePrimary()));
+        if (makePrimary) {
+            entity.setPrimaryDatasetId(datasetId);
+            entity.setRootTable(dataset.getDriverTable());
+            entity.setBusinessKeyColumns(rootKeyColumns(datasetId, dataset.getDriverTable()));
+            entity.setUpdatedAt(Instant.now());
+            defs.save(entity);
+        }
+
+        List<BusinessEntityMemberEntity> merged = new ArrayList<>(existing);
+        merged.addAll(imported);
+        replaceMembers(entityId, merged);
+        audit.log(currentUsername(), "BUSINESS_ENTITY_BLUEPRINT_ATTACH",
+                "entity=" + entityId + " dataset=" + datasetId + " added=" + imported.size()
+                        + " skipped=" + skipped + " primary=" + makePrimary);
+        return new DatasetImportResult(getDetail(entityId), datasetId, dataset.getName(), systemName,
+                imported.size(), skipped);
     }
 
     private List<BusinessEntityMemberEntity> membersFromDataset(DataSetDefinitionEntity ds) {
@@ -173,6 +260,30 @@ public class BusinessEntityService {
             out.add(m);
         }
         return out;
+    }
+
+    private String memberKey(BusinessEntityMemberEntity member) {
+        return norm(member.getLogicalRole()) + "|" + norm(member.getTableName());
+    }
+
+    private String physicalMemberKey(BusinessEntityMemberEntity member) {
+        return String.valueOf(member.getDatasetId()) + "|" + String.valueOf(member.getDataSourceId()) + "|"
+                + norm(member.getSchemaName()) + "|" + norm(member.getTableName());
+    }
+
+    private static String uniqueRole(String requestedRole, String systemName, Set<String> usedRoles) {
+        String base = roleSlug(requestedRole);
+        if (usedRoles.add(norm(base))) return base;
+        String prefix = roleSlug(systemName);
+        String candidate = prefix + "_" + base;
+        int suffix = 2;
+        while (!usedRoles.add(norm(candidate))) candidate = prefix + "_" + base + "_" + suffix++;
+        return candidate;
+    }
+
+    private static String roleSlug(String value) {
+        String clean = norm(value).replaceAll("[^a-z0-9]+", "_").replaceAll("^_+|_+$", "");
+        return clean.isBlank() ? "member" : clean;
     }
 
     private BusinessEntityDefinitionEntity get(Long id) {

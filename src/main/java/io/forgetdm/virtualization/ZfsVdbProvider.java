@@ -245,13 +245,13 @@ public class ZfsVdbProvider {
 
     // ------------------------------------------------------------ ingestion
 
-    public VirtualSnapshotEntity snapshotDataSource(DataSourceEntity ds, String name, String note) {
+    public VirtualSnapshotEntity snapshotDataSource(DataSourceEntity ds, String schemaName, String name, String note) {
         SqlDialect dialect = SqlDialect.of(ds);
         switch (dialect) {
             case POSTGRES: return snapshotPostgres(ds, name, note);
             case SQLSERVER: return snapshotMssql(ds, name, note);
-            case DB2: return snapshotJdbcLogical(ds, name, note, isDb2Zos(ds) ? "DB2ZOS" : "DB2");
-            case ORACLE: return snapshotJdbcLogical(ds, name, note, "ORACLE");
+            case DB2: return snapshotJdbcLogical(ds, schemaName, name, note, isDb2Zos(ds) ? "DB2ZOS" : "DB2");
+            case ORACLE: return snapshotJdbcLogical(ds, schemaName, name, note, "ORACLE");
             default: throw ApiException.bad("ZFS provider: unsupported dialect " + dialect
                     + " for source '" + ds.getName() + "'. Supported: POSTGRES, SQLSERVER, DB2, DB2ZOS, ORACLE.");
         }
@@ -374,7 +374,7 @@ public class ZfsVdbProvider {
      * For DB2 z/OS: the snapshot is identical to DB2 LUW; the VDB container is a DB2 LUW image
      * (cross-platform — suitable for dev/test, where dialect compatibility is close enough).
      */
-    private VirtualSnapshotEntity snapshotJdbcLogical(DataSourceEntity ds, String name, String note,
+    private VirtualSnapshotEntity snapshotJdbcLogical(DataSourceEntity ds, String schemaName, String name, String note,
                                                        String dialectLabel) {
         requireEngine();
         SqlDialect dialect = SqlDialect.of(ds);
@@ -386,9 +386,14 @@ public class ZfsVdbProvider {
 
             // Ingest all rows via JDBC → ChunkStore (dedup + gzip compressed)
             TimeFlowEngine.IngestResult r;
+            String schema;
             try (Connection c = connections.open(ds)) {
-                String schema = DataSourceService.normalizeSchema(c, null);
+                schema = DataSourceService.normalizeSchema(c, schemaName);
                 r = engine.ingest(c, schema);
+            }
+            if (r.tableCount() <= 0) {
+                throw ApiException.bad("No tables were found in schema '" + String.valueOf(schema)
+                        + "' on data source '" + ds.getName() + "'. Verify the schema in Browse and capture again.");
             }
 
             // Write marker file so provision() knows dialect + manifest hash
@@ -397,13 +402,14 @@ public class ZfsVdbProvider {
                     + shq("MANIFEST_HASH=" + r.manifestHash())
                     + " > " + shq(dsMp + "/" + FORGE_MANIFEST_FILE));
 
-            return saveDsourceSnapshotLogical(ds, flow, dataset, name, note, r, dialectLabel);
+            return saveDsourceSnapshotLogical(ds, flow, dataset, name, note, r, dialectLabel, schema);
         } catch (ApiException e) { throw e; }
         catch (Exception e) { throw ApiException.bad("ZFS logical snapshot failed: " + e.getMessage()); }
     }
 
     private VirtualSnapshotEntity saveDsourceSnapshotLogical(DataSourceEntity ds, TimeFlowEntity flow,
-            String dataset, String name, String note, TimeFlowEngine.IngestResult r, String dialectLabel) {
+            String dataset, String name, String note, TimeFlowEngine.IngestResult r, String dialectLabel,
+            String schema) {
         String prevSnap = latestSnapName(flow.getId());
         long written = prevSnap == null ? -1
                 : parseLong(zfs.exec(30, "zfs get -Hp -o value written@" + prevSnap + " " + shq(dataset)));
@@ -416,6 +422,7 @@ public class ZfsVdbProvider {
         e.setSnapshotType("DSOURCE");
         e.setProvider("ZFS");
         e.setSourceId(ds.getId());
+        e.setSchemaName(schema);
         e.setTimeflowId(flow.getId());
         e.setImageRef(dataset + "@" + snapName);
         e.setStoragePath("zfs:" + dataset + "@" + snapName);

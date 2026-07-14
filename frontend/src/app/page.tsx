@@ -1,5 +1,5 @@
-import { redirect } from 'next/navigation';
+import { DashboardPage } from '@/features/dashboard/dashboard-page';
 
 export default function Home() {
-  redirect('/datascope');
+  return <DashboardPage />;
 }

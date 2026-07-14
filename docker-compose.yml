@@ -8,6 +8,12 @@ services:
       POSTGRES_PASSWORD: forgetdm
     ports: ["5432:5432"]
     volumes: [forgetdm_data:/var/lib/postgresql/data]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forgetdm -d forgetdm"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   bank-demo:                         # demo SOURCE database (with PII)
     image: postgres:16
@@ -31,12 +37,16 @@ services:
 
   forgetdm:
     build: .
-    depends_on: [forgetdm-db]
+    depends_on:
+      forgetdm-db:
+        condition: service_healthy
     environment:
       FORGETDM_DB_URL: jdbc:postgresql://forgetdm-db:5432/forgetdm
       FORGETDM_DB_USER: forgetdm
       FORGETDM_DB_PASS: forgetdm
       FORGETDM_MASKING_SECRET: rotate-me-in-prod
+      FORGETDM_CAPSULE_SECRET: rotate-a-different-secret-in-prod
+      FORGETDM_TENANT_ID: local
       # ForgeTDM Copilot — provide a key for any provider below to make it selectable in the chat.
       # OpenAI (paid):
       FORGETDM_AI_API_KEY: ""
@@ -48,6 +58,13 @@ services:
       OLLAMA_BASE_URL: "http://host.docker.internal:11434/v1"
       OLLAMA_MODEL: "llama3.2:3b"
     ports: ["8088:8088"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/actuator/health/readiness"]
+      interval: 20s
+      timeout: 5s
+      start_period: 45s
+      retries: 5
 
 volumes:
   forgetdm_data:

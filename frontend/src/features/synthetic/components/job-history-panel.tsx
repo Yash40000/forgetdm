@@ -1,12 +1,13 @@
 'use client';
 
-import { useMemo } from 'react';
-import { ActionIcon, Badge, Button, Group, Paper, Progress, ScrollArea, Stack, Text } from '@mantine/core';
+import { useMemo, useState } from 'react';
+import { ActionIcon, Badge, Button, Group, Progress, ScrollArea, Stack, Text } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
-import { IconDownload, IconRefresh, IconRepeat, IconX } from '@tabler/icons-react';
+import { IconDownload, IconRefresh, IconX } from '@tabler/icons-react';
 
 import { apiPost } from '@/lib/api';
+import { useConfirm } from '@/components/confirm';
 import { keys } from '@/lib/keys';
 import type { SyntheticJob, SyntheticPlan } from '../types';
 import { downloadTextFile, formatRows, formatTime, isJobDone, jobTone, progressDetail } from '../utils';
@@ -21,18 +22,31 @@ type JobHistoryPanelProps = {
 
 export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }: JobHistoryPanelProps) {
   const queryClient = useQueryClient();
+  const { confirm, confirmElement } = useConfirm();
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
   const selectedJob = useMemo(
     () => jobs.find((job) => job.id === selectedJobId) || jobs.find((job) => !isJobDone(job.status)) || jobs[0] || null,
     [jobs, selectedJobId]
   );
 
   const cancelJob = async (id: string) => {
+    const job = jobs.find((item) => item.id === id);
+    const ok = await confirm({
+      title: 'Cancel synthetic run',
+      message: `Cancel ${job?.dataset || 'synthetic run'} (${id})? Active database work may finish its current batch before stopping.`,
+      okText: 'Cancel run',
+      danger: true
+    });
+    if (!ok) return;
+    setCancellingId(id);
     try {
       await apiPost(`/api/synthetic/jobs/${encodeURIComponent(id)}/cancel`, {});
       notifications.show({ color: 'yellow', title: 'Cancel requested', message: id });
       await queryClient.invalidateQueries({ queryKey: keys.synthetic.jobs });
     } catch (error) {
       notifications.show({ color: 'red', title: 'Cancel failed', message: error instanceof Error ? error.message : 'Could not cancel job' });
+    } finally {
+      setCancellingId(null);
     }
   };
 
@@ -48,6 +62,7 @@ export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }
 
   return (
     <Stack gap="md">
+      {confirmElement}
       <Group justify="space-between" align="flex-start">
         <div>
           <Text fw={850}>Run history and live status</Text>
@@ -60,7 +75,12 @@ export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }
         </Button>
       </Group>
 
-      <FootballProgress job={selectedJob} plan={activePlan} title={selectedJob ? `${selectedJob.dataset || 'synthetic'} run` : 'Synthetic generation progress'} />
+      <FootballProgress
+        job={selectedJob}
+        plan={activePlan}
+        title={selectedJob ? `${selectedJob.dataset || 'synthetic'} run` : 'Synthetic generation progress'}
+        onPartitionAction={selectedJob ? (partitionId, action) => void partitionAction(selectedJob.id, partitionId, action) : undefined}
+      />
 
       <div className="forge-grid-panel">
         <ScrollArea.Autosize mah={520}>
@@ -117,7 +137,7 @@ export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }
                     <td>
                       <Group gap="xs" onClick={(event) => event.stopPropagation()}>
                         {!isJobDone(job.status) ? (
-                          <ActionIcon color="red" variant="light" title="Cancel job" onClick={() => cancelJob(job.id)}>
+                          <ActionIcon color="red" variant="light" title="Cancel job" aria-label={`Cancel ${job.dataset || job.id}`} loading={cancellingId === job.id} onClick={() => void cancelJob(job.id)}>
                             <IconX size={16} />
                           </ActionIcon>
                         ) : null}
@@ -125,6 +145,7 @@ export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }
                           <ActionIcon
                             variant="light"
                             title="Download generated files"
+                            aria-label={`Download files from ${job.dataset || job.id}`}
                             onClick={() => job.result?.files?.forEach((file) => downloadTextFile(file.name, file.content))}
                           >
                             <IconDownload size={16} />
@@ -146,91 +167,6 @@ export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }
         </ScrollArea.Autosize>
       </div>
 
-      {selectedJob?.partitions?.length ? (
-        <Paper className="forge-card" p="md">
-          <Stack gap="sm">
-            <Group justify="space-between">
-              <Text fw={850}>Partitions</Text>
-              <Badge variant="light">{selectedJob.partitions.length}</Badge>
-            </Group>
-            <div className="forge-grid-panel">
-              <ScrollArea.Autosize mah={360}>
-                <table className="forge-table">
-                  <thead>
-                    <tr>
-                      <th>Partition</th>
-                      <th>Wave</th>
-                      <th>Rows</th>
-                      <th>Status</th>
-                      <th>Worker</th>
-                      <th>Error</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {selectedJob.partitions.map((partition) => {
-                      const status = String(partition.status || '').toUpperCase();
-                      const canCancel = !['COMPLETED', 'FAILED', 'CANCELLED', 'CANCELED'].includes(status);
-                      const canRetry = ['FAILED', 'CANCELLED', 'CANCELED'].includes(status);
-                      const pct = partition.plannedRows ? Math.round((Number(partition.rowsCompleted || 0) / Number(partition.plannedRows)) * 100) : 0;
-                      return (
-                        <tr key={partition.id}>
-                          <td>
-                            <Text fw={750}>
-                              {partition.table} #{partition.number}
-                            </Text>
-                            <Text size="xs" c="dimmed">
-                              rows {formatRows(partition.rowStart)}-{formatRows(Math.max(Number(partition.rowStart || 1), Number(partition.rowEnd || 1) - 1))}
-                            </Text>
-                          </td>
-                          <td>{Number(partition.wave || 0) + 1}</td>
-                          <td>
-                            <Progress value={Math.max(0, Math.min(100, pct))} size="sm" />
-                            <Text size="xs" c="dimmed">
-                              {formatRows(partition.rowsCompleted)} / {formatRows(partition.plannedRows)}
-                            </Text>
-                          </td>
-                          <td>
-                            <Badge color={jobTone(partition.status)} variant="light">
-                              {partition.status || 'QUEUED'}
-                            </Badge>
-                          </td>
-                          <td>{partition.workerId || '-'}</td>
-                          <td>{partition.error || '-'}</td>
-                          <td>
-                            <Group gap="xs">
-                              {canCancel ? (
-                                <ActionIcon
-                                  color="red"
-                                  variant="light"
-                                  title="Cancel partition"
-                                  onClick={() => partitionAction(selectedJob.id, partition.id, 'cancel')}
-                                >
-                                  <IconX size={16} />
-                                </ActionIcon>
-                              ) : null}
-                              {canRetry ? (
-                                <ActionIcon
-                                  color="blue"
-                                  variant="light"
-                                  title="Retry partition"
-                                  onClick={() => partitionAction(selectedJob.id, partition.id, 'retry')}
-                                >
-                                  <IconRepeat size={16} />
-                                </ActionIcon>
-                              ) : null}
-                            </Group>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </ScrollArea.Autosize>
-            </div>
-          </Stack>
-        </Paper>
-      ) : null}
     </Stack>
   );
 }

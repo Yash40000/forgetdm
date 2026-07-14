@@ -112,23 +112,26 @@ public class VirtualizationController {
 
     // ----------------------------------------------------- VDB operations
 
+    /** Async: returns { opId } immediately; poll GET /operations/{opId} for live progress. */
     @PostMapping("/vdbs/{id}/snapshots")
-    public VirtualSnapshotEntity snapshotVdb(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+    public Map<String, Object> snapshotVdb(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         String name = str(body.get("name"));
         boolean bookmark = body.get("bookmark") != null && Boolean.parseBoolean(String.valueOf(body.get("bookmark")));
-        return svc.snapshotVdb(id, name, bookmark);
+        return svc.startVdbSnapshot(id, name, bookmark);
     }
 
+    /** Async: returns { opId } immediately; poll GET /operations/{opId} for live progress. */
     @PostMapping("/vdbs/{id}/refresh")
-    public VirtualDatabaseEntity refresh(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+    public Map<String, Object> refresh(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         Long snapshotId = Long.valueOf(String.valueOf(body.get("snapshotId")));
-        return svc.refresh(id, snapshotId);
+        return svc.startRefresh(id, snapshotId);
     }
 
+    /** Async: returns { opId } immediately; poll GET /operations/{opId} for live progress. */
     @PostMapping("/vdbs/{id}/rewind")
-    public VirtualDatabaseEntity rewind(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+    public Map<String, Object> rewind(@PathVariable Long id, @RequestBody Map<String, Object> body) {
         Long snapshotId = Long.valueOf(String.valueOf(body.get("snapshotId")));
-        return svc.rewind(id, snapshotId);
+        return svc.startRewind(id, snapshotId);
     }
 
     // --------------------------------------------------- LogSync (ZFS + Postgres)

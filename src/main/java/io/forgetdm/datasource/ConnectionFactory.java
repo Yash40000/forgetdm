@@ -75,12 +75,7 @@ public class ConnectionFactory implements DisposableBean {
             Properties p = new Properties();
             if (ds.getUsername() != null) p.setProperty("user", ds.getUsername());
             if (ds.getPassword() != null) p.setProperty("password", ds.getPassword());
-            if (isPostgresUrl(ds.getJdbcUrl())) {
-                p.setProperty("reWriteBatchedInserts", "true");
-                p.setProperty("connectTimeout", String.valueOf(LOGIN_TIMEOUT_SECONDS));
-                p.setProperty("socketTimeout", String.valueOf(readTimeout));   // 0 = infinite
-                p.setProperty("ApplicationName", "ForgeTDM");
-            }
+            vendorProperties(ds, readTimeout).forEach(p::setProperty);
             Connection c = DriverManager.getConnection(ds.getJdbcUrl(), p);
             try { c.setNetworkTimeout(Runnable::run, readTimeout * 1000); } catch (Exception ignored) {}
             return c;
@@ -128,13 +123,48 @@ public class ConnectionFactory implements DisposableBean {
         cfg.setConnectionTimeout(LOGIN_TIMEOUT_SECONDS * 1000L);
         cfg.setInitializationFailTimeout(-1);   // lazy: a dead source fails on borrow, not at pool creation
         cfg.setPoolName("forgetdm-ds-" + ds.getId());
-        if (isPostgresUrl(ds.getJdbcUrl())) {
-            cfg.addDataSourceProperty("reWriteBatchedInserts", "true");
-            cfg.addDataSourceProperty("connectTimeout", String.valueOf(LOGIN_TIMEOUT_SECONDS));
-            cfg.addDataSourceProperty("socketTimeout", String.valueOf(READ_TIMEOUT_SECONDS));
-            cfg.addDataSourceProperty("ApplicationName", "ForgeTDM");
-        }
+        vendorProperties(ds, READ_TIMEOUT_SECONDS).forEach(cfg::addDataSourceProperty);
         return new HikariDataSource(cfg);
+    }
+
+    /** Conservative vendor settings: streaming reads, Unicode strings, batch rewriting, and an auditable app name. */
+    private static Map<String, String> vendorProperties(DataSourceEntity ds, int readTimeoutSeconds) {
+        Map<String, String> properties = new java.util.LinkedHashMap<>();
+        switch (SqlDialect.of(ds)) {
+            case POSTGRES -> {
+                properties.put("reWriteBatchedInserts", "true");
+                properties.put("connectTimeout", String.valueOf(LOGIN_TIMEOUT_SECONDS));
+                properties.put("socketTimeout", String.valueOf(Math.max(0, readTimeoutSeconds)));
+                properties.put("ApplicationName", "ForgeTDM");
+            }
+            case MYSQL -> {
+                String url = String.valueOf(ds.getJdbcUrl()).toLowerCase(Locale.ROOT);
+                properties.put("useUnicode", "true");
+                properties.put("characterEncoding", "UTF-8");
+                if (!url.startsWith("jdbc:mariadb:")) {
+                    properties.put("rewriteBatchedStatements", "true");
+                    properties.put("useCursorFetch", "true");
+                    properties.put("connectionAttributes", "program_name:ForgeTDM");
+                }
+            }
+            case SQLSERVER -> {
+                properties.put("responseBuffering", "adaptive");
+                properties.put("sendStringParametersAsUnicode", "true");
+                properties.put("applicationName", "ForgeTDM");
+            }
+            case ORACLE -> {
+                properties.put("defaultRowPrefetch", "100");
+                properties.put("defaultLobPrefetchSize", "4096");
+                properties.put("v$session.program", "ForgeTDM");
+            }
+            case DB2 -> {
+                properties.put("clientProgramName", "ForgeTDM");
+                properties.put("progressiveStreaming", "2");
+                properties.put("retrieveMessagesFromServerOnGetMessage", "true");
+            }
+            default -> { }
+        }
+        return properties;
     }
 
     private static boolean isPostgresUrl(String url) {

@@ -12,6 +12,8 @@ import io.forgetdm.policy.MaskingRuleEntity;
 import io.forgetdm.policy.MaskingRuleRepository;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.net.InetAddress;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
@@ -80,6 +82,16 @@ public class ValidationService {
                         case "SSN" -> ssnFormatOk(v, rule.getParam1());
                         case "CREDIT_CARD" -> cardFormatOk(v, rule.getParam1());
                         case "DOB_AGE_BAND", "DATE_SHIFT" -> v.matches("\\d{4}-\\d{2}-\\d{2}.*|\\d{2}[/-]\\d{2}[/-]\\d{4}");
+                        case "IBAN" -> ibanFormatOk(v);
+                        case "SWIFT_BIC" -> v.replaceAll("\\s", "").matches("[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?");
+                        case "ABA_ROUTING" -> abaFormatOk(v);
+                        case "NATIONAL_ID" -> nationalIdFormatOk(v, rule.getParam1());
+                        case "IP_ADDRESS" -> ipFormatOk(v);
+                        case "MAC_ADDRESS" -> v.matches("(?i)([0-9a-f]{2}[:-]){5}[0-9a-f]{2}");
+                        case "UUID" -> uuidFormatOk(v);
+                        case "NUMERIC_NOISE" -> numericFormatOk(v);
+                        case "MIN_MAX" -> minMaxFormatOk(v, rule.getParam1(), rule.getParam2());
+                        case "TOKENIZE" -> tokenFormatOk(v, rule.getParam1(), rule.getParam2());
                         default -> true;
                     };
                     if (!ok) bad++;
@@ -133,7 +145,9 @@ public class ValidationService {
     }
 
     private static boolean isIdentityFn(String fn) {
-        return Set.of("FIRST_NAME", "LAST_NAME", "FULL_NAME", "EMAIL", "SSN", "CREDIT_CARD", "PHONE", "ADDRESS_US").contains(fn);
+        return Set.of("FIRST_NAME", "LAST_NAME", "FULL_NAME", "EMAIL", "SSN", "CREDIT_CARD", "PHONE", "ADDRESS_US",
+                "BANK_ACCOUNT", "IBAN", "SWIFT_BIC", "ABA_ROUTING", "NATIONAL_ID", "IP_ADDRESS", "MAC_ADDRESS",
+                "DIRECT_LOOKUP", "HASH_LOOKUP").contains(fn);
     }
 
     private static boolean ssnFormatOk(String value, String mode) {
@@ -145,6 +159,84 @@ public class ValidationService {
 
     private static boolean cardFormatOk(String value, String mode) {
         return Luhn.isValid(value.replaceAll("[ -]", ""));
+    }
+
+    private static boolean ibanFormatOk(String value) {
+        String compact = value.replaceAll("\\s", "").toUpperCase(Locale.ROOT);
+        if (!compact.matches("[A-Z]{2}\\d{2}[A-Z0-9]{11,30}")) return false;
+        int remainder = 0;
+        String rearranged = compact.substring(4) + compact.substring(0, 4);
+        for (char c : rearranged.toCharArray()) {
+            String digits = Character.isLetter(c) ? String.valueOf(c - 'A' + 10) : String.valueOf(c);
+            for (char digit : digits.toCharArray()) remainder = (remainder * 10 + digit - '0') % 97;
+        }
+        return remainder == 1;
+    }
+
+    private static boolean abaFormatOk(String value) {
+        String digits = value.replaceAll("\\D", "");
+        if (digits.length() != 9) return false;
+        int[] weights = {3, 7, 1, 3, 7, 1, 3, 7, 1};
+        int sum = 0;
+        for (int i = 0; i < digits.length(); i++) sum += (digits.charAt(i) - '0') * weights[i];
+        return sum % 10 == 0;
+    }
+
+    private static boolean nationalIdFormatOk(String value, String countrySpec) {
+        String country = countrySpec == null ? "GENERIC" : countrySpec.toUpperCase(Locale.ROOT);
+        String compact = value.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        return switch (country) {
+            case "US" -> ssnFormatOk(value, "VALID_RANDOM_AREA");
+            case "CA" -> compact.matches("\\d{9}") && Luhn.isValid(compact);
+            case "UK" -> compact.matches("[ABCEGHJKLMNPRSTWXYZ]{2}\\d{6}[A-D]");
+            default -> !compact.isBlank();
+        };
+    }
+
+    private static boolean ipFormatOk(String value) {
+        String trimmed = value.trim();
+        if (trimmed.contains(":")) {
+            try { return InetAddress.getByName(trimmed).getHostAddress().contains(":"); }
+            catch (Exception ignored) { return false; }
+        }
+        String[] parts = trimmed.split("\\.", -1);
+        if (parts.length != 4) return false;
+        try {
+            for (String part : parts) {
+                int octet = Integer.parseInt(part);
+                if (octet < 0 || octet > 255) return false;
+            }
+            return true;
+        } catch (NumberFormatException e) { return false; }
+    }
+
+    private static boolean uuidFormatOk(String value) {
+        try {
+            UUID.fromString(value.replace("{", "").replace("}", ""));
+            return true;
+        } catch (IllegalArgumentException e) { return false; }
+    }
+
+    private static boolean numericFormatOk(String value) {
+        try { new BigDecimal(value.trim()); return true; }
+        catch (NumberFormatException e) { return false; }
+    }
+
+    private static boolean minMaxFormatOk(String value, String minSpec, String maxSpec) {
+        try {
+            BigDecimal number = new BigDecimal(value.trim());
+            BigDecimal min = new BigDecimal(String.valueOf(minSpec).trim());
+            BigDecimal max = new BigDecimal(String.valueOf(maxSpec).trim());
+            return min.compareTo(max) <= 0 && number.compareTo(min) >= 0 && number.compareTo(max) <= 0;
+        } catch (NumberFormatException e) { return false; }
+    }
+
+    private static boolean tokenFormatOk(String value, String prefixSpec, String lengthSpec) {
+        String prefix = prefixSpec == null ? "TKN_" : "NONE".equalsIgnoreCase(prefixSpec) ? "" : prefixSpec;
+        int length;
+        try { length = Math.max(12, Math.min(64, lengthSpec == null ? 32 : Integer.parseInt(lengthSpec))); }
+        catch (NumberFormatException e) { return false; }
+        return value.startsWith(prefix) && value.substring(prefix.length()).matches("(?i)[0-9a-f]{" + length + "}");
     }
 
     /** Pair source row -> masked row by primary-key order for a quick RI witness sample. */

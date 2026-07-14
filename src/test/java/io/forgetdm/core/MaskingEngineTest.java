@@ -6,6 +6,8 @@ import io.forgetdm.core.mask.MaskingEngine;
 import io.forgetdm.core.util.Luhn;
 import org.junit.jupiter.api.Test;
 
+import java.util.Set;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 class MaskingEngineTest {
@@ -79,8 +81,9 @@ class MaskingEngineTest {
         assertTrue(generated.matches("\\d{16}"));
         assertTrue(Luhn.isValid(generated));
         assertFalse(generated.startsWith("411111"));
-        assertEquals("4111 1111 1111 1112",
-                engine.mask(MaskFunction.CREDIT_CARD, "ccn", "4111 1111 1111 1112", "VALID_RANDOM_BIN", "DIGITS_ONLY", ctx));
+        String nonconforming = engine.mask(MaskFunction.CREDIT_CARD, "ccn", "4111 1111 1111 1112", "VALID_RANDOM_BIN", "DIGITS_ONLY", ctx);
+        assertNotEquals("4111 1111 1111 1112", nonconforming); // fail closed: malformed PANs never pass through
+        assertTrue(Luhn.isValid(nonconforming));
     }
 
     @Test void emailIsSafeValidAndDeterministic() {
@@ -140,6 +143,158 @@ class MaskingEngineTest {
         assertNotEquals("+1 (415) 555-0182", area);
     }
 
+    @Test void characterMappingAndRedactionPreserveRequestedShape() {
+        String mapped = engine.mask(MaskFunction.CHARACTER_MAP, "customer.ref", "AB-1234-SECRET", "FIRST:2,LAST:4", "UPPER", ctx);
+        assertEquals("AB", mapped.substring(0, 2));
+        assertTrue(mapped.endsWith("CRET"));
+        assertEquals('-', mapped.charAt(2));
+        assertNotEquals("AB-1234-SECRET", mapped);
+
+        assertEquals("##-####-##CRET", engine.mask(MaskFunction.REDACT, "customer.ref", "AB-1234-SECRET", "#", "KEEP_LAST4", ctx));
+        assertEquals("XXXXXXXX", engine.mask(MaskFunction.REDACT, "customer.ref", "anything", "X", "STANDARD:8", ctx));
+    }
+
+    @Test void tokenAndSecureLookupAreStableAndConfigurable() {
+        String token = engine.mask(MaskFunction.TOKENIZE, "customer.id", "CUST-10025", "CUS_", "24", ctx);
+        assertTrue(token.matches("CUS_[0-9a-f]{24}"));
+        assertEquals(token, engine.mask(MaskFunction.TOKENIZE, "customer.id", "CUST-10025", "CUS_", "24", ctx));
+        assertNotEquals(token, engine.mask(MaskFunction.TOKENIZE, "customer.id", "CUST-10026", "CUS_", "24", ctx));
+
+        String lookup = engine.mask(MaskFunction.SECURE_LOOKUP, "status", "VIP", "GOLD|SILVER|BRONZE", "UPPER", ctx);
+        assertTrue(Set.of("GOLD", "SILVER", "BRONZE").contains(lookup));
+        assertEquals(lookup, engine.mask(MaskFunction.SECURE_LOOKUP, "status", "VIP", "GOLD|SILVER|BRONZE", "UPPER", ctx));
+    }
+
+    @Test void directLookupSupportsExactCompositeAndFailClosedMappings() {
+        String pairs = "A=>Alpha|B=>Beta|<NULL>=>Unknown|US~VIP=>Priority";
+        assertEquals("Alpha", engine.mask(MaskFunction.DIRECT_LOOKUP, "ignored", " a ", pairs,
+                "TRIM=BOTH;CASE=UPPER;NOT_FOUND=ERROR", ctx));
+        assertEquals("Unknown", engine.mask(MaskFunction.DIRECT_LOOKUP, "ignored", null, pairs,
+                "NOT_FOUND=ERROR", ctx));
+        assertThrows(IllegalStateException.class, () -> engine.mask(MaskFunction.DIRECT_LOOKUP, "ignored", "C", pairs,
+                "NOT_FOUND=ERROR", ctx));
+        assertEquals("C", engine.mask(MaskFunction.DIRECT_LOOKUP, "ignored", "C", pairs,
+                "NOT_FOUND=PRESERVE", ctx));
+
+        MaskContext composite = new MaskContext(2);
+        composite.row.put("region", "US");
+        composite.row.put("tier", "VIP");
+        assertEquals("Priority", engine.mask(MaskFunction.DIRECT_LOOKUP, "ignored", "source-value", pairs,
+                "SOURCE=region,tier;JOIN=~", composite));
+    }
+
+    @Test void hashLookupSupportsSequentialAndReservedOptimKeys() {
+        String table = "-1=>Unknown|-2=>Blank|-3=>Empty|1=>Avery|2=>Jordan|3=>Taylor";
+        String first = engine.mask(MaskFunction.HASH_LOOKUP, "table.one", "Customer-10025", table, "SEED=7", ctx);
+        String second = engine.mask(MaskFunction.HASH_LOOKUP, "table.two", "Customer-10025", table, "SEED=7", ctx);
+        assertEquals(first, second); // lookup identity + seed, not physical table salt, controls consistency
+        assertTrue(Set.of("Avery", "Jordan", "Taylor").contains(first));
+        assertEquals("Unknown", engine.mask(MaskFunction.HASH_LOOKUP, "ignored", null, table, null, ctx));
+        assertEquals("Blank", engine.mask(MaskFunction.HASH_LOOKUP, "ignored", "   ", table, null, ctx));
+        assertEquals("Empty", engine.mask(MaskFunction.HASH_LOOKUP, "ignored", "", table, null, ctx));
+        assertThrows(IllegalStateException.class, () -> engine.mask(MaskFunction.HASH_LOOKUP, "ignored", "x",
+                "1=>A|3=>C", null, ctx));
+    }
+
+    @Test void hashLookupSupportsMultiColumnDestination() {
+        String table = "-1=>None~None|1=>Olivia~Johnson|2=>Liam~Smith|3=>Ava~Brown";
+        // Two destination columns hashing the SAME source land on the same row and take different value columns.
+        String firstName = engine.mask(MaskFunction.HASH_LOOKUP, "table.first_name", "Customer-10025", table, "SEED=7;VALUE=1", ctx);
+        String lastName = engine.mask(MaskFunction.HASH_LOOKUP, "table.last_name", "Customer-10025", table, "SEED=7;VALUE=2", ctx);
+        // The default (no VALUE) form returns the whole row, proving both slices come from ONE coherent record.
+        String wholeRow = engine.mask(MaskFunction.HASH_LOOKUP, "table.whole", "Customer-10025", table, "SEED=7", ctx);
+        assertEquals(wholeRow, firstName + "~" + lastName);
+        assertTrue(Set.of("Olivia", "Liam", "Ava").contains(firstName));
+        assertTrue(Set.of("Johnson", "Smith", "Brown").contains(lastName));
+        // Reserved rows honor the column selector too.
+        assertEquals("None", engine.mask(MaskFunction.HASH_LOOKUP, "ignored", null, table, "VALUE=2", ctx));
+        // A custom value separator is supported.
+        assertEquals("Johnson", engine.mask(MaskFunction.HASH_LOOKUP, "ignored", "x", "1=>Olivia#Johnson", "VCOLSEP=#;VALUE=2", ctx));
+        // Selecting a column beyond the row's width fails closed.
+        assertThrows(IllegalStateException.class, () -> engine.mask(MaskFunction.HASH_LOOKUP, "ignored", "Customer-10025",
+                table, "VALUE=3", ctx));
+    }
+
+    @Test void governedLookupProviderSupportsCacheControlAndSeededEngines() {
+        java.util.concurrent.atomic.AtomicBoolean cacheRequested = new java.util.concurrent.atomic.AtomicBoolean();
+        MaskingEngine governed = new MaskingEngine("lookup-secret");
+        governed.setLookupProvider((name, useCache) -> {
+            assertEquals("customer-tier", name);
+            cacheRequested.set(useCache);
+            return "A=>STANDARD|B=>PRIORITY";
+        });
+        assertEquals("PRIORITY", governed.withSeed("release-9").mask(MaskFunction.DIRECT_LOOKUP, "ignored", "B",
+                "@customer-tier", "CACHE=ON", ctx));
+        assertTrue(cacheRequested.get());
+        assertEquals("STANDARD", governed.mask(MaskFunction.DIRECT_LOOKUP, "ignored", "A",
+                "@customer-tier", "NOCACHE", ctx));
+        assertFalse(cacheRequested.get());
+    }
+
+    @Test void numericFunctionsPreserveScaleAndBounds() {
+        String noisy = engine.mask(MaskFunction.NUMERIC_NOISE, "balance", "1000.00", "PERCENT:10", "950:1050", ctx);
+        assertTrue(noisy.matches("\\d+\\.\\d{2}"));
+        assertTrue(new java.math.BigDecimal(noisy).compareTo(new java.math.BigDecimal("950")) >= 0);
+        assertTrue(new java.math.BigDecimal(noisy).compareTo(new java.math.BigDecimal("1050")) <= 0);
+
+        String ranged = engine.mask(MaskFunction.MIN_MAX, "risk.score", "987.50", "10", "20", ctx);
+        assertTrue(ranged.matches("\\d+\\.\\d{2}"));
+        assertTrue(new java.math.BigDecimal(ranged).compareTo(new java.math.BigDecimal("10")) >= 0);
+        assertTrue(new java.math.BigDecimal(ranged).compareTo(new java.math.BigDecimal("20")) <= 0);
+
+        assertThrows(IllegalStateException.class,
+                () -> engine.mask(MaskFunction.NUMERIC_NOISE, "balance", "1000.00", "PERCENT:ten", null, ctx));
+        assertThrows(IllegalStateException.class,
+                () -> engine.mask(MaskFunction.NUMERIC_NOISE, "balance", "1000.00", "PERCENT:10", "high:low", ctx));
+    }
+
+    @Test void bankingIdentifiersRemainStructurallyValid() {
+        String account = engine.mask(MaskFunction.BANK_ACCOUNT, "bank.account", "0012-3456-7890", "KEEP_LAST4", null, ctx);
+        assertTrue(account.endsWith("7890"));
+        assertEquals("0012-3456-7890".length(), account.length());
+        assertNotEquals("0012-3456-7890", account);
+        assertEquals("****-****-****", engine.mask(MaskFunction.BANK_ACCOUNT, "bank.account", "0012-3456-7890", "REDACT", null, ctx));
+
+        String iban = engine.mask(MaskFunction.IBAN, "iban", "GB82 WEST 1234 5698 7654 32", "PRESERVE_COUNTRY", "PRESERVE_FORMAT", ctx);
+        assertTrue(iban.startsWith("GB"));
+        assertEquals(1, ibanRemainder(iban));
+        assertEquals("GB82 WEST 1234 5698 7654 32".length(), iban.length());
+
+        String bic = engine.mask(MaskFunction.SWIFT_BIC, "swift.bic", "DEUTDEFF500", "PRESERVE_COUNTRY", null, ctx);
+        assertTrue(bic.matches("[A-Z]{6}[A-Z0-9]{5}"));
+        assertEquals("DE", bic.substring(4, 6));
+
+        String routing = engine.mask(MaskFunction.ABA_ROUTING, "routing.aba", "021000021", "PRESERVE_FED_DISTRICT", null, ctx);
+        assertTrue(routing.matches("\\d{9}"));
+        assertEquals(0, abaChecksum(routing));
+    }
+
+    @Test void nationalAndNetworkIdentifiersAreSafeAndValid() {
+        String sin = engine.mask(MaskFunction.NATIONAL_ID, "national.id", "046 454 286", "CA", "PRESERVE_FORMAT", ctx);
+        assertTrue(sin.matches("\\d{3} \\d{3} \\d{3}"));
+        assertTrue(luhnAny(sin.replaceAll("\\D", "")));
+
+        String ipv4 = engine.mask(MaskFunction.IP_ADDRESS, "network.ip", "8.8.8.8", "SAFE_TEST_RANGE", null, ctx);
+        assertTrue(ipv4.matches("(192\\.0\\.2|198\\.51\\.100|203\\.0\\.113)\\.\\d{1,3}"));
+        String ipv6 = engine.mask(MaskFunction.IP_ADDRESS, "network.ip", "2001:4860:4860::8888", "SAFE_TEST_RANGE", null, ctx);
+        assertTrue(ipv6.startsWith("2001:db8:"));
+
+        String mac = engine.mask(MaskFunction.MAC_ADDRESS, "network.mac", "00:1A:2B:3C:4D:5E", "LOCAL_ADMIN", null, ctx);
+        assertTrue(mac.matches("[0-9A-F]{2}(:[0-9A-F]{2}){5}"));
+        assertEquals(2, Integer.parseInt(mac.substring(0, 2), 16) & 0x03); // local-admin + unicast
+
+        String uuid = engine.mask(MaskFunction.UUID, "customer.uuid", "550e8400-e29b-41d4-a716-446655440000", null, null, ctx);
+        assertTrue(uuid.matches("[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"));
+        assertNotEquals("550e8400-e29b-41d4-a716-446655440000", uuid);
+    }
+
+    @Test void seededEngineKeepsScriptRegistryWiring() {
+        MaskingEngine scripted = new MaskingEngine("script-secret");
+        scripted.setScriptProvider(name -> "return value .. '-' .. param");
+        assertEquals("abc-ok", scripted.withSeed("release-7")
+                .mask(MaskFunction.SCRIPT, "custom", "abc", "suffix", "ok", ctx));
+    }
+
     @Test void secretRotationChangesOutput() {
         MaskingEngine other = new MaskingEngine("another-secret");
         assertNotEquals(
@@ -162,5 +317,35 @@ class MaskingEngineTest {
             engine.mask(MaskFunction.SSN, "ssn", "123-45-6789", null, null, ctx),
             engine.withSeed("").mask(MaskFunction.SSN, "ssn", "123-45-6789", null, null, ctx));
         assertSame(engine, engine.withSeed(null));
+    }
+
+    private static int ibanRemainder(String formatted) {
+        String compact = formatted.replaceAll("\\s", "").toUpperCase();
+        String rearranged = compact.substring(4) + compact.substring(0, 4);
+        int remainder = 0;
+        for (char c : rearranged.toCharArray()) {
+            String digits = Character.isLetter(c) ? String.valueOf(c - 'A' + 10) : String.valueOf(c);
+            for (char digit : digits.toCharArray()) remainder = (remainder * 10 + digit - '0') % 97;
+        }
+        return remainder;
+    }
+
+    private static int abaChecksum(String digits) {
+        int[] weights = {3, 7, 1, 3, 7, 1, 3, 7, 1};
+        int sum = 0;
+        for (int i = 0; i < 9; i++) sum += (digits.charAt(i) - '0') * weights[i];
+        return sum % 10;
+    }
+
+    private static boolean luhnAny(String digits) {
+        int sum = 0;
+        boolean alternate = false;
+        for (int i = digits.length() - 1; i >= 0; i--) {
+            int value = digits.charAt(i) - '0';
+            if (alternate) { value *= 2; if (value > 9) value -= 9; }
+            sum += value;
+            alternate = !alternate;
+        }
+        return sum % 10 == 0;
     }
 }

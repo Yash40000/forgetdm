@@ -59,6 +59,14 @@ public class BusinessEntityController {
         return svc.createFromDataset(datasetId, body);
     }
 
+    @PostMapping("/{id}/datasets/{datasetId}/import")
+    public BusinessEntityService.DatasetImportResult importDataset(
+            @PathVariable Long id,
+            @PathVariable Long datasetId,
+            @RequestBody(required = false) BusinessEntityService.ImportDatasetRequest body) {
+        return svc.importDataset(id, datasetId, body);
+    }
+
     @PutMapping("/{id}")
     public BusinessEntityDefinitionEntity update(@PathVariable Long id,
                                                  @RequestBody BusinessEntityDefinitionEntity body) {

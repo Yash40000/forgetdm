@@ -1,5 +1,6 @@
 package io.forgetdm.datasource;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import java.time.Instant;
 
@@ -11,6 +12,7 @@ public class DataSourceEntity {
     @Column(nullable = false) private String kind;        // POSTGRES | H2 | DB2 | DB2UDB | ORACLE | SQLSERVER | GENERIC
     @Column(name = "jdbc_url", nullable = false) private String jdbcUrl;
     private String username;
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
     @Column(nullable = false) private String role;        // SOURCE | TARGET | BOTH
     @Column(length = 32) private String environment;      // PROD | UAT | QA | DEV | STAGE | OTHER (free text)

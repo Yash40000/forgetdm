@@ -200,6 +200,18 @@ export type SyntheticSavedJob = {
   plan?: SyntheticPlan;
 };
 
+export type SyntheticValueList = {
+  id: number;
+  name: string;
+  description?: string | null;
+  systemTag?: string | null;
+  listValues: string;
+  ownerUsername?: string | null;
+  visibility?: 'GLOBAL' | 'PRIVATE' | string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
 export type SyntheticPlanSummary = {
   error?: string;
   receiver?: string;

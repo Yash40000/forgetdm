@@ -3,13 +3,20 @@ import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { DataColumn, DataSource } from '@/lib/types';
-import type { CatalogEntry, GeneratorSpec, SyntheticJob, SyntheticSavedJob } from './types';
+import type { CatalogEntry, GeneratorSpec, SyntheticJob, SyntheticSavedJob, SyntheticValueList } from './types';
 import { catalogName, isJobDone } from './utils';
 
 export function useSyntheticGenerators() {
   return useQuery({
     queryKey: keys.synthetic.generators,
     queryFn: () => apiFetch<GeneratorSpec[]>('/api/synthetic/generators')
+  });
+}
+
+export function useSyntheticValueLists() {
+  return useQuery({
+    queryKey: keys.synthetic.valueLists,
+    queryFn: () => apiFetch<SyntheticValueList[]>('/api/synthetic/value-lists')
   });
 }
 

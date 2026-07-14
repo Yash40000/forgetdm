@@ -1,0 +1,17 @@
+pipeline {
+  agent any
+  parameters {
+    string(name: 'FORGETDM_TEMPLATE_ID', description: 'Published ForgeTDM self-service template id')
+    choice(name: 'FORGETDM_ENVIRONMENT', choices: ['QA', 'UAT', 'PERFORMANCE'], description: 'Target environment evidence')
+  }
+  environment {
+    FORGETDM_URL = credentials('forgetdm-url')
+    FORGETDM_TOKEN = credentials('forgetdm-api-token')
+    FORGETDM_PURPOSE = "Jenkins ${env.JOB_NAME} build ${env.BUILD_NUMBER}"
+  }
+  stages {
+    stage('Request governed test data') {
+      steps { sh 'FORGETDM_TEMPLATE_ID="$FORGETDM_TEMPLATE_ID" FORGETDM_ENVIRONMENT="$FORGETDM_ENVIRONMENT" ./scripts/forge-tdm-request.sh' }
+    }
+  }
+}

@@ -73,12 +73,18 @@ public class DiscoveryService {
      */
     @Transactional
     public List<ClassificationEntity> scan(Long dataSourceId, String schemaName, Set<String> selectedTypes) {
-        return scan(dataSourceId, schemaName, selectedTypes, null);
+        return scan(dataSourceId, schemaName, selectedTypes, null, null);
     }
 
     @Transactional
     public List<ClassificationEntity> scan(Long dataSourceId, String schemaName, Set<String> selectedTypes,
                                            ScanProgress progress) {
+        return scan(dataSourceId, schemaName, selectedTypes, null, progress);
+    }
+
+    @Transactional
+    public List<ClassificationEntity> scan(Long dataSourceId, String schemaName, Set<String> selectedTypes,
+                                           Set<String> selectedTables, ScanProgress progress) {
         DataSourceEntity ds = dataSources.get(dataSourceId);
         List<ClassificationEntity> found = new ArrayList<>();
         ScanProgress scanProgress = progress == null ? new ScanProgress() {} : progress;
@@ -93,6 +99,7 @@ public class DiscoveryService {
         Map<String, String> suggested = new LinkedHashMap<>(PiiPatterns.SUGGESTED);
         suggested.putAll(custom.suggested());
         Set<String> selected = normalizeTypes(selectedTypes);
+        Set<String> selectedTableKeys = normalizeNames(selectedTables);
         if (!selected.isEmpty()) {
             nameHints.keySet().retainAll(selected);
             valueHints.keySet().retainAll(selected);
@@ -107,10 +114,14 @@ public class DiscoveryService {
             Set<String> locked = new HashSet<>();
             List<ClassificationEntity> stale = new ArrayList<>();
             for (ClassificationEntity e : existing) {
+                boolean tableInScope = selectedTableKeys.isEmpty()
+                        || selectedTableKeys.contains(normalizeName(e.getTableName()));
+                boolean typeInScope = selected.isEmpty() || selected.contains(normalizeType(e.getPiiType()));
+                if (!tableInScope || !typeInScope) continue;
                 if ("SUGGESTED".equals(e.getStatus())) stale.add(e);
                 else {
                     locked.add(colKey(e.getTableName(), e.getColumnName()));
-                    if (selected.isEmpty() || selected.contains(normalizeType(e.getPiiType()))) found.add(e);
+                    found.add(e);
                 }
             }
             classifications.deleteAll(stale);
@@ -125,6 +136,15 @@ public class DiscoveryService {
                     String table = rs.getString("TABLE_NAME");
                     if (!table.toLowerCase().startsWith("flyway_")) tables.add(table);
                 }
+            }
+            if (!selectedTableKeys.isEmpty()) {
+                Set<String> discovered = new HashSet<>();
+                for (String table : tables) discovered.add(normalizeName(table));
+                List<String> missing = selectedTableKeys.stream().filter(name -> !discovered.contains(name)).sorted().toList();
+                if (!missing.isEmpty()) {
+                    throw ApiException.bad("Table focus contains table(s) not found in schema " + schema + ": " + String.join(", ", missing));
+                }
+                tables.removeIf(table -> !selectedTableKeys.contains(normalizeName(table)));
             }
             scanProgress.tablesDiscovered(List.copyOf(tables));
             int tableIndex = 0;
@@ -172,8 +192,25 @@ public class DiscoveryService {
         } catch (ApiException e) { throw e; }
         catch (Exception e) { throw ApiException.bad("Discovery scan failed: " + e.getMessage()); }
 
-        audit.log("system", "DISCOVERY_SCAN", "datasource=" + ds.getName() + " schema=" + schemaName + " findings=" + found.size());
+        audit.log("system", "DISCOVERY_SCAN", "datasource=" + ds.getName() + " schema=" + schemaName
+                + " piiTypes=" + selected + " tables=" + selectedTableKeys + " findings=" + found.size());
         return found;
+    }
+
+    @Transactional
+    public int bulkUpdateClassifications(List<Long> ids, String status) {
+        String normalizedStatus = status == null ? "" : status.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("APPROVED", "REJECTED").contains(normalizedStatus)) {
+            throw ApiException.bad("status must be APPROVED or REJECTED");
+        }
+        if (ids == null || ids.isEmpty()) return 0;
+        List<Long> uniqueIds = ids.stream().filter(Objects::nonNull).distinct().limit(10_000).toList();
+        List<ClassificationEntity> rows = classifications.findAllById(uniqueIds);
+        rows.forEach(row -> row.setStatus(normalizedStatus));
+        classifications.saveAll(rows);
+        audit.log("system", "CLASSIFICATIONS_BULK_UPDATED",
+                "status=" + normalizedStatus + " requested=" + uniqueIds.size() + " updated=" + rows.size());
+        return rows.size();
     }
 
     private record Scored(String piiType, double confidence, String sample) {}
@@ -691,6 +728,17 @@ public class DiscoveryService {
         return out;
     }
 
+    private static Set<String> normalizeNames(Set<String> names) {
+        if (names == null) return Set.of();
+        Set<String> out = new HashSet<>();
+        for (String name : names) if (name != null && !name.isBlank()) out.add(normalizeName(name));
+        return out;
+    }
+
+    private static String normalizeName(String name) {
+        return name == null ? "" : name.trim().toLowerCase(Locale.ROOT);
+    }
+
     private static String normalizeType(String type) {
         return type == null ? "" : type.trim().toUpperCase(Locale.ROOT);
     }
@@ -732,8 +780,9 @@ public class DiscoveryService {
         }
         return switch (category == null ? "TEXT" : category) {
             case "TEXT" -> true;                        // any masker renders to text
-            case "NUMERIC" -> Set.of("FORMAT_PRESERVE", "SEQUENCE").contains(fn);
-            case "DATE" -> Set.of("DATE_SHIFT", "DOB_AGE_BAND").contains(fn);
+            case "NUMERIC" -> Set.of("FORMAT_PRESERVE", "CHARACTER_MAP", "SEQUENCE", "NUMERIC_NOISE",
+                    "MIN_MAX", "SSN", "CREDIT_CARD", "PHONE", "BANK_ACCOUNT", "ABA_ROUTING").contains(fn);
+            case "DATE" -> Set.of("DATE_SHIFT", "DOB_AGE_BAND", "AGE").contains(fn);
             default -> false;                           // BOOLEAN / BINARY → only the type-agnostic ones above
         };
     }
@@ -774,6 +823,15 @@ public class DiscoveryService {
         if ("CITY_STATE_ZIP".equals(fn))
             return "CITY".equals(pii) ? "CITY" : "STATE".equals(pii) ? "STATE" : "ZIP".equals(pii) ? "ZIP" : "FULL";
         if ("ADDRESS_US".equals(fn)) return "FULL";
+        if ("IBAN".equals(fn)) return "PRESERVE_COUNTRY";
+        if ("SWIFT_BIC".equals(fn)) return "PRESERVE_COUNTRY";
+        if ("BANK_ACCOUNT".equals(fn)) return "KEEP_LAST4";
+        if ("ABA_ROUTING".equals(fn)) return "PRESERVE_FED_DISTRICT";
+        if ("NATIONAL_ID".equals(fn)) return "GENERIC";
+        if ("IP_ADDRESS".equals(fn)) return "SAFE_TEST_RANGE";
+        if ("MAC_ADDRESS".equals(fn)) return "LOCAL_ADMIN";
+        if ("TOKENIZE".equals(fn)) return "USR_";
+        if ("SECURE_LOOKUP".equals(fn) && "GENDER".equals(pii)) return "F|M|X";
         return null;
     }
 
@@ -783,6 +841,10 @@ public class DiscoveryService {
         if ("PHONE".equals(fn)) return "PRESERVE_COUNTRY";
         if ("SSN".equals(fn) || "CREDIT_CARD".equals(fn)) return "PRESERVE_FORMAT";
         if ("CITY_STATE_ZIP".equals(fn) || "ADDRESS_US".equals(fn)) return "PRESERVE_STATE";
+        if ("IBAN".equals(fn)) return "PRESERVE_FORMAT";
+        if ("NATIONAL_ID".equals(fn)) return "PRESERVE_FORMAT";
+        if ("TOKENIZE".equals(fn)) return "24";
+        if ("SECURE_LOOKUP".equals(fn)) return "UPPER";
         return null;
     }
 }

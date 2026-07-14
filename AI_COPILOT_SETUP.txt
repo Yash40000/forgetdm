@@ -1,9 +1,9 @@
 ForgeTDM Copilot — enabling the AI assistant
 =============================================
 
-The assistant is OFF until you configure at least one provider; the rest of ForgeTDM runs
-exactly as before. You can configure several providers and pick one from the dropdown in the
-chat panel. Each is an OpenAI-compatible /chat/completions endpoint.
+The local Ollama profile is visible by default; hosted providers remain OFF until configured.
+The rest of ForgeTDM runs exactly as before. You can configure several providers and pick one
+from the dropdown. Each is an OpenAI-compatible /chat/completions endpoint.
 
 A provider shows up in the chat picker when it has a base-url + model (+ an api-key for remote
 providers; local on-prem providers like Ollama/vLLM need no key).
@@ -21,7 +21,8 @@ FREE options to test with
 2) Local Ollama — free, fully on-prem (nothing leaves your network), NO API key needed:
      - Install Ollama, then:  ollama serve   and   ollama pull llama3.2:3b   (or any model)
      - "Local · Ollama" 🔒 appears in the picker out of the box (base-url http://localhost:11434/v1).
-       Just start Ollama and pick it. Override the model in the chat model box, or set OLLAMA_MODEL.
+       Just start Ollama and pick it. ForgeTDM uses OLLAMA_MODEL when installed; otherwise it
+       selects an installed local model and reports that choice. Set OLLAMA_MODEL to pin one.
 
 3) Local vLLM / LM Studio / TGI — any OpenAI-compatible local server, also keyless/on-prem:
      - Serve a model, then set VLLM_MODEL to the served model name (and VLLM_BASE_URL if not :8000).
@@ -64,3 +65,6 @@ Try
 ---
 "What data sources do I have?",  "Suggest masking rules for the CUSTOMER table",
 "Mask a copy of bankdemo into bankqa using policy X".
+
+For the grounded Story-to-Data planner, Forge Data Store privacy boundary, approval flow, and
+banking acceptance gates, see docs/FORGE_PRIVATE_STORY_AI.md.

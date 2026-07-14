@@ -2,6 +2,11 @@ package io.forgetdm.mapping;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.util.List;
 import java.util.Map;
@@ -20,8 +25,12 @@ import java.util.Map;
 public class MappingController {
 
     private final MappingService svc;
+    private final MappingFileService files;
+    private final MappingExecutionService executions;
 
-    public MappingController(MappingService svc) { this.svc = svc; }
+    public MappingController(MappingService svc, MappingFileService files, MappingExecutionService executions) {
+        this.svc = svc; this.files = files; this.executions = executions;
+    }
 
     @GetMapping public List<MappingEntity> list() { return svc.list(); }
 
@@ -31,11 +40,60 @@ public class MappingController {
 
     @DeleteMapping("/{id}") public void delete(@PathVariable Long id) { svc.delete(id); }
 
+    @GetMapping("/{id}/versions") public List<MappingVersionEntity> versions(@PathVariable Long id) { return svc.versions(id); }
+
+    @PostMapping("/{id}/versions/{versionId}/restore")
+    public MappingEntity restoreVersion(@PathVariable Long id, @PathVariable Long versionId) { return svc.restoreVersion(id, versionId); }
+
+    @PostMapping("/validate") public Map<String, Object> validate(@RequestBody JsonNode body) { return svc.validateSpec(body); }
+
+    @GetMapping("/{id}/plan") public Map<String, Object> plan(@PathVariable Long id) { return svc.plan(id); }
+
+    @GetMapping("/assets") public List<MappingFileAssetEntity> assets() { return files.list(); }
+
+    @PostMapping(value = "/assets", consumes = "multipart/form-data")
+    public MappingFileAssetEntity uploadAsset(@RequestPart("file") MultipartFile file,
+                                              @RequestParam(required = false) String name,
+                                              @RequestParam(defaultValue = "AUTO") String format,
+                                              @RequestParam(required = false) String delimiter,
+                                              @RequestParam(defaultValue = "true") boolean header) {
+        return files.upload(file, name, format, delimiter, header);
+    }
+
+    @GetMapping("/assets/{id}/preview")
+    public Map<String, Object> previewAsset(@PathVariable Long id, @RequestParam(defaultValue = "100") int limit) {
+        return files.preview(id, limit);
+    }
+
+    @DeleteMapping("/assets/{id}") public void deleteAsset(@PathVariable Long id) { files.delete(id); }
+
+    @PostMapping("/{id}/runs") public MappingRunEntity start(@PathVariable Long id, @RequestBody(required = false) JsonNode body) {
+        return executions.start(id, body);
+    }
+
+    @GetMapping("/runs") public List<MappingRunEntity> runs() { return executions.list(); }
+
+    @GetMapping("/runs/{id}") public MappingRunEntity run(@PathVariable Long id) { return executions.get(id); }
+
+    @PostMapping("/runs/{id}/cancel") public MappingRunEntity cancel(@PathVariable Long id) { return executions.cancel(id); }
+
+    @GetMapping("/runs/{id}/download")
+    public ResponseEntity<StreamingResponseBody> download(@PathVariable Long id) {
+        MappingExecutionService.InputStreamDownload file = executions.output(id);
+        StreamingResponseBody body = output -> { try (var in = file.stream()) { in.transferTo(output); } };
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.filename().replace("\"", "") + "\"")
+                .contentType(MediaType.parseMediaType(file.contentType())).body(body);
+    }
+
     @PostMapping("/preview")
     public Map<String, Object> preview(@RequestBody JsonNode b) {
         Long ds = b.hasNonNull("dataSourceId") ? b.get("dataSourceId").asLong() : null;
         return svc.preview(ds, b.path("sql").asText(null));
     }
+
+    @PostMapping("/preview-spec")
+    public Map<String, Object> previewSpec(@RequestBody JsonNode body) { return executions.preview(body); }
 
     @PostMapping("/load")
     public Map<String, Object> load(@RequestBody JsonNode b) {

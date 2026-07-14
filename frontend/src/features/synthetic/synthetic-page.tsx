@@ -4,29 +4,32 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import type { ComponentType } from 'react';
 import { Badge, Button, Group, Loader, Paper, SimpleGrid, Stack, Tabs, Text, Title } from '@mantine/core';
 import { useQueryClient } from '@tanstack/react-query';
-import { IconDatabaseImport, IconDeviceFloppy, IconFlask, IconHistory, IconRefresh } from '@tabler/icons-react';
+import { IconBooks, IconDatabaseImport, IconDeviceFloppy, IconFlask, IconHistory, IconListDetails, IconRefresh } from '@tabler/icons-react';
 
-import { ForgeAppShell } from '@/components/app-shell';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { QueryErrorBanner } from '@/components/query-error-banner';
 import { keys } from '@/lib/keys';
 import type { SyntheticJob, SyntheticPlan } from './types';
 import { formatRows, isJobDone } from './utils';
-import { useDataSources, useSyntheticGenerators, useSyntheticJobs, useSyntheticSavedJobs } from './hooks';
+import { useDataSources, useSyntheticGenerators, useSyntheticJobs, useSyntheticSavedJobs, useSyntheticValueLists } from './hooks';
 import { SyntheticDesigner } from './components/synthetic-designer';
 import { GeneratorCatalogPanel } from './components/generator-catalog-panel';
 import { JobHistoryPanel } from './components/job-history-panel';
 import { SyntheticSavedJobsPanel } from './components/saved-jobs-panel';
+import { ValueListsPanel } from './components/value-lists-panel';
 
 /* Memoized panels: while a run is polling every ~1.2s, only the history panel and metric
  * cards should re-render — the designer, catalog, and saved-jobs trees stay untouched. */
 const MemoDesigner = memo(SyntheticDesigner);
 const MemoCatalog = memo(GeneratorCatalogPanel);
+const MemoValueLists = memo(ValueListsPanel);
 const MemoSavedJobs = memo(SyntheticSavedJobsPanel);
 
 export function SyntheticPage() {
   const queryClient = useQueryClient();
   const dataSourcesQuery = useDataSources();
   const generatorsQuery = useSyntheticGenerators();
+  const valueListsQuery = useSyntheticValueLists();
   const jobsQuery = useSyntheticJobs();
   const savedJobsQuery = useSyntheticSavedJobs();
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -97,23 +100,22 @@ export function SyntheticPage() {
     [activeJobs, recentRows, savedJobs]
   );
 
-  const loading = dataSourcesQuery.isLoading || generatorsQuery.isLoading;
+  const loading = dataSourcesQuery.isLoading || generatorsQuery.isLoading || valueListsQuery.isLoading;
 
   return (
-    <ForgeAppShell>
-      <main className="forge-page">
+    <main className="forge-page">
         <Stack gap="lg">
           <Group justify="space-between" align="flex-start">
             <div>
               <Badge variant="light" color="green" mb={8}>
-                Synthetic Next Experience
+                Synthetic Data
               </Badge>
               <Title order={1} size="h2">
-                Generate synthetic data with live control
+                Synthetic Data Generation
               </Title>
-              <Text c="dimmed" maw={940}>
-                Build referential synthetic datasets, profile real schemas, run DB or file output, use partition execution, save approved jobs,
-                and monitor exact row-level progress.
+              <Text c="dimmed" size="sm" maw={720}>
+                Design referentially intact datasets from scratch or from a live schema, generate to a database or files,
+                and monitor row-level progress. Designs are saved as reusable, schedulable jobs.
               </Text>
             </div>
             <Button
@@ -127,6 +129,12 @@ export function SyntheticPage() {
               Refresh
             </Button>
           </Group>
+
+          <QueryErrorBanner
+            errors={[dataSourcesQuery.error, generatorsQuery.error, valueListsQuery.error, jobsQuery.error, savedJobsQuery.error]}
+            onRetry={() => Promise.all([dataSourcesQuery.refetch(), generatorsQuery.refetch(), valueListsQuery.refetch(), jobsQuery.refetch(), savedJobsQuery.refetch()])}
+            title="Synthetic Data could not load all backend data"
+          />
 
           <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
             {metrics.map((metric) => (
@@ -146,13 +154,31 @@ export function SyntheticPage() {
               <Paper className="forge-card" p={0}>
                 <Tabs value={activeTab} onChange={setActiveTab} keepMounted>
                   <Tabs.List className="forge-tabs-list" px="lg" pt="md">
-                    <Tabs.Tab value="catalog">Generator catalogue</Tabs.Tab>
-                    <Tabs.Tab value="build">Build</Tabs.Tab>
-                    <Tabs.Tab value="history">Run history</Tabs.Tab>
-                    <Tabs.Tab value="saved">Saved jobs</Tabs.Tab>
+                    <Tabs.Tab value="catalog" leftSection={<IconBooks size={15} />}>
+                      Generator catalog
+                    </Tabs.Tab>
+                    <Tabs.Tab value="value-lists" leftSection={<IconListDetails size={15} />}>
+                      Reference lists
+                    </Tabs.Tab>
+                    <Tabs.Tab value="build" leftSection={<IconFlask size={15} />}>
+                      Build
+                    </Tabs.Tab>
+                    <Tabs.Tab
+                      value="history"
+                      leftSection={<IconHistory size={15} />}
+                      rightSection={activeJobs ? <Badge size="xs" color="yellow" variant="filled" circle>{activeJobs}</Badge> : null}
+                    >
+                      Run history
+                    </Tabs.Tab>
+                    <Tabs.Tab value="saved" leftSection={<IconDeviceFloppy size={15} />}>
+                      Saved jobs
+                    </Tabs.Tab>
                   </Tabs.List>
                   <Tabs.Panel value="catalog" p="lg">
                     <MemoCatalog generators={generatorsQuery.data || []} />
+                  </Tabs.Panel>
+                  <Tabs.Panel value="value-lists" p="lg">
+                    <MemoValueLists lists={valueListsQuery.data || []} dataSources={dataSourcesQuery.data || []} />
                   </Tabs.Panel>
                   <Tabs.Panel value="build" p="lg">
                     <MemoDesigner
@@ -174,8 +200,7 @@ export function SyntheticPage() {
             </ErrorBoundary>
           )}
         </Stack>
-      </main>
-    </ForgeAppShell>
+    </main>
   );
 }
 

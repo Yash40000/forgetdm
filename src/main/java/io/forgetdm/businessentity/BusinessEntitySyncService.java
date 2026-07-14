@@ -226,7 +226,8 @@ public class BusinessEntitySyncService {
         String table = required((String) member.get("tableName"), "Sync member table name");
         String filter = blank((String) member.get("queryFilter"));
         if (filter != null) SubsetService.guardFilter(filter);
-        String sql = "SELECT MAX(" + q(watermarkColumn) + ") FROM " + q(schema, table)
+        String sql = "SELECT MAX(" + BusinessEntitySql.identifier(ds, watermarkColumn) + ") FROM "
+                + BusinessEntitySql.name(ds, schema, table)
                 + (filter == null ? "" : " WHERE " + filter);
         try (Connection c = connections.openPooled(ds);
              PreparedStatement ps = c.prepareStatement(sql);
@@ -348,7 +349,7 @@ public class BusinessEntitySyncService {
                 """;
     }
 
-    private Instant toInstant(Object value) {
+    static Instant toInstant(Object value) {
         if (value == null) return null;
         if (value instanceof Instant i) return i;
         if (value instanceof Timestamp t) return t.toInstant();
@@ -357,6 +358,7 @@ public class BusinessEntitySyncService {
         if (value instanceof OffsetDateTime o) return o.toInstant();
         if (value instanceof LocalDateTime l) return l.atZone(ZoneId.systemDefault()).toInstant();
         if (value instanceof LocalDate l) return l.atStartOfDay(ZoneId.systemDefault()).toInstant();
+        try { return Timestamp.valueOf(String.valueOf(value)).toLocalDateTime().atZone(ZoneId.systemDefault()).toInstant(); } catch (Exception ignored) {}
         try { return Instant.parse(String.valueOf(value)); } catch (Exception ignored) {}
         try { return OffsetDateTime.parse(String.valueOf(value)).toInstant(); } catch (Exception ignored) {}
         try { return LocalDateTime.parse(String.valueOf(value)).atZone(ZoneId.systemDefault()).toInstant(); } catch (Exception ignored) {}
@@ -404,17 +406,6 @@ public class BusinessEntitySyncService {
     private List<Map<String, Object>> castList(Object value) {
         if (value instanceof List<?> list) return (List<Map<String, Object>>) list;
         return List.of();
-    }
-
-    private String q(String schema, String table) {
-        String cleanTable = q(required(table, "table"));
-        String cleanSchema = blank(schema);
-        return cleanSchema == null ? cleanTable : q(cleanSchema) + "." + cleanTable;
-    }
-
-    private String q(String identifier) {
-        String clean = required(identifier, "identifier");
-        return "\"" + clean.replace("\"", "\"\"") + "\"";
     }
 
     private static Timestamp ts(Instant i) { return i == null ? null : Timestamp.from(i); }

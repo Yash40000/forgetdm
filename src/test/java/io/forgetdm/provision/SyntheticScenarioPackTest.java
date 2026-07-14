@@ -7,6 +7,7 @@ import io.forgetdm.datasource.ConnectionFactory;
 import io.forgetdm.datasource.DataSourceEntity;
 import io.forgetdm.datasource.DataSourceService;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Assumptions;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.core.io.support.EncodedResource;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -50,6 +51,8 @@ class SyntheticScenarioPackTest {
 
     @Test
     void runsSyntheticScenarioPackAndWritesReport() throws Exception {
+        Assumptions.assumeTrue(Boolean.getBoolean("forgetdm.runSyntheticScenarioPack"),
+                "Banking-scale PostgreSQL pack is opt-in: use -Dforgetdm.runSyntheticScenarioPack=true");
         ScenarioBook book = ScenarioBook.from(SCENARIO_DOC);
         TestHarness h = new TestHarness();
         Instant started = Instant.now();

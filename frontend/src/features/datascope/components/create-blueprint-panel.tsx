@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Button, Card, Group, Stack, Text, TextInput, Textarea } from '@mantine/core';
+import { NameInput } from '@/components/name-input';
 import { useDisclosure } from '@mantine/hooks';
 import { notifications } from '@mantine/notifications';
 import { IconPlus } from '@tabler/icons-react';
@@ -84,11 +85,11 @@ export function CreateBlueprintPanel({
             <Text fw={800}>New blueprint</Text>
             <IconPlus size={18} />
           </Group>
-          <TextInput
+          <NameInput
             label="Name"
             placeholder="bank-customer-subset"
             value={form.name}
-            onChange={(event) => setForm({ ...form, name: event.currentTarget.value })}
+            onChange={(value) => setForm({ ...form, name: value })}
           />
           <Group align="flex-end" wrap="nowrap">
             <TextInput

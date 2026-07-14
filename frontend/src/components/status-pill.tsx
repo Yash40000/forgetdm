@@ -8,12 +8,17 @@ const colors: Record<string, BadgeProps['color']> = {
   COMPLETED: 'green',
   APPROVED: 'green',
   RUNNING: 'blue',
+  CANCEL_REQUESTED: 'yellow',
+  AWAITING_APPROVAL: 'yellow',
+  PENDING_APPROVAL: 'yellow',
   PENDING: 'gray',
   DRAFT: 'gray',
   WARN: 'yellow',
   STALE: 'yellow',
   FAILED: 'red',
-  REJECTED: 'red'
+  REJECTED: 'red',
+  CANCELED: 'gray',
+  COMPLETED_WITH_ERRORS: 'yellow'
 };
 
 export function StatusPill({ value }: { value?: string | null }) {

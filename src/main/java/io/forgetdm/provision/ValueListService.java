@@ -2,10 +2,12 @@ package io.forgetdm.provision;
 
 import io.forgetdm.audit.AuditService;
 import io.forgetdm.common.ApiException;
+import io.forgetdm.core.mask.MaskingEngine;
 import io.forgetdm.datasource.ConnectionFactory;
 import io.forgetdm.datasource.DataSourceEntity;
 import io.forgetdm.datasource.DataSourceService;
 import io.forgetdm.security.AccessContext;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.sql.Connection;
@@ -15,6 +17,8 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
 
 /**
@@ -34,13 +38,18 @@ public class ValueListService {
     private final DataSourceService dataSources;
     private final ConnectionFactory connections;
     private final AuditService audit;
+    private final JdbcTemplate jdbc;
+    private final Map<String, MaskingCacheEntry> maskingCache = new ConcurrentHashMap<>();
 
     public ValueListService(ValueListRepository repo, DataSourceService dataSources,
-                            ConnectionFactory connections, AuditService audit) {
+                            ConnectionFactory connections, AuditService audit, MaskingEngine maskingEngine,
+                            JdbcTemplate jdbc) {
         this.repo = repo;
         this.dataSources = dataSources;
         this.connections = connections;
         this.audit = audit;
+        this.jdbc = jdbc;
+        maskingEngine.setLookupProvider(this::valuesForMasking);
     }
 
     public List<ValueListEntity> list() {
@@ -71,6 +80,7 @@ public class ValueListService {
         e.setVisibility("PRIVATE".equalsIgnoreCase(in.getVisibility()) ? "PRIVATE" : "GLOBAL");
         e.setUpdatedAt(Instant.now());
         ValueListEntity saved = repo.save(e);
+        maskingCache.remove(saved.getName().toLowerCase(Locale.ROOT));
         audit.log(currentUser(), "VALUE_LIST_SAVED", saved.getName() + " (" + countValues(saved.getListValues()) + " values)");
         return saved;
     }
@@ -79,6 +89,7 @@ public class ValueListService {
         repo.findById(id).ifPresent(e -> {
             requireEditable(e);
             repo.deleteById(id);
+            maskingCache.remove(e.getName().toLowerCase(Locale.ROOT));
             audit.log(currentUser(), "VALUE_LIST_DELETED", e.getName());
         });
     }
@@ -98,6 +109,109 @@ public class ValueListService {
         boolean needWeights = gen.equals("WEIGHTED") || gen.endsWith("_WEIGHTED");
         return adapt(e.getListValues(), needWeights);
     }
+
+    /** Validate that the current policy author may bind a governed list. */
+    public void validateMaskingReference(String name) {
+        String key = normalizeLookupName(name);
+        if (key.startsWith("lookup:")) {
+            loadRelationalLookup(key);
+            return;
+        }
+        ValueListEntity e = findMaskingList(name);
+        boolean admin = AccessContext.current().map(p -> p.hasPermission("admin.all")).orElse(false);
+        if ("PRIVATE".equalsIgnoreCase(e.getVisibility()) && !admin
+                && (e.getOwnerUsername() == null || !e.getOwnerUsername().equalsIgnoreCase(currentUser())))
+            throw ApiException.bad("Value list '@" + name + "' is private to another user.");
+    }
+
+    /** Runtime lookup. Authorization is enforced when the policy reference is saved. */
+    private String valuesForMasking(String name, boolean useCache) {
+        String key = normalizeLookupName(name);
+        if (!useCache) {
+            MaskingCacheEntry list = loadMaskingEntry(key);
+            requireRuntimeReadable(list.name(), list.visibility(), list.ownerUsername());
+            return list.values();
+        }
+        MaskingCacheEntry cached = maskingCache.get(key);
+        if (cached != null) {
+            requireRuntimeReadable(cached.name(), cached.visibility(), cached.ownerUsername());
+            return cached.values();
+        }
+        MaskingCacheEntry list = loadMaskingEntry(key);
+        requireRuntimeReadable(list.name(), list.visibility(), list.ownerUsername());
+        maskingCache.put(key, list);
+        return list.values();
+    }
+
+    /** References shown by the masking UI for row-oriented backend lookup tables. */
+    public List<String> maskingLookupReferences() {
+        return jdbc.query("SELECT DISTINCT lookup_name, lookup_mode FROM masking_lookup_values ORDER BY lookup_name, lookup_mode",
+                (rs, row) -> "@lookup:" + rs.getString("lookup_mode").toLowerCase(Locale.ROOT) + ":" + rs.getString("lookup_name"));
+    }
+
+    private MaskingCacheEntry loadMaskingEntry(String key) {
+        if (key.startsWith("lookup:")) return loadRelationalLookup(key);
+        ValueListEntity list = findMaskingList(key);
+        return new MaskingCacheEntry(list.getName(), list.getListValues(), list.getVisibility(), list.getOwnerUsername());
+    }
+
+    private MaskingCacheEntry loadRelationalLookup(String key) {
+        String[] parts = key.split(":", 3);
+        if (parts.length != 3 || !(parts[1].equals("hash") || parts[1].equals("direct")) || parts[2].isBlank())
+            throw ApiException.bad("Relational lookup reference must be @lookup:hash:name or @lookup:direct:name");
+        String mode = parts[1].toUpperCase(Locale.ROOT);
+        String lookupName = parts[2];
+        List<MaskingLookupRow> rows = jdbc.query(
+                "SELECT lookup_key, source_value, replacement_value FROM masking_lookup_values " +
+                        "WHERE lookup_name = ? AND lookup_mode = ? ORDER BY lookup_key, source_value",
+                (rs, row) -> new MaskingLookupRow((Integer) rs.getObject("lookup_key"), rs.getString("source_value"),
+                        rs.getString("replacement_value")), lookupName, mode);
+        if (rows.isEmpty()) throw ApiException.bad("Relational masking lookup '@" + key + "' was not found");
+        List<String> entries = new ArrayList<>(rows.size());
+        for (MaskingLookupRow row : rows) {
+            String source = mode.equals("HASH") ? row.lookupKey() == null ? null : String.valueOf(row.lookupKey()) : row.sourceValue();
+            if (source == null || source.isBlank())
+                throw ApiException.bad("Lookup '" + lookupName + "' has a row without its required " + (mode.equals("HASH") ? "lookup_key" : "source_value"));
+            guardLookupDelimiter(source, lookupName);
+            guardLookupDelimiter(row.replacementValue(), lookupName);
+            entries.add(source + "=>" + row.replacementValue());
+        }
+        return new MaskingCacheEntry(key, String.join("|", entries), "GLOBAL", null);
+    }
+
+    private static void guardLookupDelimiter(String value, String lookupName) {
+        if (value.contains("|") || value.contains("=>"))
+            throw ApiException.bad("Lookup '" + lookupName + "' contains unsupported | or => delimiters");
+    }
+
+    private ValueListEntity findMaskingList(String name) {
+        String key = normalizeLookupName(name);
+        return repo.findByNameIgnoreCase(key)
+                .orElseThrow(() -> ApiException.bad("Masking value list '@" + key + "' not found. Create it under Synthetic -> Value Lists."));
+    }
+
+    private static String normalizeLookupName(String name) {
+        String key = name == null ? "" : name.trim();
+        if (key.startsWith("@")) key = key.substring(1);
+        if (key.isBlank()) throw ApiException.bad("Masking value-list name is required");
+        return key.toLowerCase(Locale.ROOT);
+    }
+
+    private static void requireRuntimeReadable(ValueListEntity list) {
+        requireRuntimeReadable(list.getName(), list.getVisibility(), list.getOwnerUsername());
+    }
+
+    private static void requireRuntimeReadable(String name, String visibility, String ownerUsername) {
+        AccessContext.current().ifPresent(principal -> {
+            boolean admin = principal.hasPermission("admin.all");
+            if ("PRIVATE".equalsIgnoreCase(visibility) && !admin
+                    && (ownerUsername == null || !ownerUsername.equalsIgnoreCase(principal.username())))
+                throw ApiException.bad("Value list '@" + name + "' is private to another user.");
+        });
+    }
+
+    private record MaskingCacheEntry(String name, String values, String visibility, String ownerUsername) {}
+    private record MaskingLookupRow(Integer lookupKey, String sourceValue, String replacementValue) {}
 
     /** Adapt the stored pipe list to the generator's expected shape. Package-visible for tests. */
     static String adapt(String raw, boolean needWeights) {

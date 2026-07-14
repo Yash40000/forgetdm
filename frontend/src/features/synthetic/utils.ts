@@ -170,14 +170,14 @@ export function draftFromPlan(plan: SyntheticPlan): SyntheticDraft {
   draft.loadAction = plan.loadAction || 'INSERT';
   draft.targetPrep = plan.targetPrep || 'NONE';
   draft.keyColumns = (plan.keyColumns || []).join(', ');
-  draft.batchSize = plan.batchSize || '';
-  draft.commitEveryRows = plan.commitEveryRows || '';
+  draft.batchSize = plan.batchSize ?? '';
+  draft.commitEveryRows = plan.commitEveryRows ?? '';
   draft.continueOnError = Boolean(plan.continueOnError);
   draft.maxRejects = plan.maxRejects ?? '';
   draft.fastLoad = Boolean(plan.fastLoad);
   draft.executionMode = (plan.executionMode as SyntheticDraft['executionMode']) || 'SINGLE';
-  draft.partitionCount = plan.partitionCount || '';
-  draft.partitionSize = plan.partitionSize || '';
+  draft.partitionCount = plan.partitionCount ?? '';
+  draft.partitionSize = plan.partitionSize ?? '';
   draft.targetSystems = plan.targetSystems || [];
   draft.tables = (plan.tables || []).map((table) => ({
     name: table.name || '',
@@ -191,8 +191,8 @@ export function draftFromPlan(plan: SyntheticPlan): SyntheticDraft {
       fkTable: column.fkTable || '',
       fkColumn: column.fkColumn || '',
       sqlType: column.sqlType || sqlTypeForGenerator(column.generator || 'ALPHANUMERIC'),
-      fkMin: column.fkMin || '',
-      fkMax: column.fkMax || '',
+      fkMin: column.fkMin ?? '',
+      fkMax: column.fkMax ?? '',
       typeLocked: false
     }))
   }));

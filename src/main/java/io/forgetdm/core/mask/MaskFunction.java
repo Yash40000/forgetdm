@@ -21,7 +21,23 @@ public enum MaskFunction {
     CITY_STATE_ZIP,    // coherent triplet from cities_us.csv (semantic integrity)
     COMPANY,
     FORMAT_PRESERVE,   // digit->digit, letter->letter (case kept), punctuation untouched (FPE-style)
+    CHARACTER_MAP,     // whole-value character map; param1 = FIRST:2,LAST:4 preserve ranges
+    TOKENIZE,          // irreversible HMAC token; param1 = prefix, param2 = hex length (12..64)
+    SECURE_LOOKUP,     // cryptographic lookup; param1 = pipe values or seedlist file, param2 = output case
+    DIRECT_LOOKUP,     // exact source=>replacement pairs; supports governed @value-list references
+    HASH_LOOKUP,       // Optim-style source hash to sequential lookup row with trim/case/seed controls
+    REDACT,            // configurable redaction; param1 = mask char, param2 = FULL/KEEP_LAST4/etc.
     REDACT_KEEP_LAST4, // ****1234
+    NUMERIC_NOISE,     // deterministic perturbation; param1 = PERCENT:10 or ABS:5, param2 = min:max clamp
+    MIN_MAX,           // deterministic value within param1=min and param2=max, preserving decimal scale
+    BANK_ACCOUNT,      // digit-safe account masker; param1 = KEEP_LAST4/FORMAT_PRESERVE/REDACT
+    IBAN,              // country/length-preserving, mod-97-valid IBAN
+    SWIFT_BIC,         // valid 8/11-character BIC with optional country preservation
+    ABA_ROUTING,       // valid 9-digit US ABA routing number with checksum
+    NATIONAL_ID,       // country-aware US/CA/UK national identifier; generic safe fallback
+    IP_ADDRESS,        // valid IPv4/IPv6 in non-routable test ranges
+    MAC_ADDRESS,       // valid locally administered unicast MAC
+    UUID,              // deterministic RFC-4122 version-4-shaped UUID
     HASH_LOV,          // generic deterministic seedlist pick (param1 = seedlist name)
     FIXED,             // constant (param1)
     NULLIFY,

@@ -1,20 +1,22 @@
 'use client';
 
 import type { ComponentType, ReactNode } from 'react';
-import { ActionIcon, Group, Paper, Text } from '@mantine/core';
+import { Group, Paper, Text, ThemeIcon } from '@mantine/core';
 
 export function MetricCard({
   label,
   value,
   hint,
   icon: Icon,
-  tone
+  tone,
+  action
 }: {
   label: string;
   value: string | number;
   hint: string;
   icon: ComponentType<{ size?: number }>;
   tone?: 'good' | 'warn';
+  action?: ReactNode;
 }) {
   const color = tone === 'good' ? 'green' : tone === 'warn' ? 'yellow' : 'blue';
   return (
@@ -31,10 +33,11 @@ export function MetricCard({
             {hint}
           </Text>
         </div>
-        <ActionIcon variant="light" color={color} size="lg" radius={8}>
+        <ThemeIcon variant="light" color={color} size="lg" radius={8} aria-hidden>
           <Icon size={18} />
-        </ActionIcon>
+        </ThemeIcon>
       </Group>
+      {action ? <div style={{ marginTop: 10 }}>{action}</div> : null}
     </Paper>
   );
 }

@@ -25,6 +25,7 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
+import java.sql.Types;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
@@ -119,6 +120,8 @@ public class BusinessEntityCapsuleService {
     private record FetchResult(List<Map<String, Object>> rows, List<Map<String, String>> textRows,
                                int rowCount, boolean truncated) {}
     private record FkPath(String fkColumn, String parentColumn) {}
+    private record RelationshipPath(String parentTable, List<String> parentColumns,
+                                    String childTable, List<String> childColumns) {}
 
     public List<BeEntityInstanceEntity> list(Long entityId) {
         entities.getDetail(entityId); // validates the entity exists
@@ -213,6 +216,8 @@ public class BusinessEntityCapsuleService {
         // Capture the root fragment first: FK-aware capture of non-root members joins through the
         // root rows held in memory (raw values are used ONLY as join keys, never persisted).
         FetchResult rootFetched = null;
+        Map<String, FetchResult> fetchedByRole = new LinkedHashMap<>();
+        Map<String, FetchResult> fetchedByTable = new LinkedHashMap<>();
         List<BusinessEntityMemberEntity> ordered = new ArrayList<>();
         ordered.add(root);
         for (BusinessEntityMemberEntity m : detail.members()) if (!Objects.equals(m.getId(), root.getId())) ordered.add(m);
@@ -243,11 +248,23 @@ public class BusinessEntityCapsuleService {
             }
             boolean isRoot = member.getId() != null && member.getId().equals(root.getId());
             List<String> memberKeyCols = isRoot ? rootKeyCols : splitColumns(member.getKeyColumns());
-            boolean positionalMatch = memberKeyCols.size() == rootKeyCols.size();
+            RelationshipPath relationship = isRoot ? null : relationshipPath(member);
             try {
                 DataSourceEntity ds = dataSources.get(member.getDataSourceId());
                 FetchResult fetched;
-                if (positionalMatch) {
+                if (relationship != null) {
+                    FetchResult parentFetched = parentFetch(member, relationship, fetchedByRole, fetchedByTable);
+                    if (parentFetched == null) {
+                        throw ApiException.bad("Declared parent role/table has not been captured: "
+                                + firstNonBlank(member.getJoinToRole(), relationship.parentTable()));
+                    }
+                    frag.setKeyColumns(String.join(",", relationship.childColumns()));
+                    fetched = fetchRowsByRelationship(ds, member.getSchemaName(), member.getTableName(),
+                            relationship.childColumns(), parentFetched.rows(), relationship.parentColumns(), MAX_FRAGMENT_ROWS);
+                    frag.setMessage("Captured through declared relationship "
+                            + relationship.parentTable() + "(" + String.join(",", relationship.parentColumns()) + ") -> "
+                            + relationship.childTable() + "(" + String.join(",", relationship.childColumns()) + ").");
+                } else if (isRoot || sameColumns(memberKeyCols, rootKeyCols)) {
                     frag.setKeyColumns(String.join(",", memberKeyCols));
                     fetched = fetchRows(ds, member.getSchemaName(), member.getTableName(), memberKeyCols, rootValues, MAX_FRAGMENT_ROWS);
                 } else {
@@ -282,6 +299,7 @@ public class BusinessEntityCapsuleService {
                     frag.setMessage("Captured via FK " + path.fkColumn() + " → " + root.getTableName() + "." + path.parentColumn() + ".");
                 }
                 if (isRoot) rootFetched = fetched;
+                rememberFetch(member, fetched, fetchedByRole, fetchedByTable);
                 if (policyId != null) {
                     List<MaskingRuleEntity> rules = rulesForTable(policyId, member.getTableName());
                     List<Map<String, Object>> masked = maskRows(fetched.rows(), fetched.textRows(), rules, member.getTableName());
@@ -727,8 +745,8 @@ public class BusinessEntityCapsuleService {
 
     private FetchResult fetchRows(DataSourceEntity ds, String schema, String table, List<String> keyCols,
                                   List<Object> keyVals, int cap) throws Exception {
-        String where = keyCols.stream().map(c -> q(c) + " = ?").collect(Collectors.joining(" AND "));
-        String sql = "SELECT * FROM " + qName(schema, table) + " WHERE " + where;
+        String where = keyCols.stream().map(c -> BusinessEntitySql.identifier(ds, c) + " = ?").collect(Collectors.joining(" AND "));
+        String sql = "SELECT * FROM " + BusinessEntitySql.name(ds, schema, table) + " WHERE " + where;
         try (Connection c = connections.open(ds); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setMaxRows(cap + 1); // fetch one extra row so truncation is evidence, never silent
             for (int i = 0; i < keyVals.size(); i++) ps.setObject(i + 1, keyVals.get(i));
@@ -741,12 +759,118 @@ public class BusinessEntityCapsuleService {
                                     List<Object> values, int cap) throws Exception {
         if (values.isEmpty()) return new FetchResult(List.of(), List.of(), 0, false);
         String in = values.stream().map(v -> "?").collect(Collectors.joining(","));
-        String sql = "SELECT * FROM " + qName(schema, table) + " WHERE " + q(column) + " IN (" + in + ")";
+        String sql = "SELECT * FROM " + BusinessEntitySql.name(ds, schema, table) + " WHERE "
+                + BusinessEntitySql.identifier(ds, column) + " IN (" + in + ")";
         try (Connection c = connections.open(ds); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setMaxRows(cap + 1);
             for (int i = 0; i < values.size(); i++) ps.setObject(i + 1, values.get(i));
             return readFetch(ps, cap);
         }
+    }
+
+    private FetchResult fetchRowsByRelationship(DataSourceEntity ds, String schema, String table,
+                                                 List<String> childColumns,
+                                                 List<Map<String, Object>> parentRows,
+                                                 List<String> parentColumns,
+                                                 int cap) throws Exception {
+        if (childColumns.isEmpty() || childColumns.size() != parentColumns.size()) {
+            throw ApiException.bad("Relationship column counts must match for " + table + ".");
+        }
+        Set<List<Object>> distinct = new LinkedHashSet<>();
+        int maxTuples = Math.max(1, Math.min(MAX_FK_PARENT_KEYS, 1800 / childColumns.size()));
+        for (Map<String, Object> parentRow : parentRows) {
+            List<Object> tuple = new ArrayList<>();
+            for (String parentColumn : parentColumns) {
+                tuple.add(parentRow.get(parentColumn.toLowerCase(Locale.ROOT)));
+            }
+            if (tuple.stream().anyMatch(Objects::isNull)) continue;
+            distinct.add(tuple);
+            if (distinct.size() >= maxTuples) break;
+        }
+        if (distinct.isEmpty()) return new FetchResult(List.of(), List.of(), 0, false);
+        if (childColumns.size() == 1) {
+            return fetchRowsIn(ds, schema, table, childColumns.get(0),
+                    distinct.stream().map(tuple -> tuple.get(0)).toList(), cap);
+        }
+
+        String tuplePredicate = childColumns.stream()
+                .map(column -> BusinessEntitySql.identifier(ds, column) + " = ?")
+                .collect(Collectors.joining(" AND ", "(", ")"));
+        String where = distinct.stream().map(tuple -> tuplePredicate).collect(Collectors.joining(" OR "));
+        String sql = "SELECT * FROM " + BusinessEntitySql.name(ds, schema, table) + " WHERE " + where;
+        try (Connection c = connections.open(ds); PreparedStatement ps = c.prepareStatement(sql)) {
+            ps.setMaxRows(cap + 1);
+            int parameter = 1;
+            for (List<Object> tuple : distinct) {
+                for (Object value : tuple) ps.setObject(parameter++, value);
+            }
+            return readFetch(ps, cap);
+        }
+    }
+
+    private RelationshipPath relationshipPath(BusinessEntityMemberEntity member) {
+        String raw = blank(member.getRelationshipJson());
+        if (raw == null) return null;
+        try {
+            Map<String, Object> relation = json.readValue(raw, new TypeReference<LinkedHashMap<String, Object>>() {});
+            String parentTable = blank(stringValue(relation.get("parentTable")));
+            String childTable = blank(stringValue(relation.get("childTable")));
+            List<String> parentColumns = splitColumns(stringValue(relation.get("parentColumns")));
+            List<String> childColumns = splitColumns(stringValue(relation.get("childColumns")));
+            if (parentTable == null || childTable == null || parentColumns.isEmpty()
+                    || parentColumns.size() != childColumns.size()) {
+                throw ApiException.bad("Invalid relationshipJson for member role " + member.getLogicalRole()
+                        + ": parent/child tables and equally sized columns are required.");
+            }
+            if (!childTable.equalsIgnoreCase(member.getTableName())) {
+                throw ApiException.bad("Relationship child table " + childTable + " does not match member table "
+                        + member.getTableName() + ".");
+            }
+            return new RelationshipPath(parentTable, parentColumns, childTable, childColumns);
+        } catch (ApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw ApiException.bad("Could not parse relationshipJson for member role " + member.getLogicalRole()
+                    + ": " + e.getMessage());
+        }
+    }
+
+    private FetchResult parentFetch(BusinessEntityMemberEntity member, RelationshipPath relationship,
+                                    Map<String, FetchResult> fetchedByRole,
+                                    Map<String, FetchResult> fetchedByTable) {
+        String parentRole = blank(member.getJoinToRole());
+        if (parentRole != null) {
+            FetchResult byRole = fetchedByRole.get(parentRole.toLowerCase(Locale.ROOT));
+            if (byRole != null) return byRole;
+        }
+        return fetchedByTable.get(relationship.parentTable().toLowerCase(Locale.ROOT));
+    }
+
+    private static void rememberFetch(BusinessEntityMemberEntity member, FetchResult fetched,
+                                      Map<String, FetchResult> fetchedByRole,
+                                      Map<String, FetchResult> fetchedByTable) {
+        if (member.getLogicalRole() != null) {
+            fetchedByRole.put(member.getLogicalRole().toLowerCase(Locale.ROOT), fetched);
+        }
+        if (member.getTableName() != null) {
+            fetchedByTable.put(member.getTableName().toLowerCase(Locale.ROOT), fetched);
+        }
+    }
+
+    private static boolean sameColumns(List<String> left, List<String> right) {
+        if (left.size() != right.size() || left.isEmpty()) return false;
+        for (int i = 0; i < left.size(); i++) {
+            if (!left.get(i).equalsIgnoreCase(right.get(i))) return false;
+        }
+        return true;
+    }
+
+    private static String firstNonBlank(String first, String second) {
+        return blank(first) != null ? first : second;
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? null : String.valueOf(value);
     }
 
     private FetchResult readFetch(PreparedStatement ps, int cap) throws Exception {
@@ -762,7 +886,7 @@ public class BusinessEntityCapsuleService {
                 Map<String, String> text = new LinkedHashMap<>();
                 for (int i = 1; i <= cols; i++) {
                     String label = md.getColumnLabel(i).toLowerCase(Locale.ROOT);
-                    row.put(label, rs.getObject(i));
+                    row.put(label, readPortableValue(rs, md, i));
                     text.put(label, rs.getString(i));
                 }
                 rows.add(row);
@@ -770,6 +894,60 @@ public class BusinessEntityCapsuleService {
             }
         }
         return new FetchResult(rows, textRows, rows.size(), truncated);
+    }
+
+    /**
+     * Convert vendor JDBC wrappers to values Jackson can persist and encrypt. Oracle's driver,
+     * for example, may return {@code oracle.sql.TIMESTAMP}; serializing that object exposes its
+     * internal stream instead of a timestamp. Text is deliberately used for temporal and LOB
+     * families because it is portable across Oracle, DB2, SQL Server, PostgreSQL and MySQL and
+     * preserves the source driver's canonical representation.
+     */
+    static Object readPortableValue(ResultSet rs, ResultSetMetaData md, int column) throws Exception {
+        int jdbcType = md.getColumnType(column);
+        return switch (jdbcType) {
+            case Types.DATE, Types.TIME, Types.TIME_WITH_TIMEZONE,
+                    Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE,
+                    Types.CHAR, Types.VARCHAR, Types.LONGVARCHAR,
+                    Types.NCHAR, Types.NVARCHAR, Types.LONGNVARCHAR,
+                    Types.CLOB, Types.NCLOB, Types.SQLXML, Types.ROWID -> rs.getString(column);
+            case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY, Types.BLOB -> {
+                byte[] value = rs.getBytes(column);
+                yield value == null ? null : Base64.getEncoder().encodeToString(value);
+            }
+            case Types.BOOLEAN, Types.BIT -> {
+                boolean value = rs.getBoolean(column);
+                yield rs.wasNull() ? null : value;
+            }
+            case Types.TINYINT, Types.SMALLINT, Types.INTEGER -> {
+                int value = rs.getInt(column);
+                yield rs.wasNull() ? null : value;
+            }
+            case Types.BIGINT -> {
+                long value = rs.getLong(column);
+                yield rs.wasNull() ? null : value;
+            }
+            case Types.REAL, Types.FLOAT, Types.DOUBLE -> {
+                double value = rs.getDouble(column);
+                yield rs.wasNull() ? null : value;
+            }
+            case Types.NUMERIC, Types.DECIMAL -> rs.getBigDecimal(column);
+            default -> portableScalar(rs.getObject(column));
+        };
+    }
+
+    private static Object portableScalar(Object value) {
+        if (value == null || value instanceof String || value instanceof Number || value instanceof Boolean) {
+            return value;
+        }
+        if (value instanceof byte[] bytes) return Base64.getEncoder().encodeToString(bytes);
+        if (value instanceof java.util.Date || value instanceof java.time.temporal.TemporalAccessor
+                || value instanceof java.util.UUID || value instanceof Enum<?>) {
+            return value.toString();
+        }
+        // Unknown driver classes (Oracle/DB2 proprietary wrappers, PGobject, etc.) must not leak
+        // implementation internals into JSON. Their text representation is the portable boundary.
+        return String.valueOf(value);
     }
 
     /** One-hop FK path from a member table to the root table via JDBC catalog metadata
@@ -803,9 +981,12 @@ public class BusinessEntityCapsuleService {
             if (tuples.size() >= MAX_DELETE_KEY_TUPLES) break;
         }
         if (tuples.isEmpty()) return 0;
-        String where = keyCols.stream().map(k -> q(k) + " = ?").collect(Collectors.joining(" AND "));
+        String where = keyCols.stream().map(k -> {
+            try { return BusinessEntitySql.identifier(c, k) + " = ?"; }
+            catch (Exception e) { throw new IllegalArgumentException(e); }
+        }).collect(Collectors.joining(" AND "));
         int deleted = 0;
-        try (PreparedStatement ps = c.prepareStatement("DELETE FROM " + qName(schema, table) + " WHERE " + where)) {
+        try (PreparedStatement ps = c.prepareStatement("DELETE FROM " + BusinessEntitySql.name(c, schema, table) + " WHERE " + where)) {
             for (List<Object> tuple : tuples) {
                 for (int i = 0; i < tuple.size(); i++) ps.setObject(i + 1, tuple.get(i));
                 deleted += ps.executeUpdate();
@@ -816,9 +997,12 @@ public class BusinessEntityCapsuleService {
 
     private int insertRows(Connection c, String schema, String table, List<Map<String, Object>> rows) throws Exception {
         List<String> cols = new ArrayList<>(rows.get(0).keySet());
-        String colList = cols.stream().map(BusinessEntityCapsuleService::q).collect(Collectors.joining(","));
+        String colList = cols.stream().map(column -> {
+            try { return BusinessEntitySql.identifier(c, column); }
+            catch (Exception e) { throw new IllegalArgumentException(e); }
+        }).collect(Collectors.joining(","));
         String params = cols.stream().map(x -> "?").collect(Collectors.joining(","));
-        String sql = "INSERT INTO " + qName(schema, table) + " (" + colList + ") VALUES (" + params + ")";
+        String sql = "INSERT INTO " + BusinessEntitySql.name(c, schema, table) + " (" + colList + ") VALUES (" + params + ")";
         int inserted = 0;
         try (PreparedStatement ps = c.prepareStatement(sql)) {
             for (Map<String, Object> row : rows) {
@@ -890,6 +1074,15 @@ public class BusinessEntityCapsuleService {
             case "ADDRESS_US" -> "addr.us";
             case "COMPANY" -> "company";
             case "DOB_AGE_BAND" -> "dob";
+            case "BANK_ACCOUNT" -> "bank.account";
+            case "IBAN" -> "iban";
+            case "SWIFT_BIC" -> "swift.bic";
+            case "ABA_ROUTING" -> "routing.aba";
+            case "NATIONAL_ID" -> "national.id";
+            case "IP_ADDRESS" -> "network.ip";
+            case "MAC_ADDRESS" -> "network.mac";
+            case "DIRECT_LOOKUP" -> "lookup.direct";
+            case "HASH_LOOKUP" -> "lookup.hash";
             default -> table.toLowerCase(Locale.ROOT) + "." + col.toLowerCase(Locale.ROOT);
         };
     }
@@ -962,15 +1155,6 @@ public class BusinessEntityCapsuleService {
             for (byte b : digest) sb.append(String.format("%02x", b));
             return sb.toString();
         } catch (Exception e) { return null; }
-    }
-
-    private static String qName(String schema, String table) {
-        return (schema == null || schema.isBlank()) ? q(table) : q(schema) + "." + q(table);
-    }
-
-    private static String q(String ident) {
-        if (ident == null || !ident.matches("[A-Za-z0-9_]+")) throw ApiException.bad("Illegal identifier: " + ident);
-        return "\"" + ident + "\"";
     }
 
     private static Long toLong(Object value) {

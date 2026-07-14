@@ -35,7 +35,7 @@ public class AiTools {
     }
 
     private static final Set<String> ACTIONS = Set.of(
-            "run_discovery", "generate_policy", "submit_job", "generate_synthetic", "run_datascope_job");
+            "run_discovery", "generate_policy", "submit_job", "generate_synthetic", "run_datascope_job", "run_synthetic_job");
 
     public boolean requiresConfirmation(String name) { return ACTIONS.contains(name); }
 
@@ -46,7 +46,7 @@ public class AiTools {
             "list_datasets", "list_jobs", "get_job", "list_schemas", "list_tables", "list_columns",
             "get_discovery_results", "get_pii_coverage", "list_value_lists", "list_mask_scripts",
             "list_datascope_jobs", "list_workflows", "preview_mask", "search_tdm_knowledge",
-            "run_discovery", "generate_policy", "submit_job", "generate_synthetic", "run_datascope_job");
+            "run_discovery", "generate_policy", "submit_job", "generate_synthetic", "run_datascope_job", "run_synthetic_job");
 
     // ------------------------------------------------------------------ tool specs (for the LLM)
 
@@ -133,6 +133,8 @@ public class AiTools {
                 obj(objProp("plan", "The full synthetic generation plan object"), req("plan"))));
         t.add(fn("run_datascope_job", "ACTION: run a saved DataScope provisioning job by its id. Goes through the approval gate. Requires confirmation.",
                 obj(p("savedJobId", "string", "The saved DataScope job id (from list_datascope_jobs)"), req("savedJobId"))));
+        t.add(fn("run_synthetic_job", "ACTION: run an approved saved synthetic-data job by its id. Requires confirmation.",
+                obj(p("savedJobId", "string", "The saved synthetic job id"), req("savedJobId"))));
         return t;
     }
 
@@ -168,6 +170,7 @@ public class AiTools {
             case "submit_job":            return post("/api/jobs", jobBody(a));
             case "generate_synthetic":    return post("/api/synthetic/generate", a.has("plan") ? a.get("plan") : a);
             case "run_datascope_job":     return post("/api/datascope/saved-jobs/" + enc(reqStr(a, "savedJobId")) + "/run", null);
+            case "run_synthetic_job":     return post("/api/synthetic/saved-jobs/" + enc(reqStr(a, "savedJobId")) + "/run", null);
 
             default: throw ApiException.bad("Unknown tool: " + name);
         }

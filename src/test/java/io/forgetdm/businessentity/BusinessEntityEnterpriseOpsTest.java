@@ -24,7 +24,7 @@ import static org.mockito.Mockito.*;
 class BusinessEntityEnterpriseOpsTest {
 
     @Test
-    void createsEvidenceOnlyEntitySnapshotWithMemberManifest() {
+    void createsEvidenceOnlyEntitySnapshotWithVerifiedMemberCount() throws Exception {
         BusinessEntityService entities = mock(BusinessEntityService.class);
         BusinessEntitySnapshotRepository snapshots = mock(BusinessEntitySnapshotRepository.class);
         BusinessEntitySnapshotMemberRepository members = mock(BusinessEntitySnapshotMemberRepository.class);
@@ -32,8 +32,15 @@ class BusinessEntityEnterpriseOpsTest {
         AuditService audit = mock(AuditService.class);
 
         BusinessEntityDefinitionEntity entity = entity("Customer 360");
-        BusinessEntityMemberEntity member = member(11L, 101L, "PUBLIC", "customers", "customer_id");
+        String url = "jdbc:h2:mem:be_snapshot_ops;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE";
+        try (Connection c = DriverManager.getConnection(url); Statement st = c.createStatement()) {
+            st.execute("CREATE TABLE IF NOT EXISTS \"customers\" (\"customer_id\" BIGINT PRIMARY KEY)");
+            st.execute("DELETE FROM \"customers\"");
+            st.execute("INSERT INTO \"customers\"(\"customer_id\") VALUES (1), (2), (3)");
+        }
+        BusinessEntityMemberEntity member = member(11L, 101L, null, "customers", "customer_id");
         when(entities.getDetail(1L)).thenReturn(new BusinessEntityService.BusinessEntityDetail(entity, List.of(member), null, java.util.Map.of()));
+        when(dataSources.get(101L)).thenReturn(source(101L, url));
         when(snapshots.save(any())).thenAnswer(inv -> {
             BusinessEntitySnapshotEntity s = inv.getArgument(0);
             if (s.getId() == null) ReflectionTestUtils.setField(s, "id", 77L);
@@ -52,6 +59,8 @@ class BusinessEntityEnterpriseOpsTest {
         assertEquals("AVAILABLE", detail.snapshot().getStatus());
         assertEquals(1, detail.members().size());
         assertEquals("customers", detail.members().get(0).getTableName());
+        assertEquals(3, detail.members().get(0).getRowCount());
+        assertTrue(detail.members().get(0).getEvidenceJson().contains("\"countVerified\":true"));
         assertNull(detail.members().get(0).getVirtualSnapshotId());
         assertNotNull(detail.snapshot().getRollbackPlanJson());
         verify(audit).log(any(), eq("BUSINESS_ENTITY_SNAPSHOT_CREATE"), any());

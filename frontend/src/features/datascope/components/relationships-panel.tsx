@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Badge, Button, Group, Loader, Paper, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { NameInput } from '@/components/name-input';
 import { notifications } from '@mantine/notifications';
 import { IconLink, IconPlus } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -26,7 +27,15 @@ const DIRECTION_OPTIONS = [
  * per-edge traversal direction rules (these OVERRIDE per-table Q1/Q2), custom
  * relationships for FKs the database doesn't declare, and custom PKs for keyless tables.
  */
-export function RelationshipsPanel({ blueprint, profiles }: { blueprint: DataSetDefinition; profiles: TableProfile[] }) {
+export function RelationshipsPanel({
+  blueprint,
+  profiles,
+  onDirtyChange
+}: {
+  blueprint: DataSetDefinition;
+  profiles: TableProfile[];
+  onDirtyChange?: (dirty: boolean) => void;
+}) {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
   const relationshipsQuery = useRelationships(blueprint.id);
@@ -114,6 +123,19 @@ export function RelationshipsPanel({ blueprint, profiles }: { blueprint: DataSet
 
   /* custom PK form */
   const [pkForm, setPkForm] = useState({ tableName: '', columnNames: '', note: '' });
+  const editorDirty =
+    directionsDirty ||
+    Object.values(relForm).some((value) => value.trim()) ||
+    Object.values(pkForm).some((value) => value.trim());
+
+  useEffect(() => {
+    onDirtyChange?.(editorDirty);
+    if (!editorDirty) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [editorDirty, onDirtyChange]);
+
   const createPk = useMutation({
     mutationFn: () => {
       if (!pkForm.tableName.trim() || !pkForm.columnNames.trim()) throw new Error('Table and key column(s) are required.');
@@ -252,11 +274,11 @@ export function RelationshipsPanel({ blueprint, profiles }: { blueprint: DataSet
               <IconLink size={18} />
             </Group>
             <SimpleGrid cols={{ base: 1, sm: 2 }}>
-              <TextInput
+              <NameInput
                 label="Name"
                 placeholder="orders-to-customers"
                 value={relForm.relName}
-                onChange={(e) => setRelForm({ ...relForm, relName: e.currentTarget.value })}
+                onChange={(value) => setRelForm({ ...relForm, relName: value })}
               />
               <div />
               <TextInput

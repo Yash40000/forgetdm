@@ -197,22 +197,39 @@
 </section>
 
 <section class="page" id="page-discovery">
-  <h2>PII Discovery</h2><p class="sub">Dual-signal scan from column names and sampled values, then review, masking-rule assignment, and policy generation.</p>
-  <div class="card" id="disc-scan-card" data-tab-label="1. Scan Source"><h3>Scan source</h3><div class="row">
+  <div class="disc-page-hero">
+    <div>
+      <span class="disc-eyebrow">Sensitive Data Discovery</span>
+      <h2>Find, review, and approve sensitive data</h2>
+      <p class="sub">Scan column names and sampled values, watch table-level progress live, then approve findings and generate a masking policy from reviewed results.</p>
+    </div>
+    <div class="disc-flow-mini" aria-label="Discovery workflow">
+      <span>1 Scan</span><i></i><span>2 Watch</span><i></i><span>3 Review</span><i></i><span>4 Policy</span>
+    </div>
+  </div>
+  <div class="card disc-scan-card" id="disc-scan-card" data-tab-label="1. Scan Source">
+    <div class="card-head disc-card-head">
+      <div>
+        <h3>Scan source</h3>
+        <p class="sub tight">Choose the database/schema, optionally narrow the PII types, then start the live discovery run.</p>
+      </div>
+      <span id="disc-scope-count" class="pill info">all PII types</span>
+    </div>
+    <div class="disc-scan-grid">
     <div><label>Data source</label><select id="disc-ds" onchange="loadDiscoverySchemas()"></select></div>
     <div><label>Schema</label><select id="disc-schema" onchange="loadDiscoveryContext()"><option value="">Select schema</option></select></div>
-    <button onclick="runScan()">Scan for PII</button>
+    <button class="disc-start-btn" onclick="runScan()">Start discovery scan</button>
   </div>
-  <div class="disc-scope" style="margin-top:8px">
-    <label>PII types to scan <span class="pill dim small">leave all unchecked = scan everything</span></label>
+  <div class="disc-scope">
+    <label>PII types to scan <span class="pill dim small">clear all = scan everything</span></label>
     <div id="disc-type-scope" class="chip-set"><span class="sub">Select a data source to load PII types…</span></div>
-    <div class="row" style="margin-top:6px">
+    <div class="disc-scope-actions">
       <button class="ghost small" onclick="discScopeAll(true)">Select all</button>
       <button class="ghost small" onclick="discScopeAll(false)">Clear</button>
       <button class="ghost small" onclick="toggleCustomPatterns()">Custom regex patterns…</button>
     </div>
   </div>
-  <div id="disc-custom-card" class="card" style="display:none;margin-top:8px">
+  <div id="disc-custom-card" class="disc-custom-panel" style="display:none;margin-top:8px">
     <div class="row push"><h4>Custom PII patterns</h4><span class="pill dim small">applies to you / your group</span></div>
     <p class="sub tight">Add your own column-name (NAME) or value (VALUE) regex for any PII type, used alongside the built-in patterns. Scope it to yourself, your group, or everyone.</p>
     <div class="row">
@@ -225,14 +242,14 @@
     <div class="row" style="margin-top:6px"><button class="small" onclick="saveCustomPattern()">Add pattern</button></div>
     <div id="cp-list"><div class="empty">No custom patterns yet.</div></div>
   </div>
-  <p class="sub tight">The scan samples column names and values, then lands on the Findings &amp; Masking tab where you review results, assign masking rules, and approve.</p>
+  <div class="disc-scan-note">After launch, this page opens live progress automatically. Results stay scoped to the PII types selected for that scan.</div>
   </div>
-  <div class="card" id="disc-live-card" data-tab-label="2. Live Progress"><div class="card-head"><h3>Live discovery progress</h3><span id="disc-live-status" class="pill dim">no active scan</span></div>
+  <div class="card disc-live-card" id="disc-live-card" data-tab-label="2. Live Progress"><div class="card-head"><h3>Live discovery progress</h3><span id="disc-live-status" class="pill dim">no active scan</span></div>
     <div id="disc-live-panel" class="disc-live-panel">
       <div class="empty">Start a PII scan to watch table-by-table progress here.</div>
     </div>
   </div>
-  <div class="card" id="disc-results-card" data-tab-label="3. Findings &amp; Masking"><div class="card-head"><h3>Findings &amp; masking rules</h3><span class="pill info">review, assign, approve</span></div>
+  <div class="card disc-results-card" id="disc-results-card" data-tab-label="3. Findings &amp; Masking"><div class="card-head"><h3>Findings &amp; masking rules</h3><span class="pill info">review, assign, approve</span></div>
     <div class="tabs">
       <button class="tab-btn active" data-tab="disc-tab-findings" onclick="showDiscTab('disc-tab-findings')">Findings</button>
       <button class="tab-btn" data-tab="disc-tab-er" onclick="showDiscTab('disc-tab-er')">ER Traversal</button>
@@ -271,7 +288,7 @@
       </div>
     </div>
   </div>
-  <div class="card" id="disc-policy-card" data-tab-label="4. Generate Policy"><div class="card-head"><h3>Generate masking policy</h3><span id="disc-policy-count" class="pill dim">select context</span></div>
+  <div class="card disc-policy-card" id="disc-policy-card" data-tab-label="4. Generate Policy"><div class="card-head"><h3>Generate masking policy</h3><span id="disc-policy-count" class="pill dim">select context</span></div>
     <div class="row">
       <div><label>New policy name</label><input id="disc-policy-name" placeholder="bank-pii-policy"></div>
       <button onclick="genPolicy()">Generate Policy from Approved</button>

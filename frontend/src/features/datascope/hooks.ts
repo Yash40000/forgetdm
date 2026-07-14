@@ -15,6 +15,7 @@ import type {
   MaskingPolicy,
   MaskingRule,
   PiiCoverage,
+  ProvisionJob,
   RelationshipInfo,
   SavedDataScopeJob,
   TableProfile,
@@ -85,6 +86,19 @@ export function useSavedJobs() {
   return useQuery({
     queryKey: keys.datascope.savedJobs,
     queryFn: () => apiFetch<SavedDataScopeJob[]>('/api/datascope/saved-jobs')
+  });
+}
+
+export function useProvisionJobs() {
+  return useQuery({
+    queryKey: keys.datascope.jobs,
+    queryFn: () => apiFetch<ProvisionJob[]>('/api/jobs'),
+    refetchInterval: (query) => {
+      const rows = query.state.data || [];
+      return rows.some((job) => ['PENDING', 'RUNNING', 'CANCEL_REQUESTED', 'AWAITING_APPROVAL'].includes(String(job.status || '').toUpperCase()))
+        ? 1500
+        : false;
+    }
   });
 }
 

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Alert, Badge, Button, Group, Modal, Stack, Switch, Text, TextInput } from '@mantine/core';
+import { NameInput } from '@/components/name-input';
 import { notifications } from '@mantine/notifications';
 import { IconDownload, IconPlayerPlay } from '@tabler/icons-react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -36,10 +37,13 @@ export function SavedJobsPanel({
   const [scheduleCron, setScheduleCron] = useState('');
   const [scheduleZone, setScheduleZone] = useState('');
   const [schedulePreview, setSchedulePreview] = useState<string[]>([]);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: keys.datascope.savedJobs });
 
   const runJob = async (job: SavedDataScopeJob) => {
+    if (busyAction) return;
+    setBusyAction(`run:${job.id}`);
     try {
       const result = await apiPost<{ status?: string; jobId?: number; id?: number }>(
         `/api/datascope/saved-jobs/${encodeURIComponent(job.id)}/run`,
@@ -50,19 +54,26 @@ export function SavedJobsPanel({
         title: result.status === 'AWAITING_APPROVAL' ? 'Submitted for approval' : 'Run started',
         message: `${job.name} → job #${result.jobId ?? result.id ?? '?'}`
       });
+      await queryClient.invalidateQueries({ queryKey: keys.datascope.jobs });
       await refresh();
     } catch (error) {
       notifications.show({ color: 'red', title: 'Could not run job', message: (error as Error).message });
+    } finally {
+      setBusyAction(null);
     }
   };
 
   const loadJob = async (job: SavedDataScopeJob) => {
+    if (busyAction) return;
+    setBusyAction(`load:${job.id}`);
     try {
       const detail = await apiFetch<SavedDataScopeJob>(`/api/datascope/saved-jobs/${encodeURIComponent(job.id)}`);
       const spec = (detail.spec || {}) as Record<string, unknown>;
       onLoad?.(spec);
     } catch (error) {
       notifications.show({ color: 'red', title: 'Could not load job', message: (error as Error).message });
+    } finally {
+      setBusyAction(null);
     }
   };
 
@@ -73,7 +84,8 @@ export function SavedJobsPanel({
   };
 
   const saveRename = async () => {
-    if (!renameJob) return;
+    if (!renameJob || busyAction) return;
+    setBusyAction('rename');
     try {
       const detail = await apiFetch<SavedDataScopeJob>(`/api/datascope/saved-jobs/${encodeURIComponent(renameJob.id)}`);
       await apiPut(`/api/datascope/saved-jobs/${encodeURIComponent(renameJob.id)}`, {
@@ -86,6 +98,8 @@ export function SavedJobsPanel({
       await refresh();
     } catch (error) {
       notifications.show({ color: 'red', title: 'Could not update job', message: (error as Error).message });
+    } finally {
+      setBusyAction(null);
     }
   };
 
@@ -98,6 +112,8 @@ export function SavedJobsPanel({
   };
 
   const previewSchedule = async () => {
+    if (busyAction) return;
+    setBusyAction('preview-schedule');
     try {
       const result = await apiPost<Record<string, unknown>>('/api/datascope/saved-jobs/schedule/preview', {
         cron: scheduleCron,
@@ -110,11 +126,14 @@ export function SavedJobsPanel({
     } catch (error) {
       setSchedulePreview([]);
       notifications.show({ color: 'red', title: 'Invalid schedule', message: (error as Error).message });
+    } finally {
+      setBusyAction(null);
     }
   };
 
   const saveSchedule = async () => {
-    if (!scheduleJob) return;
+    if (!scheduleJob || busyAction) return;
+    setBusyAction('save-schedule');
     try {
       await apiPut(`/api/datascope/saved-jobs/${encodeURIComponent(scheduleJob.id)}/schedule`, {
         cron: scheduleCron.trim() || null,
@@ -130,6 +149,8 @@ export function SavedJobsPanel({
       await refresh();
     } catch (error) {
       notifications.show({ color: 'red', title: 'Could not save schedule', message: (error as Error).message });
+    } finally {
+      setBusyAction(null);
     }
   };
 
@@ -141,12 +162,16 @@ export function SavedJobsPanel({
       okText: 'Delete'
     });
     if (!ok) return;
+    if (busyAction) return;
+    setBusyAction(`delete:${job.id}`);
     try {
       await apiFetch(`/api/datascope/saved-jobs/${encodeURIComponent(job.id)}`, { method: 'DELETE' });
       notifications.show({ color: 'green', title: 'Job deleted', message: job.name });
       await refresh();
     } catch (error) {
       notifications.show({ color: 'red', title: 'Could not delete job', message: (error as Error).message });
+    } finally {
+      setBusyAction(null);
     }
   };
 
@@ -159,6 +184,28 @@ export function SavedJobsPanel({
     anchor.download = `forgetdm-${slug(job.name)}-datascope-runner.${kind}`;
     anchor.click();
     URL.revokeObjectURL(url);
+  };
+
+  const toggleSelfService = async (job: SavedDataScopeJob) => {
+    if (busyAction) return;
+    setBusyAction(`publish:${job.id}`);
+    try {
+      await apiPut(`/api/self-service/templates/${encodeURIComponent(job.id)}`, {
+        enabled: !job.selfServiceEnabled,
+        label: job.selfServiceLabel || job.name
+      });
+      notifications.show({
+        color: 'green',
+        title: job.selfServiceEnabled ? 'Removed from self-service' : 'Published for self-service',
+        message: job.name
+      });
+      await refresh();
+      await queryClient.invalidateQueries({ queryKey: keys.selfService.catalog });
+    } catch (error) {
+      notifications.show({ color: 'red', title: 'Could not update self-service catalog', message: (error as Error).message });
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   const rows = useMemo(() => {
@@ -224,11 +271,11 @@ export function SavedJobsPanel({
         enableSorting: false,
         cell: ({ row }) => (
           <Group gap={6} wrap="nowrap">
-            <Button size="xs" leftSection={<IconPlayerPlay size={13} />} onClick={() => void runJob(row.original)}>
+            <Button size="xs" leftSection={<IconPlayerPlay size={13} />} loading={busyAction === `run:${row.original.id}`} disabled={!!busyAction && busyAction !== `run:${row.original.id}`} onClick={() => void runJob(row.original)}>
               Run
             </Button>
             {onLoad ? (
-              <Button size="xs" variant="light" onClick={() => void loadJob(row.original)}>
+              <Button size="xs" variant="light" loading={busyAction === `load:${row.original.id}`} disabled={!!busyAction && busyAction !== `load:${row.original.id}`} onClick={() => void loadJob(row.original)}>
                 Load
               </Button>
             ) : null}
@@ -237,6 +284,15 @@ export function SavedJobsPanel({
             </Button>
             <Button size="xs" variant="light" onClick={() => openSchedule(row.original)}>
               Schedule
+            </Button>
+            <Button
+              size="xs"
+              variant={row.original.selfServiceEnabled ? 'filled' : 'light'}
+              color={row.original.selfServiceEnabled ? 'green' : 'blue'}
+              loading={busyAction === `publish:${row.original.id}`}
+              onClick={() => void toggleSelfService(row.original)}
+            >
+              {row.original.selfServiceEnabled ? 'Published' : 'Self-service'}
             </Button>
             <Button
               size="xs"
@@ -256,7 +312,7 @@ export function SavedJobsPanel({
             >
               SH
             </Button>
-            <Button size="xs" variant="subtle" color="red" onClick={() => void deleteJob(row.original)}>
+            <Button size="xs" variant="subtle" color="red" loading={busyAction === `delete:${row.original.id}`} disabled={!!busyAction && busyAction !== `delete:${row.original.id}`} onClick={() => void deleteJob(row.original)}>
               Delete
             </Button>
           </Group>
@@ -264,7 +320,7 @@ export function SavedJobsPanel({
       }
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onLoad]
+    [onLoad, busyAction]
   );
 
   if (!jobs.length) {
@@ -286,15 +342,15 @@ export function SavedJobsPanel({
         initialSorting={[{ id: 'name', desc: false }]}
       />
 
-      <Modal opened={!!renameJob} onClose={() => setRenameJob(null)} title="Rename saved job">
+      <Modal opened={!!renameJob} onClose={() => !busyAction && setRenameJob(null)} title="Rename saved job">
         <Stack gap="sm">
-          <TextInput label="Name" value={renameName} onChange={(e) => setRenameName(e.currentTarget.value)} />
+          <NameInput label="Name" value={renameName} onChange={(value) => setRenameName(value)} />
           <TextInput label="Description" placeholder="optional" value={renameDescription} onChange={(e) => setRenameDescription(e.currentTarget.value)} />
           <Group justify="flex-end">
             <Button variant="light" onClick={() => setRenameJob(null)}>
               Cancel
             </Button>
-            <Button disabled={!renameName.trim()} onClick={() => void saveRename()}>
+            <Button loading={busyAction === 'rename'} disabled={!renameName.trim()} onClick={() => void saveRename()}>
               Save
             </Button>
           </Group>
@@ -318,7 +374,7 @@ export function SavedJobsPanel({
             onChange={(e) => setScheduleZone(e.currentTarget.value)}
           />
           <Group>
-            <Button variant="light" disabled={!scheduleCron.trim()} onClick={() => void previewSchedule()}>
+              <Button variant="light" loading={busyAction === 'preview-schedule'} disabled={!scheduleCron.trim()} onClick={() => void previewSchedule()}>
               Preview next runs
             </Button>
           </Group>
@@ -335,7 +391,7 @@ export function SavedJobsPanel({
             <Button variant="light" onClick={() => setScheduleJob(null)}>
               Cancel
             </Button>
-            <Button disabled={scheduleEnabled && !scheduleCron.trim()} onClick={() => void saveSchedule()}>
+            <Button loading={busyAction === 'save-schedule'} disabled={scheduleEnabled && !scheduleCron.trim()} onClick={() => void saveSchedule()}>
               Save schedule
             </Button>
           </Group>

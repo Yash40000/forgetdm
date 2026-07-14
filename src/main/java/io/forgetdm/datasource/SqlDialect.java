@@ -13,7 +13,7 @@ import java.util.Set;
  * dialect detection, system-schema filtering, and TRUNCATE syntax.
  */
 public enum SqlDialect {
-    POSTGRES, H2, MYSQL, DB2, ORACLE, SQLSERVER, GENERIC;
+    POSTGRES, H2, MYSQL, DB2, ORACLE, SQLSERVER, TERADATA, GENERIC;
 
     /** Resolve from the registered kind first, falling back to the JDBC URL prefix. */
     public static SqlDialect of(DataSourceEntity ds) {
@@ -25,6 +25,7 @@ public enum SqlDialect {
                 case "DB2", "DB2UDB", "DB2_UDB", "DB2LUW", "DB2ZOS": return DB2;
                 case "ORACLE": return ORACLE;
                 case "SQLSERVER", "SQL_SERVER", "MSSQL": return SQLSERVER;
+                case "TERADATA", "VANTAGE": return TERADATA;
                 default: break; // GENERIC or unknown -> try URL
             }
         }
@@ -39,6 +40,7 @@ public enum SqlDialect {
         if (u.startsWith("jdbc:db2:")) return DB2;
         if (u.startsWith("jdbc:oracle:")) return ORACLE;
         if (u.startsWith("jdbc:sqlserver:")) return SQLSERVER;
+        if (u.startsWith("jdbc:teradata:")) return TERADATA;
         return GENERIC;
     }
 
@@ -52,15 +54,18 @@ public enum SqlDialect {
             if (p.contains("db2")) return DB2;
             if (p.contains("oracle")) return ORACLE;
             if (p.contains("microsoft sql server") || p.contains("sql server")) return SQLSERVER;
+            if (p.contains("teradata") || p.contains("vantage")) return TERADATA;
         } catch (Exception ignored) { }
         return GENERIC;
     }
 
     /** One TRUNCATE statement per table; DB2 requires IMMEDIATE, all others use plain syntax. */
     public String truncateSql(String qualifiedTable) {
-        return this == DB2
-                ? "TRUNCATE TABLE " + qualifiedTable + " IMMEDIATE"
-                : "TRUNCATE TABLE " + qualifiedTable;
+        return switch (this) {
+            case DB2 -> "TRUNCATE TABLE " + qualifiedTable + " IMMEDIATE";
+            case TERADATA -> "DELETE FROM " + qualifiedTable + " ALL";
+            default -> "TRUNCATE TABLE " + qualifiedTable;
+        };
     }
 
     /**
@@ -102,7 +107,7 @@ public enum SqlDialect {
 
     private static final Set<String> SYSTEM_SCHEMAS = Set.of(
             // ANSI / shared
-            "information_schema",
+            "information_schema", "mysql", "performance_schema", "dbc",
             // Postgres
             "pg_catalog",
             // H2

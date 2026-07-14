@@ -1,0 +1,938 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ForgeTDM Business Entity Acceptance Lab</title>
+  <style>
+    :root{--ink:#0d1728;--muted:#64748b;--line:#dbe3ef;--blue:#1769e0;--blue2:#eaf3ff;--green:#087b4f;--green2:#e9f8f1;--red:#ba2d2d;--bg:#f5f8fc;--card:#fff;--nav:#101a2d}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Inter,Segoe UI,Arial,sans-serif;line-height:1.5}.hero{background:var(--nav);color:#fff;padding:52px max(5vw,32px) 48px}.hero-inner,.wrap{max-width:1280px;margin:auto}.eyebrow{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#63a9ff}.hero h1{font-size:42px;line-height:1.08;margin:10px 0 12px;letter-spacing:0}.hero p{max-width:820px;color:#c5d1e4;font-size:18px;margin:0}.hero-meta{display:flex;gap:10px;flex-wrap:wrap;margin-top:24px}.pill{border:1px solid #39506e;border-radius:999px;padding:7px 12px;color:#dbe8fb;font-size:13px}.wrap{padding:28px max(3vw,18px) 70px}.metric-grid,.source-grid,.fix-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}.metric,.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:18px}.metric strong{display:block;font-size:30px;line-height:1.1}.metric span,.muted{color:var(--muted)}section{margin-top:34px}h2{font-size:24px;margin:0 0 6px}h3{margin:6px 0 8px;font-size:17px}.section-copy{margin:0 0 16px;color:var(--muted);max-width:900px}.status{display:inline-flex;align-items:center;gap:8px;border-radius:999px;background:var(--green2);color:var(--green);font-weight:800;padding:7px 12px}.dot{width:8px;height:8px;border-radius:50%;background:#14a76c}.fact-line{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:9px;margin-top:9px;gap:10px}.fact-line span{color:var(--muted)}.fact-line strong{text-align:right}table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);font-size:13px}th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{background:#f1f5fa;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:#4c5a6d}.num{text-align:right;font-variant-numeric:tabular-nums}.table-wrap{overflow:auto;border-radius:8px}.badge{display:inline-block;border-radius:999px;font-size:10px;font-weight:800;padding:3px 7px}.pass{background:var(--green2);color:var(--green)}.fail{background:#ffeded;color:var(--red)}code{font-family:Cascadia Code,Consolas,monospace;font-size:.92em}.flow{display:grid;grid-template-columns:repeat(7,1fr);gap:8px;margin:18px 0}.flow div{position:relative;background:#fff;border:1px solid var(--line);border-radius:8px;padding:13px;text-align:center;font-size:12px;font-weight:750}.flow div:not(:last-child):after{content:'>';position:absolute;right:-8px;top:33%;color:var(--blue);z-index:2}.callout{border-left:4px solid var(--blue);background:var(--blue2);padding:15px 18px;border-radius:0 8px 8px 0}.fix-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.fix{background:#fff;border:1px solid var(--line);border-radius:8px;padding:14px}.fix strong{display:block;margin-bottom:5px}.steps{counter-reset:steps;display:grid;gap:10px}.step{position:relative;background:#fff;border:1px solid var(--line);border-radius:8px;padding:16px 16px 16px 54px}.step:before{counter-increment:steps;content:counter(steps);position:absolute;left:16px;top:15px;width:25px;height:25px;border-radius:50%;display:grid;place-items:center;background:var(--blue);color:#fff;font-weight:800}.cmd{background:#101a2d;color:#e7eefb;border-radius:7px;padding:13px;overflow:auto;white-space:pre-wrap}.gallery{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.gallery figure{margin:0;background:#fff;border:1px solid var(--line);border-radius:8px;overflow:hidden}.gallery img{display:block;width:100%;height:300px;object-fit:cover;object-position:top}.gallery figcaption{padding:10px 12px;font-weight:700;font-size:13px}video{width:100%;max-height:680px;background:#0a1120;border-radius:8px}details{background:#fff;border:1px solid var(--line);border-radius:8px;margin:10px 0}summary{cursor:pointer;padding:14px 16px;font-weight:800}pre{margin:0;border-top:1px solid var(--line);padding:16px;max-height:620px;overflow:auto;background:#101a2d;color:#dbe8fb;font-size:12px}.footer{color:var(--muted);font-size:12px;margin-top:42px}@media(max-width:900px){.metric-grid,.source-grid,.fix-grid,.gallery{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr}.flow div:after{display:none}}@media(max-width:600px){.metric-grid,.source-grid,.fix-grid,.gallery{grid-template-columns:1fr}.hero h1{font-size:32px}.hero{padding:34px 20px}.wrap{padding:20px 12px 50px}}
+  </style>
+</head>
+<body>
+  <header class="hero"><div class="hero-inner"><div class="eyebrow">ForgeTDM acceptance evidence</div><h1>Customer 360 across three database engines</h1><p>A working Business Entity lab joining Core Banking on PostgreSQL, Card Servicing on Oracle, and Digital Engagement on MySQL through one canonical customer identity.</p><div class="hero-meta"><span class="pill">Generated July 13, 2026 4:52 PM</span><span class="pill">Entity ID 8</span><span class="pill">Overall result: PASS</span><span class="pill">No paid services used</span></div></div></header>
+  <main class="wrap">
+    <div class="status"><span class="dot"></span>All automated acceptance checks passed</div>
+    <section class="metric-grid">
+      <div class="metric"><strong>3</strong><span>applications and database engines</span></div><div class="metric"><strong>43</strong><span>mapped physical tables</span></div><div class="metric"><strong>437,025</strong><span>verified source rows</span></div><div class="metric"><strong>100</strong><span>reusable identity subjects, 300 links</span></div>
+    </section>
+
+    <section><h2>Scenario</h2><p class="section-copy">The canonical customer begins in Core Banking as <code>customers.customer_no</code>. Oracle Card Servicing links through <code>card_customers.core_customer_no</code>; MySQL Digital Engagement links through <code>digital_customers.core_customer_ref</code>. Child tables remain connected through their native keys and relationships.</p><div class="flow"><div>Core customer</div><div>Canonical crosswalk</div><div>Oracle card customer</div><div>MySQL digital customer</div><div>Freshness gate</div><div>Approved 3-slice plan</div><div>Saved package</div></div></section>
+
+    <section><h2>Live sources</h2><p class="section-copy">Each connection was tested through ForgeTDM and inspected through connector diagnostics.</p><div class="source-grid"><article class="card"><div class="eyebrow">POSTGRES</div><h3>BE Lab - Core Banking PostgreSQL</h3><p><code>be_core</code></p><div class="fact-line"><span>Readiness</span><strong>READY / 100</strong></div><div class="fact-line"><span>Metadata</span><strong> tables,  columns</strong></div></article>
+<article class="card"><div class="eyebrow">ORACLE</div><h3>BE Lab - Card Servicing Oracle</h3><p><code>BE_CARDS</code></p><div class="fact-line"><span>Readiness</span><strong>READY / 100</strong></div><div class="fact-line"><span>Metadata</span><strong> tables,  columns</strong></div></article>
+<article class="card"><div class="eyebrow">MYSQL</div><h3>BE Lab - Digital Engagement MySQL</h3><p><code>digital_engagement</code></p><div class="fact-line"><span>Readiness</span><strong>READY / 100</strong></div><div class="fact-line"><span>Metadata</span><strong> tables,  columns</strong></div></article></div></section>
+
+    <section><h2>Physical row evidence</h2><p class="section-copy">Counts come from immutable Business Entity snapshot 6, not estimates. Every member count is marked verified.</p><div class="metric-grid"><div class="metric"><strong>198,825</strong><span>PostgreSQL / 20 tables</span></div><div class="metric"><strong>144,200</strong><span>Oracle / 13 tables</span></div><div class="metric"><strong>94,000</strong><span>MySQL / 10 tables</span></div><div class="metric"><strong>437,025</strong><span>snapshot total / 43 members</span></div></div><div class="table-wrap" style="margin-top:14px"><table><thead><tr><th>Application</th><th>Engine</th><th>Schema</th><th>Table</th><th class="num">Rows</th><th>Evidence</th></tr></thead><tbody><tr><td>BE Lab - Card Servicing Oracle</td><td>ORACLE</td><td><code>BE_CARDS</code></td><td><code>card_payments</code></td><td class="num">12,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Card Servicing Oracle</td><td>ORACLE</td><td><code>BE_CARDS</code></td><td><code>card_statements</code></td><td class="num">12,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Card Servicing Oracle</td><td>ORACLE</td><td><code>BE_CARDS</code></td><td><code>card_disputes</code></td><td class="num">600</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Card Servicing Oracle</td><td>ORACLE</td><td><code>BE_CARDS</code></td><td><code>customer_preferences</code></td><td class="num">2,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Card Servicing Oracle</td><td>ORACLE</td><td><code>BE_CARDS</code></td><td><code>fraud_cases</code></td><td class="num">400</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Card Servicing Oracle</td><td>ORACLE</td><td><code>BE_CARDS</code></td><td><code>card_tokens</code></td><td class="num">3,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Card Servicing Oracle</td><td>ORACLE</td><td><code>BE_CARDS</code></td><td><code>payment_cards</code></td><td class="num">3,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Card Servicing Oracle</td><td>ORACLE</td><td><code>BE_CARDS</code></td><td><code>card_authorizations</code></td><td class="num">50,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Card Servicing Oracle</td><td>ORACLE</td><td><code>BE_CARDS</code></td><td><code>card_postings</code></td><td class="num">50,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Card Servicing Oracle</td><td>ORACLE</td><td><code>BE_CARDS</code></td><td><code>merchants</code></td><td class="num">1,200</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Card Servicing Oracle</td><td>ORACLE</td><td><code>BE_CARDS</code></td><td><code>card_audit_events</code></td><td class="num">5,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Digital Engagement MySQL</td><td>MYSQL</td><td><code>digital_engagement</code></td><td><code>chat_interactions</code></td><td class="num">10,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Digital Engagement MySQL</td><td>MYSQL</td><td><code>digital_engagement</code></td><td><code>support_cases</code></td><td class="num">4,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Digital Engagement MySQL</td><td>MYSQL</td><td><code>digital_engagement</code></td><td><code>web_sessions</code></td><td class="num">20,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Digital Engagement MySQL</td><td>MYSQL</td><td><code>digital_engagement</code></td><td><code>offer_assignments</code></td><td class="num">5,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Digital Engagement MySQL</td><td>MYSQL</td><td><code>digital_engagement</code></td><td><code>marketing_events</code></td><td class="num">15,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Digital Engagement MySQL</td><td>MYSQL</td><td><code>digital_engagement</code></td><td><code>user_profiles</code></td><td class="num">2,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Digital Engagement MySQL</td><td>MYSQL</td><td><code>digital_engagement</code></td><td><code>digital_customers</code></td><td class="num">2,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Digital Engagement MySQL</td><td>MYSQL</td><td><code>digital_engagement</code></td><td><code>devices</code></td><td class="num">4,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Digital Engagement MySQL</td><td>MYSQL</td><td><code>digital_engagement</code></td><td><code>notification_preferences</code></td><td class="num">2,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Digital Engagement MySQL</td><td>MYSQL</td><td><code>digital_engagement</code></td><td><code>login_events</code></td><td class="num">30,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Card Servicing Oracle</td><td>ORACLE</td><td><code>BE_CARDS</code></td><td><code>card_accounts</code></td><td class="num">3,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>household_members</code></td><td class="num">2,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>households</code></td><td class="num">800</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>account_holders</code></td><td class="num">5,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>branches</code></td><td class="num">25</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>accounts</code></td><td class="num">4,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>customer_addresses</code></td><td class="num">4,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>customers</code></td><td class="num">2,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>customer_phones</code></td><td class="num">3,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>customer_identifiers</code></td><td class="num">4,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>customer_emails</code></td><td class="num">2,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>account_balances</code></td><td class="num">4,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>standing_orders</code></td><td class="num">2,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>beneficiaries</code></td><td class="num">4,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>kyc_reviews</code></td><td class="num">2,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Card Servicing Oracle</td><td>ORACLE</td><td><code>BE_CARDS</code></td><td><code>card_customers</code></td><td class="num">2,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>customer_consents</code></td><td class="num">4,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>loans</code></td><td class="num">1,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>account_transactions</code></td><td class="num">80,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>loan_payments</code></td><td class="num">12,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>card_transactions</code></td><td class="num">60,000</td><td><span class="badge pass">CAPTURED</span></td></tr>
+<tr><td>BE Lab - Core Banking PostgreSQL</td><td>POSTGRES</td><td><code>be_core</code></td><td><code>cards</code></td><td class="num">3,000</td><td><span class="badge pass">CAPTURED</span></td></tr></tbody></table></div></section>
+
+    <section><h2>Identity consistency</h2><p class="section-copy">The same external value resolves to one canonical subject regardless of which application initiates the lookup.</p><div class="table-wrap"><table><thead><tr><th>Lookup application</th><th>External ID</th><th>Result</th><th>Canonical key</th></tr></thead><tbody><tr><td>Core Banking</td><td><code>CUST-000042</code></td><td><span class="badge pass">MATCHED</span></td><td><code>CUST-000042</code></td></tr>
+<tr><td>Card Servicing</td><td><code>CUST-000042</code></td><td><span class="badge pass">MATCHED</span></td><td><code>CUST-000042</code></td></tr>
+<tr><td>Digital Engagement</td><td><code>CUST-000042</code></td><td><span class="badge pass">MATCHED</span></td><td><code>CUST-000042</code></td></tr></tbody></table></div></section>
+
+    <section><h2>Customer 360 Micro-DB</h2><p class="section-copy">This is a physical governed entity capsule for <code>customer_no=CUST-000042</code>, not a conceptual model or a saved DataScope filter. ForgeTDM recursively captured the declared relationships across PostgreSQL, Oracle, and MySQL, masked the PII, and encrypted every stored fragment.</p><div class="metric-grid"><div class="metric"><strong>43</strong><span>encrypted table fragments</span></div><div class="metric"><strong>265</strong><span>related entity rows</span></div><div class="metric"><strong>v5</strong><span>current retained version</span></div><div class="metric"><strong>3</strong><span>physical applications</span></div></div><div class="callout" style="margin-top:14px"><strong>Runnable without rereading source</strong><br>Approved plan 6 and READY immutable package 6 are pinned to capsule version 5. Their launch path uses the encrypted Micro-DB fragments and records <code>sourceRead=false</code>.</div></section>
+
+    <section><h2>Saved jobs and execution design</h2><p class="section-copy">The approved execution plans are intentionally saved as <code>PLAN_ONLY</code>. They can be reviewed and packaged safely; no physical provision was launched because this lab's target connections point to its source schemas.</p><div class="table-wrap"><table><thead><tr><th>Application slice</th><th>DataScope</th><th>Schema</th><th class="num">Members</th><th>Preferred loader</th><th>Fallback</th></tr></thead><tbody><tr><td>Core Banking</td><td>BE Lab - Core Banking Scope</td><td>be_core</td><td class="num">20</td><td>POSTGRES_COPY</td><td>JDBC_MULTI_ROW</td></tr>
+<tr><td>Card Servicing</td><td>BE Lab - Card Servicing Scope</td><td>BE_CARDS</td><td class="num">13</td><td>ORACLE_SQLLOADER_DIRECT_PATH</td><td>JDBC_BATCH</td></tr>
+<tr><td>Digital Engagement</td><td>BE Lab - Digital Engagement Scope</td><td>digital_engagement</td><td class="num">10</td><td>MYSQL_LOAD_DATA</td><td>JDBC_MULTI_ROW</td></tr></tbody></table></div><div class="callout" style="margin-top:14px"><strong>Reusable artifacts left in ForgeTDM</strong><br>Approved fan-out plan 4, READY self-service package 4, Micro-DB plan 6, Micro-DB package 6, ACTIVE visual flow 5, and debugger run 14 with status COMPLETED.</div></section>
+
+    <section><h2>Governance and operational controls</h2><div class="fix-grid"><div class="fix"><strong>Maker-checker</strong>Request created by <code>admin</code> and signed by separate checker <code>qa_checker</code>.</div><div class="fix"><strong>Actor integrity</strong>A negative API test confirmed that an administrator cannot submit approval while claiming to be the checker.</div><div class="fix"><strong>Freshness</strong>One policy checked all three root systems and returned <span class="badge pass">FRESH</span>.</div><div class="fix"><strong>Snapshot retention</strong>Snapshot 6 is immutable and retained until 2027-07-13T18:48:09.629471Z.</div></div></section>
+
+    <section><h2>Defects found and fixed</h2><p class="section-copy">The acceptance work was allowed to change code where behavior was incorrect. These are product fixes, not fixture workarounds.</p><div class="fix-grid"><div class="fix"><strong>Cross-database SQL</strong>Business Entity and DataScope identifiers now quote and normalize correctly for PostgreSQL, Oracle, MySQL, SQL Server, and DB2-family engines.</div><div class="fix"><strong>Oracle freshness timestamps</strong>Oracle timestamp text is parsed correctly by freshness evaluation.</div><div class="fix"><strong>Truthful snapshot evidence</strong>A failed physical count can no longer masquerade as a captured zero-row table.</div><div class="fix"><strong>Governance identity</strong>Approval and rejection use the authenticated actor and reject reviewer impersonation.</div><div class="fix"><strong>Idempotent entity rebuild</strong>Stable logical members reconcile in place, preserving IDs and preventing stale snapshot or crosswalk references.</div><div class="fix"><strong>Catalog lifecycle</strong>Qualified names remain stable and obsolete/duplicate assets are removed during sync.</div><div class="fix"><strong>Large-key portability</strong>DataScope chunks key predicates below Oracle and SQL Server parameter limits.</div><div class="fix"><strong>Relationship containment</strong>Shared account, household, branch, and merchant parents no longer fan out into unrelated entities.</div><div class="fix"><strong>Fixture referential logic</strong>Oracle disputes and fraud cases now reference postings/cards belonging to the same customer.</div><div class="fix"><strong>New UI build</strong>The Data Sources Redshift/Oracle icon imports were corrected so Data Sources and dependent routes compile.</div></div></section>
+
+    <section><h2>Acceptance checks</h2><p class="section-copy">Run <code>verify-forgetdm.ps1</code> at any time to recreate this evidence file.</p><div class="table-wrap"><table><thead><tr><th>Result</th><th>Check</th><th>Evidence</th></tr></thead><tbody><tr><td><span class="badge pass">PASS</span></td><td>Business Entity exists</td><td>entityId=8</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Business Entity spans three applications</td><td>members=43, sources=3</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Connector ready: BE Lab - Core Banking PostgreSQL</td><td>engine=POSTGRES, status=READY</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Connector ready: BE Lab - Card Servicing Oracle</td><td>engine=ORACLE, status=READY</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Connector ready: BE Lab - Digital Engagement MySQL</td><td>engine=MYSQL, status=READY</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Identity resolves from Core Banking</td><td>canonical=CUST-000042</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Identity resolves from Card Servicing</td><td>canonical=CUST-000042</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Identity resolves from Digital Engagement</td><td>canonical=CUST-000042</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Seeded identity crosswalk is reusable</td><td>identitySubjects=100, linksPerSubject=3</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Cross-application freshness policy passes</td><td>status=FRESH, systems=3</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Immutable snapshot has verified row evidence</td><td>snapshotId=6, members=43, rows=437025</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>PostgreSQL fixture row count</td><td>rows=198825</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Oracle fixture row count</td><td>rows=144200</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>MySQL fixture row count</td><td>rows=94000</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Customer 360 Micro-DB exists and is active</td><td>capsuleId=2, version=5</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Micro-DB captures every member as an encrypted masked fragment</td><td>fragments=43, rows=265, invalid=0, empty=0</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Micro-DB spans all three physical applications</td><td>Core Banking=20 fragments/118 rows; Card Servicing=13 fragments/99 rows; Digital Engagement=10 fragments/48 rows</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Micro-DB keeps version, freshness, access and lineage evidence</td><td>versions=5, watermarks=3, lineage=8</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Micro-DB access grants enforce owner and delegated provision scopes</td><td>ownerGrants=1, checkerProvisionGrants=1</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Micro-DB masks PII while preserving canonical identity</td><td>keysPreserved=True, rootPiiChanged=True</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Micro-DB masking is deterministic across database engines</td><td>emailConsistent=True, phoneConsistent=True</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Maker-checker approval is signed by a separate user</td><td>maker=admin, checker=qa_checker</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Governance actor spoof is rejected</td><td>admin cannot approve as qa_checker</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Approved saved execution plan fans out by application</td><td>planId=4, slices=3, mappedMembers=43</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Reusable saved job package has an immutable version</td><td>packageId=4, versions=2</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Approved execution plan is pinned to the current Micro-DB version</td><td>planId=6, capsuleId=2, version=5</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Micro-DB saved job package is reusable and immutable</td><td>packageId=6, planId=6, versions=2</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Business Entity catalog is complete</td><td>catalogAssets=44</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>Published visual flow validates and completes a dry run</td><td>flowId=5, validation=PASS, debug=COMPLETED</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>DataScope preview is bounded and valid: dataset 32</td><td>rows=939, warnings=0</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>DataScope preview is bounded and valid: dataset 33</td><td>rows=295, warnings=0</td></tr>
+<tr><td><span class="badge pass">PASS</span></td><td>DataScope preview is bounded and valid: dataset 34</td><td>rows=144, warnings=0</td></tr></tbody></table></div></section>
+
+    <section><h2>How to run and review</h2><div class="steps"><div class="step"><strong>Start ForgeTDM backend</strong><div class="cmd">$env:FORGETDM_DB_URL = "jdbc:postgresql://localhost:5433/forgetdm"
+$env:FORGETDM_DB_USER = "forgetdm"
+$env:FORGETDM_DB_PASS = "forgetdm"
+$env:FORGETDM_MASKING_SECRET = "pick-a-long-random-secret"
+mvn spring-boot:run</div></div><div class="step"><strong>Start the new UI</strong><div class="cmd">cd "D:\forgetdm - Copy\frontend"
+npm.cmd run dev</div></div><div class="step"><strong>Recreate or refresh all ForgeTDM artifacts</strong><div class="cmd">&amp; "D:\forgetdm - Copy\demo\business-entity-lab\configure-forgetdm.ps1"</div><p class="muted">The setup is idempotent: source connections, DataScopes, members, identities, policy, governance, flow, plan, and package are reconciled for future use.</p></div><div class="step"><strong>Run acceptance</strong><div class="cmd">&amp; "D:\forgetdm - Copy\demo\business-entity-lab\verify-forgetdm.ps1"</div></div><div class="step"><strong>Review in the new UI</strong><p>Open <a href="http://localhost:3000/business-entities">http://localhost:3000/business-entities</a>, choose <b>BE Lab - Customer 360</b>, then review Model, Identity, Freshness, Snapshots &amp; reservations, Deliver, and Govern. DataScope definitions are under <a href="http://localhost:3000/datascope">DataScope</a>.</p></div></div></section>
+
+    <section><h2>Recorded new-UI walkthrough</h2><p class="section-copy">The recording is local and uses the real saved entity and jobs.</p><video controls preload="metadata" src="business-entity-new-ui-walkthrough.webm"></video></section>
+    <section><h2>UI evidence</h2><div class="gallery"><figure><a href="ui-evidence/01-business-entity-model.png"><img src="ui-evidence/01-business-entity-model.png" alt="Entity model: 43 members across three applications"></a><figcaption>Entity model: 43 members across three applications</figcaption></figure>
+<figure><a href="ui-evidence/02-business-entity-identity.png"><img src="ui-evidence/02-business-entity-identity.png" alt="Canonical identity and crosswalk"></a><figcaption>Canonical identity and crosswalk</figcaption></figure>
+<figure><a href="ui-evidence/03-business-entity-freshness.png"><img src="ui-evidence/03-business-entity-freshness.png" alt="Live freshness policy"></a><figcaption>Live freshness policy</figcaption></figure>
+<figure><a href="ui-evidence/04-business-entity-snapshot.png"><img src="ui-evidence/04-business-entity-snapshot.png" alt="Immutable snapshot evidence"></a><figcaption>Immutable snapshot evidence</figcaption></figure>
+<figure><a href="ui-evidence/05-business-entity-microdb.png"><img src="ui-evidence/05-business-entity-microdb.png" alt="Encrypted, versioned Customer 360 Micro-DB"></a><figcaption>Encrypted, versioned Customer 360 Micro-DB</figcaption></figure>
+<figure><a href="ui-evidence/06-business-entity-flow.png"><img src="ui-evidence/06-business-entity-flow.png" alt="Visual enterprise flow debugger"></a><figcaption>Visual enterprise flow debugger</figcaption></figure>
+<figure><a href="ui-evidence/07-business-entity-saved-jobs.png"><img src="ui-evidence/07-business-entity-saved-jobs.png" alt="Approved plan and reusable saved package"></a><figcaption>Approved plan and reusable saved package</figcaption></figure>
+<figure><a href="ui-evidence/08-business-entity-governance.png"><img src="ui-evidence/08-business-entity-governance.png" alt="Maker-checker governance"></a><figcaption>Maker-checker governance</figcaption></figure>
+<figure><a href="ui-evidence/09-data-sources-three-applications.png"><img src="ui-evidence/09-data-sources-three-applications.png" alt="Registered PostgreSQL, Oracle, and MySQL sources"></a><figcaption>Registered PostgreSQL, Oracle, and MySQL sources</figcaption></figure>
+<figure><a href="ui-evidence/10-datascope-blueprints.png"><img src="ui-evidence/10-datascope-blueprints.png" alt="DataScope profile used by the entity"></a><figcaption>DataScope profile used by the entity</figcaption></figure></div></section>
+
+    <section><h2>DDL and data generation</h2><p class="section-copy">These scripts rebuild the acceptance schemas and deterministic data. They are destructive to the named lab schemas/users only.</p><details><summary>PostgreSQL Core Banking - 20 tables / 198,825 rows</summary><pre>\set ON_ERROR_STOP on
+
+DROP SCHEMA IF EXISTS be_core CASCADE;
+CREATE SCHEMA be_core AUTHORIZATION CURRENT_USER;
+SET search_path TO be_core;
+
+CREATE TABLE branches (
+  branch_id integer PRIMARY KEY,
+  branch_code varchar(12) NOT NULL UNIQUE,
+  branch_name varchar(100) NOT NULL,
+  state_code char(2) NOT NULL,
+  opened_on date NOT NULL
+);
+CREATE TABLE households (
+  household_id bigint PRIMARY KEY,
+  household_ref varchar(20) NOT NULL UNIQUE,
+  segment varchar(20) NOT NULL,
+  created_at timestamp NOT NULL
+);
+CREATE TABLE customers (
+  customer_id bigint PRIMARY KEY,
+  customer_no varchar(20) NOT NULL UNIQUE,
+  crm_party_id varchar(20) NOT NULL UNIQUE,
+  household_id bigint REFERENCES households(household_id),
+  first_name varchar(60) NOT NULL,
+  last_name varchar(60) NOT NULL,
+  date_of_birth date NOT NULL,
+  ssn varchar(11) NOT NULL UNIQUE,
+  customer_status varchar(20) NOT NULL,
+  risk_rating varchar(12) NOT NULL,
+  created_at timestamp NOT NULL,
+  updated_at timestamp NOT NULL
+);
+CREATE TABLE customer_addresses (
+  address_id bigint PRIMARY KEY,
+  customer_id bigint NOT NULL REFERENCES customers(customer_id),
+  address_type varchar(15) NOT NULL,
+  line1 varchar(120) NOT NULL,
+  city varchar(60) NOT NULL,
+  state_code char(2) NOT NULL,
+  postal_code varchar(10) NOT NULL,
+  is_primary boolean NOT NULL
+);
+CREATE TABLE customer_phones (
+  phone_id bigint PRIMARY KEY,
+  customer_id bigint NOT NULL REFERENCES customers(customer_id),
+  phone_type varchar(15) NOT NULL,
+  phone_number varchar(20) NOT NULL,
+  verified_at timestamp
+);
+CREATE TABLE customer_emails (
+  email_id bigint PRIMARY KEY,
+  customer_id bigint NOT NULL REFERENCES customers(customer_id),
+  email_address varchar(160) NOT NULL UNIQUE,
+  is_primary boolean NOT NULL,
+  verified_at timestamp
+);
+CREATE TABLE customer_identifiers (
+  identifier_id bigint PRIMARY KEY,
+  customer_id bigint NOT NULL REFERENCES customers(customer_id),
+  identifier_type varchar(30) NOT NULL,
+  identifier_value varchar(80) NOT NULL,
+  issuing_country char(2) NOT NULL,
+  expires_on date,
+  UNIQUE(identifier_type, identifier_value)
+);
+CREATE TABLE household_members (
+  household_id bigint NOT NULL REFERENCES households(household_id),
+  customer_id bigint NOT NULL REFERENCES customers(customer_id),
+  member_role varchar(20) NOT NULL,
+  joined_on date NOT NULL,
+  PRIMARY KEY(household_id, customer_id)
+);
+CREATE TABLE accounts (
+  account_id bigint PRIMARY KEY,
+  account_no varchar(24) NOT NULL UNIQUE,
+  branch_id integer NOT NULL REFERENCES branches(branch_id),
+  product_code varchar(20) NOT NULL,
+  account_status varchar(20) NOT NULL,
+  opened_on date NOT NULL,
+  closed_on date,
+  currency_code char(3) NOT NULL
+);
+CREATE TABLE account_holders (
+  account_id bigint NOT NULL REFERENCES accounts(account_id),
+  customer_id bigint NOT NULL REFERENCES customers(customer_id),
+  holder_role varchar(20) NOT NULL,
+  ownership_pct numeric(5,2) NOT NULL,
+  PRIMARY KEY(account_id, customer_id)
+);
+CREATE TABLE account_balances (
+  account_id bigint PRIMARY KEY REFERENCES accounts(account_id),
+  ledger_balance numeric(16,2) NOT NULL,
+  available_balance numeric(16,2) NOT NULL,
+  as_of timestamp NOT NULL
+);
+CREATE TABLE account_transactions (
+  transaction_id bigint PRIMARY KEY,
+  account_id bigint NOT NULL REFERENCES accounts(account_id),
+  transaction_ts timestamp NOT NULL,
+  transaction_type varchar(20) NOT NULL,
+  amount numeric(14,2) NOT NULL,
+  merchant_description varchar(120),
+  channel varchar(20) NOT NULL,
+  reference_no varchar(36) NOT NULL UNIQUE
+);
+CREATE TABLE loans (
+  loan_id bigint PRIMARY KEY,
+  customer_id bigint NOT NULL REFERENCES customers(customer_id),
+  account_id bigint REFERENCES accounts(account_id),
+  loan_type varchar(20) NOT NULL,
+  principal_amount numeric(16,2) NOT NULL,
+  outstanding_amount numeric(16,2) NOT NULL,
+  interest_rate numeric(7,4) NOT NULL,
+  originated_on date NOT NULL,
+  maturity_on date NOT NULL,
+  loan_status varchar(20) NOT NULL
+);
+CREATE TABLE loan_payments (
+  payment_id bigint PRIMARY KEY,
+  loan_id bigint NOT NULL REFERENCES loans(loan_id),
+  payment_date date NOT NULL,
+  principal_paid numeric(14,2) NOT NULL,
+  interest_paid numeric(14,2) NOT NULL,
+  payment_status varchar(20) NOT NULL
+);
+CREATE TABLE cards (
+  card_id bigint PRIMARY KEY,
+  account_id bigint NOT NULL REFERENCES accounts(account_id),
+  customer_id bigint NOT NULL REFERENCES customers(customer_id),
+  card_ref varchar(24) NOT NULL UNIQUE,
+  pan varchar(19) NOT NULL UNIQUE,
+  expiry_month integer NOT NULL,
+  expiry_year integer NOT NULL,
+  card_status varchar(20) NOT NULL
+);
+CREATE TABLE card_transactions (
+  card_transaction_id bigint PRIMARY KEY,
+  card_id bigint NOT NULL REFERENCES cards(card_id),
+  posted_at timestamp NOT NULL,
+  merchant_name varchar(120) NOT NULL,
+  merchant_category varchar(8) NOT NULL,
+  amount numeric(14,2) NOT NULL,
+  currency_code char(3) NOT NULL,
+  authorization_code varchar(12) NOT NULL
+);
+CREATE TABLE beneficiaries (
+  beneficiary_id bigint PRIMARY KEY,
+  customer_id bigint NOT NULL REFERENCES customers(customer_id),
+  beneficiary_name varchar(120) NOT NULL,
+  bank_routing_no varchar(12) NOT NULL,
+  bank_account_no varchar(30) NOT NULL,
+  relationship_type varchar(20) NOT NULL,
+  active boolean NOT NULL
+);
+CREATE TABLE standing_orders (
+  order_id bigint PRIMARY KEY,
+  account_id bigint NOT NULL REFERENCES accounts(account_id),
+  beneficiary_id bigint NOT NULL REFERENCES beneficiaries(beneficiary_id),
+  amount numeric(14,2) NOT NULL,
+  frequency varchar(20) NOT NULL,
+  next_run_date date NOT NULL,
+  order_status varchar(20) NOT NULL
+);
+CREATE TABLE kyc_reviews (
+  review_id bigint PRIMARY KEY,
+  customer_id bigint NOT NULL REFERENCES customers(customer_id),
+  review_date date NOT NULL,
+  review_type varchar(20) NOT NULL,
+  outcome varchar(20) NOT NULL,
+  analyst varchar(80) NOT NULL,
+  next_review_date date NOT NULL
+);
+CREATE TABLE customer_consents (
+  consent_id bigint PRIMARY KEY,
+  customer_id bigint NOT NULL REFERENCES customers(customer_id),
+  consent_type varchar(30) NOT NULL,
+  consent_status varchar(20) NOT NULL,
+  captured_at timestamp NOT NULL,
+  source_channel varchar(20) NOT NULL
+);
+
+INSERT INTO branches
+SELECT i, &#39;BR-&#39; || lpad(i::text, 3, &#39;0&#39;), &#39;Retail Branch &#39; || i,
+       (ARRAY[&#39;NY&#39;,&#39;NJ&#39;,&#39;CA&#39;,&#39;TX&#39;,&#39;FL&#39;,&#39;IL&#39;,&#39;WA&#39;,&#39;MA&#39;,&#39;GA&#39;,&#39;NC&#39;])[1 + ((i - 1) % 10)],
+       current_date - (1000 + i * 17)
+FROM generate_series(1,25) i;
+
+INSERT INTO households
+SELECT i, &#39;HH-&#39; || lpad(i::text, 6, &#39;0&#39;),
+       (ARRAY[&#39;MASS_AFFLUENT&#39;,&#39;RETAIL&#39;,&#39;PRIVATE&#39;,&#39;STUDENT&#39;])[1 + ((i - 1) % 4)],
+       current_timestamp - ((i % 700) || &#39; days&#39;)::interval
+FROM generate_series(1,800) i;
+
+INSERT INTO customers
+SELECT i,
+       &#39;CUST-&#39; || lpad(i::text, 6, &#39;0&#39;),
+       &#39;CRM-&#39; || lpad(i::text, 6, &#39;0&#39;),
+       1 + ((i - 1) % 800),
+       (ARRAY[&#39;James&#39;,&#39;Mary&#39;,&#39;Robert&#39;,&#39;Patricia&#39;,&#39;John&#39;,&#39;Jennifer&#39;,&#39;Michael&#39;,&#39;Linda&#39;,&#39;David&#39;,&#39;Elizabeth&#39;,&#39;William&#39;,&#39;Susan&#39;])[1 + ((i - 1) % 12)],
+       (ARRAY[&#39;Smith&#39;,&#39;Johnson&#39;,&#39;Williams&#39;,&#39;Brown&#39;,&#39;Jones&#39;,&#39;Garcia&#39;,&#39;Miller&#39;,&#39;Davis&#39;,&#39;Wilson&#39;,&#39;Anderson&#39;,&#39;Taylor&#39;,&#39;Thomas&#39;])[1 + (((i * 7) - 1) % 12)],
+       date &#39;1950-01-01&#39; + ((i * 37) % 19000),
+       &#39;9&#39; || lpad((i % 100)::text,2,&#39;0&#39;) || &#39;-&#39; || lpad((i % 100)::text,2,&#39;0&#39;) || &#39;-&#39; || lpad(i::text,4,&#39;0&#39;),
+       CASE WHEN i % 41 = 0 THEN &#39;RESTRICTED&#39; WHEN i % 29 = 0 THEN &#39;DORMANT&#39; ELSE &#39;ACTIVE&#39; END,
+       CASE WHEN i % 17 = 0 THEN &#39;HIGH&#39; WHEN i % 5 = 0 THEN &#39;MEDIUM&#39; ELSE &#39;LOW&#39; END,
+       current_timestamp - ((900 + i % 1200) || &#39; days&#39;)::interval,
+       current_timestamp - ((i % 180) || &#39; days&#39;)::interval
+FROM generate_series(1,2000) i;
+
+INSERT INTO customer_addresses
+SELECT i, 1 + ((i - 1) % 2000), CASE WHEN i &lt;= 2000 THEN &#39;HOME&#39; ELSE &#39;MAILING&#39; END,
+       (100 + (i % 9800)) || &#39; &#39; || (ARRAY[&#39;Main&#39;,&#39;Oak&#39;,&#39;Maple&#39;,&#39;Cedar&#39;,&#39;Park&#39;,&#39;Lake&#39;,&#39;Hill&#39;,&#39;Washington&#39;])[1 + ((i - 1) % 8)] || &#39; Street&#39;,
+       (ARRAY[&#39;New York&#39;,&#39;Jersey City&#39;,&#39;Los Angeles&#39;,&#39;Austin&#39;,&#39;Miami&#39;,&#39;Chicago&#39;,&#39;Seattle&#39;,&#39;Boston&#39;])[1 + ((i - 1) % 8)],
+       (ARRAY[&#39;NY&#39;,&#39;NJ&#39;,&#39;CA&#39;,&#39;TX&#39;,&#39;FL&#39;,&#39;IL&#39;,&#39;WA&#39;,&#39;MA&#39;])[1 + ((i - 1) % 8)],
+       lpad((10000 + (i * 37) % 89999)::text,5,&#39;0&#39;), i &lt;= 2000
+FROM generate_series(1,4000) i;
+
+INSERT INTO customer_phones
+SELECT i, 1 + ((i - 1) % 2000), CASE WHEN i &lt;= 2000 THEN &#39;MOBILE&#39; ELSE &#39;HOME&#39; END,
+       &#39;+1-212-&#39; || lpad(((i * 17) % 1000)::text,3,&#39;0&#39;) || &#39;-&#39; || lpad(i::text,4,&#39;0&#39;),
+       CASE WHEN i % 7 = 0 THEN NULL ELSE current_timestamp - ((i % 300) || &#39; days&#39;)::interval END
+FROM generate_series(1,3000) i;
+
+INSERT INTO customer_emails
+SELECT i, i, lower(&#39;customer&#39; || i || &#39;@forgetdm-bank.example&#39;), true,
+       CASE WHEN i % 13 = 0 THEN NULL ELSE current_timestamp - ((i % 300) || &#39; days&#39;)::interval END
+FROM generate_series(1,2000) i;
+
+INSERT INTO customer_identifiers
+SELECT i, 1 + ((i - 1) % 2000), CASE WHEN i &lt;= 2000 THEN &#39;DRIVER_LICENSE&#39; ELSE &#39;PASSPORT&#39; END,
+       CASE WHEN i &lt;= 2000 THEN &#39;DL-NY-&#39; || lpad(i::text,8,&#39;0&#39;) ELSE &#39;P&#39; || lpad(i::text,9,&#39;0&#39;) END,
+       &#39;US&#39;, current_date + (365 + i % 1800)
+FROM generate_series(1,4000) i;
+
+INSERT INTO household_members
+SELECT 1 + ((i - 1) % 800), i, CASE WHEN i &lt;= 800 THEN &#39;PRIMARY&#39; ELSE &#39;MEMBER&#39; END,
+       current_date - (300 + i % 1800)
+FROM generate_series(1,2000) i;
+
+INSERT INTO accounts
+SELECT i, &#39;100200&#39; || lpad(i::text,10,&#39;0&#39;), 1 + ((i - 1) % 25),
+       (ARRAY[&#39;CHECKING&#39;,&#39;SAVINGS&#39;,&#39;MONEY_MARKET&#39;,&#39;BROKERAGE&#39;])[1 + ((i - 1) % 4)],
+       CASE WHEN i % 67 = 0 THEN &#39;FROZEN&#39; WHEN i % 43 = 0 THEN &#39;DORMANT&#39; ELSE &#39;OPEN&#39; END,
+       current_date - (180 + i % 2500), NULL, &#39;USD&#39;
+FROM generate_series(1,4000) i;
+
+INSERT INTO account_holders
+SELECT i, 1 + ((i - 1) % 2000), &#39;PRIMARY&#39;, 100.00 FROM generate_series(1,4000) i;
+INSERT INTO account_holders
+SELECT i, 1 + ((i + 799) % 2000), &#39;JOINT&#39;, 50.00 FROM generate_series(1,1000) i;
+
+INSERT INTO account_balances
+SELECT i, round((500 + (i * 97 % 125000))::numeric,2), round((450 + (i * 91 % 120000))::numeric,2),
+       current_timestamp - ((i % 1440) || &#39; minutes&#39;)::interval
+FROM generate_series(1,4000) i;
+
+INSERT INTO account_transactions
+SELECT i, 1 + ((i - 1) % 4000), current_timestamp - ((i % 525600) || &#39; minutes&#39;)::interval,
+       (ARRAY[&#39;DEBIT&#39;,&#39;CREDIT&#39;,&#39;TRANSFER&#39;,&#39;FEE&#39;,&#39;ACH&#39;])[1 + ((i - 1) % 5)],
+       round((5 + (i * 13 % 499500) / 100.0)::numeric,2),
+       &#39;Merchant &#39; || (1 + i % 1200),
+       (ARRAY[&#39;CARD&#39;,&#39;ONLINE&#39;,&#39;BRANCH&#39;,&#39;ATM&#39;,&#39;MOBILE&#39;])[1 + ((i - 1) % 5)],
+       &#39;TXN-&#39; || lpad(i::text,12,&#39;0&#39;)
+FROM generate_series(1,80000) i;
+
+INSERT INTO loans
+SELECT i, 1 + ((i - 1) % 2000), 1 + ((i - 1) % 4000),
+       (ARRAY[&#39;MORTGAGE&#39;,&#39;AUTO&#39;,&#39;PERSONAL&#39;,&#39;HELOC&#39;])[1 + ((i - 1) % 4)],
+       10000 + (i * 791 % 490000), 5000 + (i * 613 % 250000),
+       2.7500 + ((i % 500) / 100.0), current_date - (200 + i % 1600), current_date + (900 + i % 8000),
+       CASE WHEN i % 53 = 0 THEN &#39;DELINQUENT&#39; ELSE &#39;ACTIVE&#39; END
+FROM generate_series(1,1000) i;
+
+INSERT INTO loan_payments
+SELECT i, 1 + ((i - 1) % 1000), current_date - (i % 900),
+       round((100 + (i * 19 % 2000))::numeric,2), round((10 + (i * 7 % 400))::numeric,2),
+       CASE WHEN i % 79 = 0 THEN &#39;RETURNED&#39; ELSE &#39;POSTED&#39; END
+FROM generate_series(1,12000) i;
+
+INSERT INTO cards
+SELECT i, 1 + ((i - 1) % 4000), 1 + ((i - 1) % 2000), &#39;CARD-&#39; || lpad(i::text,8,&#39;0&#39;),
+       &#39;411111&#39; || lpad(i::text,10,&#39;0&#39;), 1 + (i % 12), 2027 + (i % 5),
+       CASE WHEN i % 71 = 0 THEN &#39;BLOCKED&#39; ELSE &#39;ACTIVE&#39; END
+FROM generate_series(1,3000) i;
+
+INSERT INTO card_transactions
+SELECT i, 1 + ((i - 1) % 3000), current_timestamp - ((i % 525600) || &#39; minutes&#39;)::interval,
+       &#39;Merchant &#39; || (1 + i % 1200), lpad((5000 + i % 500)::text,4,&#39;0&#39;),
+       round((2 + (i * 11 % 250000) / 100.0)::numeric,2), &#39;USD&#39;, lpad((i % 1000000)::text,6,&#39;0&#39;)
+FROM generate_series(1,60000) i;
+
+INSERT INTO beneficiaries
+SELECT i, 1 + ((i - 1) % 2000), &#39;Beneficiary &#39; || i, lpad((21000000 + i % 70000000)::text,9,&#39;0&#39;),
+       lpad((7000000000::bigint + i)::text,12,&#39;0&#39;), (ARRAY[&#39;FAMILY&#39;,&#39;VENDOR&#39;,&#39;OWN_ACCOUNT&#39;,&#39;CHARITY&#39;])[1 + ((i - 1) % 4)], i % 23 &lt;&gt; 0
+FROM generate_series(1,4000) i;
+
+INSERT INTO standing_orders
+SELECT i, 1 + ((i - 1) % 4000), 1 + ((i - 1) % 4000), round((25 + i % 1500)::numeric,2),
+       (ARRAY[&#39;WEEKLY&#39;,&#39;BIWEEKLY&#39;,&#39;MONTHLY&#39;])[1 + ((i - 1) % 3)], current_date + (1 + i % 30),
+       CASE WHEN i % 31 = 0 THEN &#39;PAUSED&#39; ELSE &#39;ACTIVE&#39; END
+FROM generate_series(1,2000) i;
+
+INSERT INTO kyc_reviews
+SELECT i, i, current_date - (i % 720), CASE WHEN i % 5 = 0 THEN &#39;ENHANCED&#39; ELSE &#39;PERIODIC&#39; END,
+       CASE WHEN i % 37 = 0 THEN &#39;ESCALATED&#39; ELSE &#39;APPROVED&#39; END, &#39;Analyst &#39; || (1 + i % 25), current_date + (180 + i % 540)
+FROM generate_series(1,2000) i;
+
+INSERT INTO customer_consents
+SELECT i, 1 + ((i - 1) % 2000), CASE WHEN i &lt;= 2000 THEN &#39;PRIVACY&#39; ELSE &#39;MARKETING&#39; END,
+       CASE WHEN i % 19 = 0 THEN &#39;REVOKED&#39; ELSE &#39;GRANTED&#39; END,
+       current_timestamp - ((i % 600) || &#39; days&#39;)::interval,
+       (ARRAY[&#39;WEB&#39;,&#39;MOBILE&#39;,&#39;BRANCH&#39;,&#39;CALL_CENTER&#39;])[1 + ((i - 1) % 4)]
+FROM generate_series(1,4000) i;
+
+CREATE INDEX ix_addresses_customer ON customer_addresses(customer_id);
+CREATE INDEX ix_accounts_branch ON accounts(branch_id);
+CREATE INDEX ix_account_holders_customer ON account_holders(customer_id);
+CREATE INDEX ix_account_transactions_account ON account_transactions(account_id, transaction_ts);
+CREATE INDEX ix_loans_customer ON loans(customer_id);
+CREATE INDEX ix_cards_customer ON cards(customer_id);
+CREATE INDEX ix_card_transactions_card ON card_transactions(card_id, posted_at);
+CREATE INDEX ix_beneficiaries_customer ON beneficiaries(customer_id);
+ANALYZE be_core.customers;
+</pre></details><details><summary>Oracle Card Servicing - 13 tables / 144,200 rows</summary><pre>whenever sqlerror exit sql.sqlcode
+set define off
+set serveroutput on
+
+declare
+  n number;
+begin
+  select count(*) into n from dba_users where username = &#39;BE_CARDS&#39;;
+  if n &gt; 0 then execute immediate &#39;drop user BE_CARDS cascade&#39;; end if;
+end;
+/
+create user BE_CARDS identified by ForgeTdm2026 default tablespace USERS temporary tablespace TEMP quota unlimited on USERS;
+grant create session, create table, create view, create sequence, create procedure to BE_CARDS;
+connect BE_CARDS/ForgeTdm2026@XE
+
+create table card_customers (
+  card_customer_id number(12) primary key,
+  party_ref varchar2(20) not null unique,
+  core_customer_no varchar2(20) not null unique,
+  first_name varchar2(60) not null,
+  last_name varchar2(60) not null,
+  date_of_birth date not null,
+  email_address varchar2(160),
+  mobile_phone varchar2(24),
+  servicing_status varchar2(20) not null,
+  created_at timestamp not null,
+  updated_at timestamp not null
+);
+create table card_accounts (
+  card_account_id number(12) primary key,
+  card_customer_id number(12) not null references card_customers(card_customer_id),
+  core_account_ref varchar2(24) not null,
+  account_status varchar2(20) not null,
+  credit_limit number(14,2) not null,
+  current_balance number(14,2) not null,
+  opened_on date not null,
+  billing_cycle_day number(2) not null
+);
+create table payment_cards (
+  payment_card_id number(12) primary key,
+  card_account_id number(12) not null references card_accounts(card_account_id),
+  card_customer_id number(12) not null references card_customers(card_customer_id),
+  core_card_ref varchar2(24) not null unique,
+  pan varchar2(19) not null unique,
+  card_type varchar2(20) not null,
+  expiry_month number(2) not null,
+  expiry_year number(4) not null,
+  card_status varchar2(20) not null
+);
+create table card_tokens (
+  token_id number(12) primary key,
+  payment_card_id number(12) not null references payment_cards(payment_card_id),
+  token_reference varchar2(64) not null unique,
+  wallet_provider varchar2(30) not null,
+  device_reference varchar2(60),
+  token_status varchar2(20) not null,
+  created_at timestamp not null
+);
+create table merchants (
+  merchant_id number(12) primary key,
+  merchant_name varchar2(120) not null,
+  merchant_category varchar2(8) not null,
+  city varchar2(60) not null,
+  state_code char(2) not null,
+  risk_tier varchar2(12) not null
+);
+create table card_authorizations (
+  authorization_id number(14) primary key,
+  payment_card_id number(12) not null references payment_cards(payment_card_id),
+  merchant_id number(12) not null references merchants(merchant_id),
+  authorization_ts timestamp not null,
+  authorization_code varchar2(12) not null,
+  amount number(14,2) not null,
+  currency_code char(3) not null,
+  response_code varchar2(5) not null,
+  channel varchar2(20) not null
+);
+create table card_postings (
+  posting_id number(14) primary key,
+  authorization_id number(14) references card_authorizations(authorization_id),
+  card_account_id number(12) not null references card_accounts(card_account_id),
+  posted_at timestamp not null,
+  posting_type varchar2(20) not null,
+  amount number(14,2) not null,
+  description varchar2(160) not null
+);
+create table card_statements (
+  statement_id number(14) primary key,
+  card_account_id number(12) not null references card_accounts(card_account_id),
+  cycle_start date not null,
+  cycle_end date not null,
+  statement_balance number(14,2) not null,
+  minimum_due number(14,2) not null,
+  due_date date not null,
+  statement_status varchar2(20) not null
+);
+create table card_payments (
+  card_payment_id number(14) primary key,
+  card_account_id number(12) not null references card_accounts(card_account_id),
+  payment_ts timestamp not null,
+  amount number(14,2) not null,
+  payment_method varchar2(20) not null,
+  source_account_last4 char(4),
+  payment_status varchar2(20) not null
+);
+create table card_disputes (
+  dispute_id number(12) primary key,
+  card_customer_id number(12) not null references card_customers(card_customer_id),
+  posting_id number(14) not null references card_postings(posting_id),
+  opened_at timestamp not null,
+  dispute_reason varchar2(40) not null,
+  disputed_amount number(14,2) not null,
+  dispute_status varchar2(20) not null,
+  resolved_at timestamp
+);
+create table fraud_cases (
+  fraud_case_id number(12) primary key,
+  card_customer_id number(12) not null references card_customers(card_customer_id),
+  payment_card_id number(12) references payment_cards(payment_card_id),
+  opened_at timestamp not null,
+  case_type varchar2(30) not null,
+  risk_score number(5,2) not null,
+  case_status varchar2(20) not null,
+  investigator varchar2(80)
+);
+create table customer_preferences (
+  card_customer_id number(12) primary key references card_customers(card_customer_id),
+  statement_delivery varchar2(20) not null,
+  sms_alerts char(1) not null,
+  email_alerts char(1) not null,
+  travel_notice_country char(2),
+  preferred_language varchar2(10) not null,
+  updated_at timestamp not null
+);
+create table card_audit_events (
+  audit_event_id number(14) primary key,
+  card_customer_id number(12) references card_customers(card_customer_id),
+  event_ts timestamp not null,
+  event_type varchar2(30) not null,
+  actor_id varchar2(40) not null,
+  source_system varchar2(30) not null,
+  event_detail varchar2(240)
+);
+
+insert into card_customers
+select 500000 + level,
+       &#39;CARDPARTY-&#39; || lpad(level,6,&#39;0&#39;),
+       &#39;CUST-&#39; || lpad(level,6,&#39;0&#39;),
+       decode(mod(level-1,8),0,&#39;James&#39;,1,&#39;Mary&#39;,2,&#39;Robert&#39;,3,&#39;Patricia&#39;,4,&#39;John&#39;,5,&#39;Jennifer&#39;,6,&#39;Michael&#39;,&#39;Linda&#39;),
+       decode(mod(level*7-1,8),0,&#39;Smith&#39;,1,&#39;Johnson&#39;,2,&#39;Williams&#39;,3,&#39;Brown&#39;,4,&#39;Jones&#39;,5,&#39;Garcia&#39;,6,&#39;Miller&#39;,&#39;Davis&#39;),
+       date &#39;1950-01-01&#39; + mod(level * 37,19000),
+       &#39;customer&#39; || level || &#39;@forgetdm-bank.example&#39;,
+       &#39;+1-212-&#39; || lpad(mod(level*17,1000),3,&#39;0&#39;) || &#39;-&#39; || lpad(level,4,&#39;0&#39;),
+       case when mod(level,41)=0 then &#39;RESTRICTED&#39; else &#39;ACTIVE&#39; end,
+       systimestamp - numtodsinterval(900 + mod(level,1200),&#39;DAY&#39;),
+       systimestamp - numtodsinterval(mod(level,180),&#39;DAY&#39;)
+from dual connect by level &lt;= 2000;
+
+insert into card_accounts
+select 600000 + level, 500000 + mod(level-1,2000) + 1,
+       &#39;100200&#39; || lpad(mod(level-1,4000)+1,10,&#39;0&#39;),
+       case when mod(level,53)=0 then &#39;SUSPENDED&#39; else &#39;OPEN&#39; end,
+       2500 + mod(level*137,47500), mod(level*97,3000000)/100,
+       trunc(sysdate) - (180 + mod(level,2200)), 1 + mod(level,28)
+from dual connect by level &lt;= 3000;
+
+insert into payment_cards
+select 700000 + level, 600000 + level, 500000 + mod(level-1,2000) + 1,
+       &#39;CARD-&#39; || lpad(level,8,&#39;0&#39;), &#39;411111&#39; || lpad(level,10,&#39;0&#39;),
+       decode(mod(level-1,3),0,&#39;VISA&#39;,1,&#39;MASTERCARD&#39;,&#39;DEBIT&#39;),
+       1 + mod(level,12), 2027 + mod(level,5),
+       case when mod(level,71)=0 then &#39;BLOCKED&#39; else &#39;ACTIVE&#39; end
+from dual connect by level &lt;= 3000;
+
+insert into card_tokens
+select 800000 + level, 700000 + level, &#39;TOK-&#39; || lpad(level,20,&#39;0&#39;),
+       decode(mod(level-1,3),0,&#39;APPLE_PAY&#39;,1,&#39;GOOGLE_PAY&#39;,&#39;SAMSUNG_PAY&#39;),
+       &#39;DEVICE-&#39; || lpad(level,10,&#39;0&#39;), case when mod(level,73)=0 then &#39;SUSPENDED&#39; else &#39;ACTIVE&#39; end,
+       systimestamp - numtodsinterval(mod(level,500),&#39;DAY&#39;)
+from dual connect by level &lt;= 3000;
+
+insert into merchants
+select 900000 + level, &#39;Merchant &#39; || level, lpad(5000 + mod(level,500),4,&#39;0&#39;),
+       decode(mod(level-1,8),0,&#39;New York&#39;,1,&#39;Jersey City&#39;,2,&#39;Los Angeles&#39;,3,&#39;Austin&#39;,4,&#39;Miami&#39;,5,&#39;Chicago&#39;,6,&#39;Seattle&#39;,&#39;Boston&#39;),
+       decode(mod(level-1,8),0,&#39;NY&#39;,1,&#39;NJ&#39;,2,&#39;CA&#39;,3,&#39;TX&#39;,4,&#39;FL&#39;,5,&#39;IL&#39;,6,&#39;WA&#39;,&#39;MA&#39;),
+       case when mod(level,23)=0 then &#39;HIGH&#39; when mod(level,5)=0 then &#39;MEDIUM&#39; else &#39;LOW&#39; end
+from dual connect by level &lt;= 1200;
+
+insert into card_authorizations
+select 1000000 + level, 700000 + mod(level-1,3000) + 1, 900000 + mod(level-1,1200) + 1,
+       systimestamp - numtodsinterval(mod(level,525600),&#39;MINUTE&#39;), lpad(mod(level,1000000),6,&#39;0&#39;),
+       2 + mod(level*11,250000)/100, &#39;USD&#39;, case when mod(level,89)=0 then &#39;05&#39; else &#39;00&#39; end,
+       decode(mod(level-1,4),0,&#39;ECOMMERCE&#39;,1,&#39;CHIP&#39;,2,&#39;CONTACTLESS&#39;,&#39;MOBILE&#39;)
+from dual connect by level &lt;= 50000;
+
+insert into card_postings
+select 1100000 + level, 1000000 + level, 600000 + mod(level-1,3000) + 1,
+       systimestamp - numtodsinterval(mod(level,525600),&#39;MINUTE&#39;),
+       decode(mod(level-1,3),0,&#39;PURCHASE&#39;,1,&#39;REFUND&#39;,&#39;FEE&#39;),
+       2 + mod(level*13,300000)/100, &#39;Card posting &#39; || level
+from dual connect by level &lt;= 50000;
+
+insert into card_statements
+select 1200000 + level, 600000 + mod(level-1,3000) + 1,
+       trunc(sysdate,&#39;MM&#39;) - (30 * mod(level,24)), trunc(sysdate,&#39;MM&#39;) - (30 * mod(level,24)) + 29,
+       mod(level*211,5000000)/100, mod(level*17,100000)/100,
+       trunc(sysdate) + mod(level,28), case when mod(level,17)=0 then &#39;PAST_DUE&#39; else &#39;ISSUED&#39; end
+from dual connect by level &lt;= 12000;
+
+insert into card_payments
+select 1300000 + level, 600000 + mod(level-1,3000) + 1,
+       systimestamp - numtodsinterval(mod(level,525600),&#39;MINUTE&#39;), 25 + mod(level*29,250000)/100,
+       decode(mod(level-1,4),0,&#39;ACH&#39;,1,&#39;DEBIT_CARD&#39;,2,&#39;BRANCH&#39;,&#39;MOBILE&#39;),
+       lpad(mod(level,10000),4,&#39;0&#39;), case when mod(level,97)=0 then &#39;RETURNED&#39; else &#39;POSTED&#39; end
+from dual connect by level &lt;= 12000;
+
+insert into card_disputes
+select 1400000 + level, 500000 + mod(level-1,2000) + 1, 1100000 + level,
+       systimestamp - numtodsinterval(mod(level,365),&#39;DAY&#39;),
+       decode(mod(level-1,4),0,&#39;FRAUD&#39;,1,&#39;DUPLICATE&#39;,2,&#39;SERVICE_NOT_RECEIVED&#39;,&#39;INCORRECT_AMOUNT&#39;),
+       10 + mod(level*31,150000)/100, decode(mod(level-1,3),0,&#39;OPEN&#39;,1,&#39;INVESTIGATING&#39;,&#39;RESOLVED&#39;),
+       case when mod(level-1,3)=2 then systimestamp - numtodsinterval(mod(level,30),&#39;DAY&#39;) else null end
+from dual connect by level &lt;= 600;
+
+insert into fraud_cases
+select 1500000 + level,
+       500000 + mod(mod(level*7-1,3000),2000) + 1,
+       700000 + mod(level*7-1,3000) + 1,
+       systimestamp - numtodsinterval(mod(level,365),&#39;DAY&#39;),
+       decode(mod(level-1,3),0,&#39;ACCOUNT_TAKEOVER&#39;,1,&#39;CARD_NOT_PRESENT&#39;,&#39;LOST_STOLEN&#39;),
+       25 + mod(level*17,7500)/100, decode(mod(level-1,3),0,&#39;OPEN&#39;,1,&#39;REVIEW&#39;,&#39;CLOSED&#39;), &#39;Investigator &#39; || (1 + mod(level,20))
+from dual connect by level &lt;= 400;
+
+insert into customer_preferences
+select 500000 + level, decode(mod(level,2),0,&#39;ELECTRONIC&#39;,&#39;PAPER&#39;),
+       case when mod(level,7)=0 then &#39;N&#39; else &#39;Y&#39; end, case when mod(level,11)=0 then &#39;N&#39; else &#39;Y&#39; end,
+       case when mod(level,19)=0 then &#39;GB&#39; else null end, decode(mod(level-1,3),0,&#39;EN&#39;,1,&#39;ES&#39;,&#39;FR&#39;),
+       systimestamp - numtodsinterval(mod(level,180),&#39;DAY&#39;)
+from dual connect by level &lt;= 2000;
+
+insert into card_audit_events
+select 1600000 + level, 500000 + mod(level-1,2000) + 1,
+       systimestamp - numtodsinterval(mod(level,525600),&#39;MINUTE&#39;),
+       decode(mod(level-1,5),0,&#39;PROFILE_VIEW&#39;,1,&#39;CARD_UPDATE&#39;,2,&#39;PAYMENT_POSTED&#39;,3,&#39;ALERT_SENT&#39;,&#39;CASE_REVIEW&#39;),
+       &#39;USER-&#39; || lpad(1 + mod(level,75),4,&#39;0&#39;), &#39;CARD_SERVICING&#39;, &#39;Acceptance event &#39; || level
+from dual connect by level &lt;= 5000;
+
+create index ix_card_accounts_customer on card_accounts(card_customer_id);
+create index ix_payment_cards_customer on payment_cards(card_customer_id);
+create index ix_authorizations_card on card_authorizations(payment_card_id, authorization_ts);
+create index ix_postings_account on card_postings(card_account_id, posted_at);
+create index ix_disputes_customer on card_disputes(card_customer_id);
+create index ix_fraud_customer on fraud_cases(card_customer_id);
+commit;
+
+begin
+  dbms_stats.gather_schema_stats(&#39;BE_CARDS&#39;, cascade =&gt; true);
+end;
+/
+exit
+</pre></details><details><summary>MySQL Digital Engagement - 10 tables / 94,000 rows</summary><pre>SET SESSION cte_max_recursion_depth = 100000;
+DROP DATABASE IF EXISTS digital_engagement;
+CREATE DATABASE digital_engagement CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+DROP USER IF EXISTS &#39;be_digital&#39;@&#39;localhost&#39;;
+CREATE USER &#39;be_digital&#39;@&#39;localhost&#39; IDENTIFIED BY &#39;ForgeTdm2026!&#39;;
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, REFERENCES ON digital_engagement.* TO &#39;be_digital&#39;@&#39;localhost&#39;;
+USE digital_engagement;
+
+CREATE TABLE seed_numbers (n int PRIMARY KEY);
+INSERT INTO seed_numbers(n)
+WITH RECURSIVE seq AS (
+  SELECT 1 AS n
+  UNION ALL
+  SELECT n + 1 FROM seq WHERE n &lt; 100000
+)
+SELECT n FROM seq;
+
+CREATE TABLE digital_customers (
+  digital_customer_id bigint PRIMARY KEY,
+  crm_party_id varchar(20) NOT NULL UNIQUE,
+  core_customer_ref varchar(20) NOT NULL UNIQUE,
+  username varchar(80) NOT NULL UNIQUE,
+  email_address varchar(160) NOT NULL,
+  mobile_phone varchar(24),
+  registration_channel varchar(20) NOT NULL,
+  digital_status varchar(20) NOT NULL,
+  created_at timestamp NOT NULL,
+  updated_at timestamp NOT NULL
+) ENGINE=InnoDB;
+CREATE TABLE user_profiles (
+  profile_id bigint PRIMARY KEY,
+  digital_customer_id bigint NOT NULL UNIQUE,
+  display_name varchar(120) NOT NULL,
+  preferred_language varchar(10) NOT NULL,
+  time_zone varchar(40) NOT NULL,
+  accessibility_mode varchar(20),
+  last_profile_update timestamp NOT NULL,
+  CONSTRAINT fk_profile_customer FOREIGN KEY (digital_customer_id) REFERENCES digital_customers(digital_customer_id)
+) ENGINE=InnoDB;
+CREATE TABLE devices (
+  device_id bigint PRIMARY KEY,
+  digital_customer_id bigint NOT NULL,
+  device_fingerprint varchar(80) NOT NULL UNIQUE,
+  device_type varchar(20) NOT NULL,
+  operating_system varchar(30) NOT NULL,
+  trusted_flag boolean NOT NULL,
+  first_seen_at timestamp NOT NULL,
+  last_seen_at timestamp NOT NULL,
+  CONSTRAINT fk_device_customer FOREIGN KEY (digital_customer_id) REFERENCES digital_customers(digital_customer_id)
+) ENGINE=InnoDB;
+CREATE TABLE login_events (
+  login_event_id bigint PRIMARY KEY,
+  digital_customer_id bigint NOT NULL,
+  device_id bigint,
+  event_ts timestamp NOT NULL,
+  ip_address varchar(45) NOT NULL,
+  authentication_method varchar(30) NOT NULL,
+  event_result varchar(20) NOT NULL,
+  risk_score decimal(5,2) NOT NULL,
+  CONSTRAINT fk_login_customer FOREIGN KEY (digital_customer_id) REFERENCES digital_customers(digital_customer_id),
+  CONSTRAINT fk_login_device FOREIGN KEY (device_id) REFERENCES devices(device_id)
+) ENGINE=InnoDB;
+CREATE TABLE notification_preferences (
+  digital_customer_id bigint PRIMARY KEY,
+  email_enabled boolean NOT NULL,
+  sms_enabled boolean NOT NULL,
+  push_enabled boolean NOT NULL,
+  transaction_alert_threshold decimal(14,2) NOT NULL,
+  quiet_hours_start time,
+  quiet_hours_end time,
+  updated_at timestamp NOT NULL,
+  CONSTRAINT fk_notification_customer FOREIGN KEY (digital_customer_id) REFERENCES digital_customers(digital_customer_id)
+) ENGINE=InnoDB;
+CREATE TABLE support_cases (
+  support_case_id bigint PRIMARY KEY,
+  digital_customer_id bigint NOT NULL,
+  opened_at timestamp NOT NULL,
+  case_category varchar(30) NOT NULL,
+  case_priority varchar(12) NOT NULL,
+  case_status varchar(20) NOT NULL,
+  assigned_team varchar(40) NOT NULL,
+  subject varchar(160) NOT NULL,
+  closed_at timestamp NULL,
+  CONSTRAINT fk_support_customer FOREIGN KEY (digital_customer_id) REFERENCES digital_customers(digital_customer_id)
+) ENGINE=InnoDB;
+CREATE TABLE chat_interactions (
+  interaction_id bigint PRIMARY KEY,
+  support_case_id bigint,
+  digital_customer_id bigint NOT NULL,
+  interaction_ts timestamp NOT NULL,
+  channel varchar(20) NOT NULL,
+  agent_id varchar(30),
+  sentiment varchar(20) NOT NULL,
+  transcript_excerpt varchar(500),
+  CONSTRAINT fk_chat_case FOREIGN KEY (support_case_id) REFERENCES support_cases(support_case_id),
+  CONSTRAINT fk_chat_customer FOREIGN KEY (digital_customer_id) REFERENCES digital_customers(digital_customer_id)
+) ENGINE=InnoDB;
+CREATE TABLE web_sessions (
+  session_id bigint PRIMARY KEY,
+  digital_customer_id bigint NOT NULL,
+  device_id bigint,
+  session_started_at timestamp NOT NULL,
+  session_ended_at timestamp NULL,
+  entry_page varchar(120) NOT NULL,
+  session_outcome varchar(30) NOT NULL,
+  CONSTRAINT fk_session_customer FOREIGN KEY (digital_customer_id) REFERENCES digital_customers(digital_customer_id),
+  CONSTRAINT fk_session_device FOREIGN KEY (device_id) REFERENCES devices(device_id)
+) ENGINE=InnoDB;
+CREATE TABLE marketing_events (
+  marketing_event_id bigint PRIMARY KEY,
+  digital_customer_id bigint NOT NULL,
+  campaign_code varchar(30) NOT NULL,
+  event_ts timestamp NOT NULL,
+  event_type varchar(20) NOT NULL,
+  channel varchar(20) NOT NULL,
+  consent_basis varchar(30) NOT NULL,
+  CONSTRAINT fk_marketing_customer FOREIGN KEY (digital_customer_id) REFERENCES digital_customers(digital_customer_id)
+) ENGINE=InnoDB;
+CREATE TABLE offer_assignments (
+  offer_assignment_id bigint PRIMARY KEY,
+  digital_customer_id bigint NOT NULL,
+  offer_code varchar(30) NOT NULL,
+  assigned_at timestamp NOT NULL,
+  expires_at timestamp NOT NULL,
+  offer_status varchar(20) NOT NULL,
+  propensity_score decimal(5,4) NOT NULL,
+  CONSTRAINT fk_offer_customer FOREIGN KEY (digital_customer_id) REFERENCES digital_customers(digital_customer_id)
+) ENGINE=InnoDB;
+
+INSERT INTO digital_customers
+SELECT 700000 + n,
+       CONCAT(&#39;CRM-&#39;, LPAD(n,6,&#39;0&#39;)),
+       CONCAT(&#39;CUST-&#39;, LPAD(n,6,&#39;0&#39;)),
+       CONCAT(&#39;customer&#39;,n),
+       CONCAT(&#39;customer&#39;,n,&#39;@forgetdm-bank.example&#39;),
+       CONCAT(&#39;+1-212-&#39;,LPAD(MOD(n*17,1000),3,&#39;0&#39;),&#39;-&#39;,LPAD(n,4,&#39;0&#39;)),
+       ELT(1 + MOD(n-1,4),&#39;MOBILE&#39;,&#39;WEB&#39;,&#39;BRANCH_ENROLLMENT&#39;,&#39;CALL_CENTER&#39;),
+       IF(MOD(n,41)=0,&#39;LOCKED&#39;,&#39;ACTIVE&#39;),
+       TIMESTAMPADD(DAY,-(900 + MOD(n,1200)),CURRENT_TIMESTAMP),
+       TIMESTAMPADD(DAY,-MOD(n,180),CURRENT_TIMESTAMP)
+FROM seed_numbers WHERE n &lt;= 2000;
+
+INSERT INTO user_profiles
+SELECT 800000 + n, 700000 + n, CONCAT(&#39;Customer &#39;,n),
+       ELT(1 + MOD(n-1,3),&#39;en-US&#39;,&#39;es-US&#39;,&#39;fr-CA&#39;),
+       ELT(1 + MOD(n-1,4),&#39;America/New_York&#39;,&#39;America/Chicago&#39;,&#39;America/Denver&#39;,&#39;America/Los_Angeles&#39;),
+       IF(MOD(n,29)=0,&#39;HIGH_CONTRAST&#39;,NULL), TIMESTAMPADD(DAY,-MOD(n,180),CURRENT_TIMESTAMP)
+FROM seed_numbers WHERE n &lt;= 2000;
+
+INSERT INTO devices
+SELECT 900000 + n, 700000 + MOD(n-1,2000) + 1, CONCAT(&#39;FP-&#39;,SHA2(CONCAT(&#39;device-&#39;,n),256)),
+       ELT(1 + MOD(n-1,3),&#39;PHONE&#39;,&#39;TABLET&#39;,&#39;DESKTOP&#39;),
+       ELT(1 + MOD(n-1,4),&#39;IOS&#39;,&#39;ANDROID&#39;,&#39;WINDOWS&#39;,&#39;MACOS&#39;), MOD(n,17)&lt;&gt;0,
+       TIMESTAMPADD(DAY,-MOD(n,700),CURRENT_TIMESTAMP), TIMESTAMPADD(MINUTE,-MOD(n,525600),CURRENT_TIMESTAMP)
+FROM seed_numbers WHERE n &lt;= 4000;
+
+INSERT INTO login_events
+SELECT 1000000 + n, 700000 + MOD(n-1,2000) + 1, 900000 + MOD(n-1,4000) + 1,
+       TIMESTAMPADD(MINUTE,-MOD(n,525600),CURRENT_TIMESTAMP),
+       CONCAT(&#39;10.&#39;,MOD(n,255),&#39;.&#39;,MOD(n*7,255),&#39;.&#39;,MOD(n*13,255)),
+       ELT(1 + MOD(n-1,4),&#39;PASSWORD_MFA&#39;,&#39;BIOMETRIC&#39;,&#39;PASSKEY&#39;,&#39;OTP&#39;),
+       IF(MOD(n,97)=0,&#39;DENIED&#39;,&#39;SUCCESS&#39;), ROUND(5 + MOD(n*19,9500)/100,2)
+FROM seed_numbers WHERE n &lt;= 30000;
+
+INSERT INTO notification_preferences
+SELECT 700000 + n, MOD(n,11)&lt;&gt;0, MOD(n,7)&lt;&gt;0, MOD(n,13)&lt;&gt;0,
+       ROUND(25 + MOD(n*23,250000)/100,2), &#39;22:00:00&#39;, &#39;07:00:00&#39;, TIMESTAMPADD(DAY,-MOD(n,180),CURRENT_TIMESTAMP)
+FROM seed_numbers WHERE n &lt;= 2000;
+
+INSERT INTO support_cases
+SELECT 1100000 + n, 700000 + MOD(n-1,2000) + 1, TIMESTAMPADD(DAY,-MOD(n,540),CURRENT_TIMESTAMP),
+       ELT(1 + MOD(n-1,5),&#39;LOGIN&#39;,&#39;PAYMENT&#39;,&#39;CARD&#39;,&#39;ACCOUNT&#39;,&#39;FRAUD&#39;),
+       ELT(1 + MOD(n-1,3),&#39;LOW&#39;,&#39;MEDIUM&#39;,&#39;HIGH&#39;),
+       ELT(1 + MOD(n-1,4),&#39;OPEN&#39;,&#39;PENDING&#39;,&#39;RESOLVED&#39;,&#39;CLOSED&#39;),
+       CONCAT(&#39;Digital Support &#39;,1 + MOD(n,12)), CONCAT(&#39;Acceptance case &#39;,n),
+       IF(MOD(n-1,4)&gt;=2,TIMESTAMPADD(DAY,-MOD(n,30),CURRENT_TIMESTAMP),NULL)
+FROM seed_numbers WHERE n &lt;= 4000;
+
+INSERT INTO chat_interactions
+SELECT 1200000 + n, 1100000 + MOD(n-1,4000) + 1, 700000 + MOD(n-1,2000) + 1,
+       TIMESTAMPADD(MINUTE,-MOD(n,525600),CURRENT_TIMESTAMP),
+       ELT(1 + MOD(n-1,3),&#39;CHAT&#39;,&#39;PHONE&#39;,&#39;SECURE_MESSAGE&#39;), CONCAT(&#39;AGENT-&#39;,LPAD(1 + MOD(n,75),4,&#39;0&#39;)),
+       ELT(1 + MOD(n-1,3),&#39;POSITIVE&#39;,&#39;NEUTRAL&#39;,&#39;NEGATIVE&#39;), CONCAT(&#39;Synthetic acceptance interaction &#39;,n)
+FROM seed_numbers WHERE n &lt;= 10000;
+
+INSERT INTO web_sessions
+SELECT 1300000 + n, 700000 + MOD(n-1,2000) + 1, 900000 + MOD(n-1,4000) + 1,
+       TIMESTAMPADD(MINUTE,-MOD(n,525600),CURRENT_TIMESTAMP),
+       TIMESTAMPADD(MINUTE,-MOD(n,525600)+MOD(n,45),CURRENT_TIMESTAMP),
+       ELT(1 + MOD(n-1,5),&#39;/accounts&#39;,&#39;/cards&#39;,&#39;/payments&#39;,&#39;/support&#39;,&#39;/offers&#39;),
+       ELT(1 + MOD(n-1,4),&#39;VIEWED&#39;,&#39;TRANSACTED&#39;,&#39;ABANDONED&#39;,&#39;ERROR&#39;)
+FROM seed_numbers WHERE n &lt;= 20000;
+
+INSERT INTO marketing_events
+SELECT 1400000 + n, 700000 + MOD(n-1,2000) + 1, CONCAT(&#39;CMP-&#39;,LPAD(1 + MOD(n,40),4,&#39;0&#39;)),
+       TIMESTAMPADD(MINUTE,-MOD(n,525600),CURRENT_TIMESTAMP),
+       ELT(1 + MOD(n-1,4),&#39;DELIVERED&#39;,&#39;OPENED&#39;,&#39;CLICKED&#39;,&#39;UNSUBSCRIBED&#39;),
+       ELT(1 + MOD(n-1,3),&#39;EMAIL&#39;,&#39;PUSH&#39;,&#39;SMS&#39;), &#39;RECORDED_CONSENT&#39;
+FROM seed_numbers WHERE n &lt;= 15000;
+
+INSERT INTO offer_assignments
+SELECT 1500000 + n, 700000 + MOD(n-1,2000) + 1, CONCAT(&#39;OFFER-&#39;,LPAD(1 + MOD(n,80),4,&#39;0&#39;)),
+       TIMESTAMPADD(DAY,-MOD(n,120),CURRENT_TIMESTAMP), TIMESTAMPADD(DAY,30-MOD(n,20),CURRENT_TIMESTAMP),
+       ELT(1 + MOD(n-1,4),&#39;ASSIGNED&#39;,&#39;VIEWED&#39;,&#39;ACCEPTED&#39;,&#39;EXPIRED&#39;), ROUND(MOD(n*37,10000)/10000,4)
+FROM seed_numbers WHERE n &lt;= 5000;
+
+CREATE INDEX ix_devices_customer ON devices(digital_customer_id);
+CREATE INDEX ix_login_customer_ts ON login_events(digital_customer_id,event_ts);
+CREATE INDEX ix_support_customer ON support_cases(digital_customer_id);
+CREATE INDEX ix_chat_customer_ts ON chat_interactions(digital_customer_id,interaction_ts);
+CREATE INDEX ix_sessions_customer_ts ON web_sessions(digital_customer_id,session_started_at);
+CREATE INDEX ix_marketing_customer_ts ON marketing_events(digital_customer_id,event_ts);
+DROP TABLE seed_numbers;
+ANALYZE TABLE digital_customers, devices, login_events, support_cases, chat_interactions, web_sessions, marketing_events;
+</pre></details></section>
+
+    <section><h2>Safety boundary</h2><div class="callout"><strong>What was not executed</strong><br>The saved execution plan was not physically launched because each acceptance DataScope currently uses the same database as source and target. Launching a replace/delete load there would mutate the evidence fixture. Point each slice at dedicated target schemas, re-approve the changed plan, then launch it.</div></section>
+    <p class="footer">ForgeTDM Business Entity Acceptance Lab. Evidence source: acceptance-results.json. DDL, setup, verification, screenshots, and recording are stored beside this report.</p>
+  </main>
+</body>
+</html>

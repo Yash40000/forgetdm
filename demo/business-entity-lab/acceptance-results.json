@@ -1,0 +1,1131 @@
+﻿{
+    "generatedAt":  "2026-07-13T21:08:50.2758555Z",
+    "overallStatus":  "PASS",
+    "entity":  {
+                   "id":  8,
+                   "name":  "BE Lab - Customer 360",
+                   "domain":  "Retail Banking",
+                   "members":  43,
+                   "dataSources":  3,
+                   "identitySubjects":  100
+               },
+    "totals":  {
+                   "applications":  3,
+                   "schemas":  3,
+                   "tables":  43,
+                   "rows":  437025,
+                   "postgresRows":  198825,
+                   "oracleRows":  144200,
+                   "mysqlRows":  94000
+               },
+    "sources":  [
+                    {
+                        "id":  10,
+                        "name":  "BE Lab - Core Banking PostgreSQL",
+                        "engine":  "POSTGRES",
+                        "schema":  "be_core",
+                        "diagnosticStatus":  "READY",
+                        "readinessScore":  100,
+                        "tables":  null,
+                        "columns":  null
+                    },
+                    {
+                        "id":  11,
+                        "name":  "BE Lab - Card Servicing Oracle",
+                        "engine":  "ORACLE",
+                        "schema":  "BE_CARDS",
+                        "diagnosticStatus":  "READY",
+                        "readinessScore":  100,
+                        "tables":  null,
+                        "columns":  null
+                    },
+                    {
+                        "id":  12,
+                        "name":  "BE Lab - Digital Engagement MySQL",
+                        "engine":  "MYSQL",
+                        "schema":  "digital_engagement",
+                        "diagnosticStatus":  "READY",
+                        "readinessScore":  100,
+                        "tables":  null,
+                        "columns":  null
+                    }
+                ],
+    "identityResolution":  [
+                               {
+                                   "system":  "Core Banking",
+                                   "matched":  true,
+                                   "canonicalKey":  "CUST-000042"
+                               },
+                               {
+                                   "system":  "Card Servicing",
+                                   "matched":  true,
+                                   "canonicalKey":  "CUST-000042"
+                               },
+                               {
+                                   "system":  "Digital Engagement",
+                                   "matched":  true,
+                                   "canonicalKey":  "CUST-000042"
+                               }
+                           ],
+    "freshness":  {
+                      "policyId":  4,
+                      "status":  "FRESH",
+                      "members":  [
+                                      {
+                                          "memberPolicyId":  22,
+                                          "memberId":  218,
+                                          "systemName":  "Core Banking",
+                                          "tableName":  "customers",
+                                          "watermarkColumn":  "updated_at",
+                                          "maxLagSeconds":  15552000,
+                                          "sourceWatermark":  "2026-07-13 13:54:34.106081",
+                                          "sourceWatermarkInstant":  "2026-07-13T17:54:34.106081Z",
+                                          "lagSeconds":  11636,
+                                          "status":  "FRESH",
+                                          "message":  "Source watermark is within SLA."
+                                      },
+                                      {
+                                          "memberPolicyId":  23,
+                                          "memberId":  238,
+                                          "systemName":  "Card Servicing",
+                                          "tableName":  "CARD_CUSTOMERS",
+                                          "watermarkColumn":  "UPDATED_AT",
+                                          "maxLagSeconds":  15552000,
+                                          "sourceWatermark":  "2026-07-13 14:45:44.962",
+                                          "sourceWatermarkInstant":  "2026-07-13T18:45:44.962Z",
+                                          "lagSeconds":  8565,
+                                          "status":  "FRESH",
+                                          "message":  "Source watermark is within SLA."
+                                      },
+                                      {
+                                          "memberPolicyId":  24,
+                                          "memberId":  251,
+                                          "systemName":  "Digital Engagement",
+                                          "tableName":  "digital_customers",
+                                          "watermarkColumn":  "updated_at",
+                                          "maxLagSeconds":  15552000,
+                                          "sourceWatermark":  "2026-07-13 09:56:02.0",
+                                          "sourceWatermarkInstant":  "2026-07-13T13:56:02Z",
+                                          "lagSeconds":  25948,
+                                          "status":  "FRESH",
+                                          "message":  "Source watermark is within SLA."
+                                      }
+                                  ]
+                  },
+    "snapshot":  {
+                     "id":  6,
+                     "status":  "AVAILABLE",
+                     "immutable":  true,
+                     "retentionUntil":  "2027-07-13T18:48:09.629471Z",
+                     "memberCount":  43,
+                     "totalRows":  437025
+                 },
+    "tableRows":  [
+                      {
+                          "application":  "BE Lab - Card Servicing Oracle",
+                          "engine":  "ORACLE",
+                          "schema":  "BE_CARDS",
+                          "table":  "card_payments",
+                          "rowCount":  12000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Card Servicing Oracle",
+                          "engine":  "ORACLE",
+                          "schema":  "BE_CARDS",
+                          "table":  "card_statements",
+                          "rowCount":  12000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Card Servicing Oracle",
+                          "engine":  "ORACLE",
+                          "schema":  "BE_CARDS",
+                          "table":  "card_disputes",
+                          "rowCount":  600,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Card Servicing Oracle",
+                          "engine":  "ORACLE",
+                          "schema":  "BE_CARDS",
+                          "table":  "customer_preferences",
+                          "rowCount":  2000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Card Servicing Oracle",
+                          "engine":  "ORACLE",
+                          "schema":  "BE_CARDS",
+                          "table":  "fraud_cases",
+                          "rowCount":  400,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Card Servicing Oracle",
+                          "engine":  "ORACLE",
+                          "schema":  "BE_CARDS",
+                          "table":  "card_tokens",
+                          "rowCount":  3000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Card Servicing Oracle",
+                          "engine":  "ORACLE",
+                          "schema":  "BE_CARDS",
+                          "table":  "payment_cards",
+                          "rowCount":  3000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Card Servicing Oracle",
+                          "engine":  "ORACLE",
+                          "schema":  "BE_CARDS",
+                          "table":  "card_authorizations",
+                          "rowCount":  50000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Card Servicing Oracle",
+                          "engine":  "ORACLE",
+                          "schema":  "BE_CARDS",
+                          "table":  "card_postings",
+                          "rowCount":  50000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Card Servicing Oracle",
+                          "engine":  "ORACLE",
+                          "schema":  "BE_CARDS",
+                          "table":  "merchants",
+                          "rowCount":  1200,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Card Servicing Oracle",
+                          "engine":  "ORACLE",
+                          "schema":  "BE_CARDS",
+                          "table":  "card_audit_events",
+                          "rowCount":  5000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Digital Engagement MySQL",
+                          "engine":  "MYSQL",
+                          "schema":  "digital_engagement",
+                          "table":  "chat_interactions",
+                          "rowCount":  10000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Digital Engagement MySQL",
+                          "engine":  "MYSQL",
+                          "schema":  "digital_engagement",
+                          "table":  "support_cases",
+                          "rowCount":  4000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Digital Engagement MySQL",
+                          "engine":  "MYSQL",
+                          "schema":  "digital_engagement",
+                          "table":  "web_sessions",
+                          "rowCount":  20000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Digital Engagement MySQL",
+                          "engine":  "MYSQL",
+                          "schema":  "digital_engagement",
+                          "table":  "offer_assignments",
+                          "rowCount":  5000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Digital Engagement MySQL",
+                          "engine":  "MYSQL",
+                          "schema":  "digital_engagement",
+                          "table":  "marketing_events",
+                          "rowCount":  15000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Digital Engagement MySQL",
+                          "engine":  "MYSQL",
+                          "schema":  "digital_engagement",
+                          "table":  "user_profiles",
+                          "rowCount":  2000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Digital Engagement MySQL",
+                          "engine":  "MYSQL",
+                          "schema":  "digital_engagement",
+                          "table":  "digital_customers",
+                          "rowCount":  2000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Digital Engagement MySQL",
+                          "engine":  "MYSQL",
+                          "schema":  "digital_engagement",
+                          "table":  "devices",
+                          "rowCount":  4000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Digital Engagement MySQL",
+                          "engine":  "MYSQL",
+                          "schema":  "digital_engagement",
+                          "table":  "notification_preferences",
+                          "rowCount":  2000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Digital Engagement MySQL",
+                          "engine":  "MYSQL",
+                          "schema":  "digital_engagement",
+                          "table":  "login_events",
+                          "rowCount":  30000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Card Servicing Oracle",
+                          "engine":  "ORACLE",
+                          "schema":  "BE_CARDS",
+                          "table":  "card_accounts",
+                          "rowCount":  3000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "household_members",
+                          "rowCount":  2000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "households",
+                          "rowCount":  800,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "account_holders",
+                          "rowCount":  5000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "branches",
+                          "rowCount":  25,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "accounts",
+                          "rowCount":  4000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "customer_addresses",
+                          "rowCount":  4000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "customers",
+                          "rowCount":  2000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "customer_phones",
+                          "rowCount":  3000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "customer_identifiers",
+                          "rowCount":  4000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "customer_emails",
+                          "rowCount":  2000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "account_balances",
+                          "rowCount":  4000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "standing_orders",
+                          "rowCount":  2000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "beneficiaries",
+                          "rowCount":  4000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "kyc_reviews",
+                          "rowCount":  2000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Card Servicing Oracle",
+                          "engine":  "ORACLE",
+                          "schema":  "BE_CARDS",
+                          "table":  "card_customers",
+                          "rowCount":  2000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "customer_consents",
+                          "rowCount":  4000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "loans",
+                          "rowCount":  1000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "account_transactions",
+                          "rowCount":  80000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "loan_payments",
+                          "rowCount":  12000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "card_transactions",
+                          "rowCount":  60000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      },
+                      {
+                          "application":  "BE Lab - Core Banking PostgreSQL",
+                          "engine":  "POSTGRES",
+                          "schema":  "be_core",
+                          "table":  "cards",
+                          "rowCount":  3000,
+                          "status":  "CAPTURED",
+                          "countVerified":  true
+                      }
+                  ],
+    "governance":  {
+                       "requestId":  4,
+                       "status":  "APPROVED",
+                       "maker":  "admin",
+                       "checker":  "qa_checker",
+                       "spoofRejected":  true
+                   },
+    "savedExecution":  {
+                           "planId":  4,
+                           "planStatus":  "APPROVED",
+                           "mode":  "PLAN_ONLY",
+                           "slices":  [
+                                          {
+                                              "sliceKey":  "dataset-32-target-10",
+                                              "label":  "Core Banking",
+                                              "datasetId":  32,
+                                              "datasetName":  "BE Lab - Core Banking Scope",
+                                              "sourceDataSourceId":  10,
+                                              "sourceSchema":  "be_core",
+                                              "targetDataSourceId":  10,
+                                              "targetDataSourceName":  "BE Lab - Core Banking PostgreSQL",
+                                              "targetSchema":  "be_core",
+                                              "driverTable":  "customers",
+                                              "memberCount":  20,
+                                              "members":  [
+                                                              {
+                                                                  "memberId":  218,
+                                                                  "role":  "core_customer",
+                                                                  "table":  "customers",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  219,
+                                                                  "role":  "core_address",
+                                                                  "table":  "customer_addresses",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  220,
+                                                                  "role":  "core_phone",
+                                                                  "table":  "customer_phones",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  221,
+                                                                  "role":  "core_email",
+                                                                  "table":  "customer_emails",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  222,
+                                                                  "role":  "core_identifier",
+                                                                  "table":  "customer_identifiers",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  223,
+                                                                  "role":  "core_household",
+                                                                  "table":  "households",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  224,
+                                                                  "role":  "core_household_member",
+                                                                  "table":  "household_members",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  225,
+                                                                  "role":  "core_account_holder",
+                                                                  "table":  "account_holders",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  226,
+                                                                  "role":  "core_account",
+                                                                  "table":  "accounts",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  227,
+                                                                  "role":  "core_branch",
+                                                                  "table":  "branches",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  228,
+                                                                  "role":  "core_balance",
+                                                                  "table":  "account_balances",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  229,
+                                                                  "role":  "core_transaction",
+                                                                  "table":  "account_transactions",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  230,
+                                                                  "role":  "core_loan",
+                                                                  "table":  "loans",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  231,
+                                                                  "role":  "core_loan_payment",
+                                                                  "table":  "loan_payments",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  232,
+                                                                  "role":  "core_card",
+                                                                  "table":  "cards",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  233,
+                                                                  "role":  "core_card_transaction",
+                                                                  "table":  "card_transactions",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  234,
+                                                                  "role":  "core_beneficiary",
+                                                                  "table":  "beneficiaries",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  235,
+                                                                  "role":  "core_standing_order",
+                                                                  "table":  "standing_orders",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  236,
+                                                                  "role":  "core_kyc_review",
+                                                                  "table":  "kyc_reviews",
+                                                                  "system":  "Core Banking"
+                                                              },
+                                                              {
+                                                                  "memberId":  237,
+                                                                  "role":  "core_consent",
+                                                                  "table":  "customer_consents",
+                                                                  "system":  "Core Banking"
+                                                              }
+                                                          ],
+                                              "loaderStrategy":  {
+                                                                     "notes":  "PostgreSQL COPY is implemented in the synthetic streaming fast-load path; DataScope keeps JDBC fallback when masking row-by-row.",
+                                                                     "configureHint":  "",
+                                                                     "launchMode":  "IN_PROCESS_NATIVE_COPY",
+                                                                     "fallback":  "JDBC_MULTI_ROW",
+                                                                     "executor":  "PostgresCopyLoadExecutor",
+                                                                     "nativeAvailable":  true,
+                                                                     "strategy":  "POSTGRES_COPY",
+                                                                     "engine":  "POSTGRES"
+                                                                 }
+                                          },
+                                          {
+                                              "sliceKey":  "dataset-33-target-11",
+                                              "label":  "Card Servicing",
+                                              "datasetId":  33,
+                                              "datasetName":  "BE Lab - Card Servicing Scope",
+                                              "sourceDataSourceId":  11,
+                                              "sourceSchema":  "BE_CARDS",
+                                              "targetDataSourceId":  11,
+                                              "targetDataSourceName":  "BE Lab - Card Servicing Oracle",
+                                              "targetSchema":  "BE_CARDS",
+                                              "driverTable":  "card_customers",
+                                              "memberCount":  13,
+                                              "members":  [
+                                                              {
+                                                                  "memberId":  238,
+                                                                  "role":  "cards_customer",
+                                                                  "table":  "card_customers",
+                                                                  "system":  "Card Servicing"
+                                                              },
+                                                              {
+                                                                  "memberId":  239,
+                                                                  "role":  "cards_account",
+                                                                  "table":  "card_accounts",
+                                                                  "system":  "Card Servicing"
+                                                              },
+                                                              {
+                                                                  "memberId":  240,
+                                                                  "role":  "cards_payment_card",
+                                                                  "table":  "payment_cards",
+                                                                  "system":  "Card Servicing"
+                                                              },
+                                                              {
+                                                                  "memberId":  241,
+                                                                  "role":  "cards_token",
+                                                                  "table":  "card_tokens",
+                                                                  "system":  "Card Servicing"
+                                                              },
+                                                              {
+                                                                  "memberId":  242,
+                                                                  "role":  "cards_authorization",
+                                                                  "table":  "card_authorizations",
+                                                                  "system":  "Card Servicing"
+                                                              },
+                                                              {
+                                                                  "memberId":  243,
+                                                                  "role":  "cards_merchant",
+                                                                  "table":  "merchants",
+                                                                  "system":  "Card Servicing"
+                                                              },
+                                                              {
+                                                                  "memberId":  244,
+                                                                  "role":  "cards_posting",
+                                                                  "table":  "card_postings",
+                                                                  "system":  "Card Servicing"
+                                                              },
+                                                              {
+                                                                  "memberId":  245,
+                                                                  "role":  "cards_statement",
+                                                                  "table":  "card_statements",
+                                                                  "system":  "Card Servicing"
+                                                              },
+                                                              {
+                                                                  "memberId":  246,
+                                                                  "role":  "cards_payment",
+                                                                  "table":  "card_payments",
+                                                                  "system":  "Card Servicing"
+                                                              },
+                                                              {
+                                                                  "memberId":  247,
+                                                                  "role":  "cards_dispute",
+                                                                  "table":  "card_disputes",
+                                                                  "system":  "Card Servicing"
+                                                              },
+                                                              {
+                                                                  "memberId":  248,
+                                                                  "role":  "cards_fraud_case",
+                                                                  "table":  "fraud_cases",
+                                                                  "system":  "Card Servicing"
+                                                              },
+                                                              {
+                                                                  "memberId":  249,
+                                                                  "role":  "cards_preference",
+                                                                  "table":  "customer_preferences",
+                                                                  "system":  "Card Servicing"
+                                                              },
+                                                              {
+                                                                  "memberId":  250,
+                                                                  "role":  "cards_audit",
+                                                                  "table":  "card_audit_events",
+                                                                  "system":  "Card Servicing"
+                                                              }
+                                                          ],
+                                              "loaderStrategy":  {
+                                                                     "notes":  "Oracle SQL*Loader direct path adapter. Native client not configured; approved runs use JDBC_BATCH.",
+                                                                     "configureHint":  "FORGETDM_ORACLE_SQLLOADER_ENABLED=true and FORGETDM_ORACLE_SQLLOADER_BIN=\u003cclient path\u003e",
+                                                                     "launchMode":  "EXTERNAL_NATIVE_CLIENT",
+                                                                     "fallback":  "JDBC_BATCH",
+                                                                     "executor":  "ExternalNativeLoadExecutor",
+                                                                     "nativeAvailable":  false,
+                                                                     "strategy":  "ORACLE_SQLLOADER_DIRECT_PATH",
+                                                                     "engine":  "ORACLE"
+                                                                 }
+                                          },
+                                          {
+                                              "sliceKey":  "dataset-34-target-12",
+                                              "label":  "Digital Engagement",
+                                              "datasetId":  34,
+                                              "datasetName":  "BE Lab - Digital Engagement Scope",
+                                              "sourceDataSourceId":  12,
+                                              "sourceSchema":  "digital_engagement",
+                                              "targetDataSourceId":  12,
+                                              "targetDataSourceName":  "BE Lab - Digital Engagement MySQL",
+                                              "targetSchema":  "digital_engagement",
+                                              "driverTable":  "digital_customers",
+                                              "memberCount":  10,
+                                              "members":  [
+                                                              {
+                                                                  "memberId":  251,
+                                                                  "role":  "digital_customer",
+                                                                  "table":  "digital_customers",
+                                                                  "system":  "Digital Engagement"
+                                                              },
+                                                              {
+                                                                  "memberId":  252,
+                                                                  "role":  "digital_profile",
+                                                                  "table":  "user_profiles",
+                                                                  "system":  "Digital Engagement"
+                                                              },
+                                                              {
+                                                                  "memberId":  253,
+                                                                  "role":  "digital_device",
+                                                                  "table":  "devices",
+                                                                  "system":  "Digital Engagement"
+                                                              },
+                                                              {
+                                                                  "memberId":  254,
+                                                                  "role":  "digital_login",
+                                                                  "table":  "login_events",
+                                                                  "system":  "Digital Engagement"
+                                                              },
+                                                              {
+                                                                  "memberId":  255,
+                                                                  "role":  "digital_notification",
+                                                                  "table":  "notification_preferences",
+                                                                  "system":  "Digital Engagement"
+                                                              },
+                                                              {
+                                                                  "memberId":  256,
+                                                                  "role":  "digital_support_case",
+                                                                  "table":  "support_cases",
+                                                                  "system":  "Digital Engagement"
+                                                              },
+                                                              {
+                                                                  "memberId":  257,
+                                                                  "role":  "digital_chat",
+                                                                  "table":  "chat_interactions",
+                                                                  "system":  "Digital Engagement"
+                                                              },
+                                                              {
+                                                                  "memberId":  258,
+                                                                  "role":  "digital_session",
+                                                                  "table":  "web_sessions",
+                                                                  "system":  "Digital Engagement"
+                                                              },
+                                                              {
+                                                                  "memberId":  259,
+                                                                  "role":  "digital_marketing",
+                                                                  "table":  "marketing_events",
+                                                                  "system":  "Digital Engagement"
+                                                              },
+                                                              {
+                                                                  "memberId":  260,
+                                                                  "role":  "digital_offer",
+                                                                  "table":  "offer_assignments",
+                                                                  "system":  "Digital Engagement"
+                                                              }
+                                                          ],
+                                              "loaderStrategy":  {
+                                                                     "notes":  "MySQL LOAD DATA adapter. Native client not configured; approved runs use JDBC_MULTI_ROW.",
+                                                                     "configureHint":  "FORGETDM_MYSQL_LOAD_DATA_ENABLED=true and FORGETDM_MYSQL_LOAD_DATA_BIN=\u003cclient path\u003e",
+                                                                     "launchMode":  "EXTERNAL_NATIVE_CLIENT",
+                                                                     "fallback":  "JDBC_MULTI_ROW",
+                                                                     "executor":  "ExternalNativeLoadExecutor",
+                                                                     "nativeAvailable":  false,
+                                                                     "strategy":  "MYSQL_LOAD_DATA",
+                                                                     "engine":  "MYSQL"
+                                                                 }
+                                          }
+                                      ],
+                           "packageId":  4,
+                           "packageStatus":  "READY",
+                           "packageVersions":  2
+                       },
+    "microDb":  {
+                    "capsuleId":  2,
+                    "canonicalKey":  "customer_no=CUST-000042",
+                    "version":  5,
+                    "status":  "ACTIVE",
+                    "fragments":  43,
+                    "totalRows":  265,
+                    "encryptedFragments":  43,
+                    "systems":  [
+                                    {
+                                        "system":  "Core Banking",
+                                        "fragments":  20,
+                                        "rows":  118
+                                    },
+                                    {
+                                        "system":  "Card Servicing",
+                                        "fragments":  13,
+                                        "rows":  99
+                                    },
+                                    {
+                                        "system":  "Digital Engagement",
+                                        "fragments":  10,
+                                        "rows":  48
+                                    }
+                                ],
+                    "policyId":  16,
+                    "planId":  6,
+                    "packageId":  6,
+                    "packageVersions":  2,
+                    "sourceReadOnLaunch":  false
+                },
+    "flow":  {
+                 "id":  5,
+                 "status":  "ACTIVE",
+                 "validation":  "PASS",
+                 "debugRunId":  15,
+                 "debugStatus":  "COMPLETED"
+             },
+    "previews":  [
+                     {
+                         "datasetId":  32,
+                         "driverTable":  "customers",
+                         "totalRows":  939,
+                         "warnings":  0,
+                         "loadOrder":  [
+                                           "households",
+                                           "branches",
+                                           "customers",
+                                           "customer_addresses",
+                                           "customer_phones",
+                                           "customer_emails",
+                                           "customer_consents",
+                                           "kyc_reviews",
+                                           "customer_identifiers",
+                                           "beneficiaries",
+                                           "household_members",
+                                           "accounts",
+                                           "account_balances",
+                                           "account_transactions",
+                                           "standing_orders",
+                                           "cards",
+                                           "account_holders",
+                                           "loans",
+                                           "loan_payments",
+                                           "card_transactions"
+                                       ]
+                     },
+                     {
+                         "datasetId":  33,
+                         "driverTable":  "card_customers",
+                         "totalRows":  295,
+                         "warnings":  0,
+                         "loadOrder":  [
+                                           "card_customers",
+                                           "card_audit_events",
+                                           "card_accounts",
+                                           "customer_preferences",
+                                           "payment_cards",
+                                           "card_statements",
+                                           "fraud_cases",
+                                           "card_tokens",
+                                           "card_payments",
+                                           "merchants",
+                                           "card_authorizations",
+                                           "card_postings",
+                                           "card_disputes"
+                                       ]
+                     },
+                     {
+                         "datasetId":  34,
+                         "driverTable":  "digital_customers",
+                         "totalRows":  144,
+                         "warnings":  0,
+                         "loadOrder":  [
+                                           "digital_customers",
+                                           "devices",
+                                           "marketing_events",
+                                           "user_profiles",
+                                           "notification_preferences",
+                                           "web_sessions",
+                                           "login_events",
+                                           "support_cases",
+                                           "offer_assignments",
+                                           "chat_interactions"
+                                       ]
+                     }
+                 ],
+    "checks":  [
+                   {
+                       "name":  "Business Entity exists",
+                       "passed":  true,
+                       "evidence":  "entityId=8"
+                   },
+                   {
+                       "name":  "Business Entity spans three applications",
+                       "passed":  true,
+                       "evidence":  "members=43, sources=3"
+                   },
+                   {
+                       "name":  "Connector ready: BE Lab - Core Banking PostgreSQL",
+                       "passed":  true,
+                       "evidence":  "engine=POSTGRES, status=READY"
+                   },
+                   {
+                       "name":  "Connector ready: BE Lab - Card Servicing Oracle",
+                       "passed":  true,
+                       "evidence":  "engine=ORACLE, status=READY"
+                   },
+                   {
+                       "name":  "Connector ready: BE Lab - Digital Engagement MySQL",
+                       "passed":  true,
+                       "evidence":  "engine=MYSQL, status=READY"
+                   },
+                   {
+                       "name":  "Identity resolves from Core Banking",
+                       "passed":  true,
+                       "evidence":  "canonical=CUST-000042"
+                   },
+                   {
+                       "name":  "Identity resolves from Card Servicing",
+                       "passed":  true,
+                       "evidence":  "canonical=CUST-000042"
+                   },
+                   {
+                       "name":  "Identity resolves from Digital Engagement",
+                       "passed":  true,
+                       "evidence":  "canonical=CUST-000042"
+                   },
+                   {
+                       "name":  "Seeded identity crosswalk is reusable",
+                       "passed":  true,
+                       "evidence":  "identitySubjects=100, linksPerSubject=3"
+                   },
+                   {
+                       "name":  "Cross-application freshness policy passes",
+                       "passed":  true,
+                       "evidence":  "status=FRESH, systems=3"
+                   },
+                   {
+                       "name":  "Immutable snapshot has verified row evidence",
+                       "passed":  true,
+                       "evidence":  "snapshotId=6, members=43, rows=437025"
+                   },
+                   {
+                       "name":  "PostgreSQL fixture row count",
+                       "passed":  true,
+                       "evidence":  "rows=198825"
+                   },
+                   {
+                       "name":  "Oracle fixture row count",
+                       "passed":  true,
+                       "evidence":  "rows=144200"
+                   },
+                   {
+                       "name":  "MySQL fixture row count",
+                       "passed":  true,
+                       "evidence":  "rows=94000"
+                   },
+                   {
+                       "name":  "Customer 360 Micro-DB exists and is active",
+                       "passed":  true,
+                       "evidence":  "capsuleId=2, version=5"
+                   },
+                   {
+                       "name":  "Micro-DB captures every member as an encrypted masked fragment",
+                       "passed":  true,
+                       "evidence":  "fragments=43, rows=265, invalid=0, empty=0"
+                   },
+                   {
+                       "name":  "Micro-DB spans all three physical applications",
+                       "passed":  true,
+                       "evidence":  "Core Banking=20 fragments/118 rows; Card Servicing=13 fragments/99 rows; Digital Engagement=10 fragments/48 rows"
+                   },
+                   {
+                       "name":  "Micro-DB keeps version, freshness, access and lineage evidence",
+                       "passed":  true,
+                       "evidence":  "versions=5, watermarks=3, lineage=8"
+                   },
+                   {
+                       "name":  "Micro-DB access grants enforce owner and delegated provision scopes",
+                       "passed":  true,
+                       "evidence":  "ownerGrants=1, checkerProvisionGrants=1"
+                   },
+                   {
+                       "name":  "Micro-DB masks PII while preserving canonical identity",
+                       "passed":  true,
+                       "evidence":  "keysPreserved=True, rootPiiChanged=True"
+                   },
+                   {
+                       "name":  "Micro-DB masking is deterministic across database engines",
+                       "passed":  true,
+                       "evidence":  "emailConsistent=True, phoneConsistent=True"
+                   },
+                   {
+                       "name":  "Maker-checker approval is signed by a separate user",
+                       "passed":  true,
+                       "evidence":  "maker=admin, checker=qa_checker"
+                   },
+                   {
+                       "name":  "Governance actor spoof is rejected",
+                       "passed":  true,
+                       "evidence":  "admin cannot approve as qa_checker"
+                   },
+                   {
+                       "name":  "Approved saved execution plan fans out by application",
+                       "passed":  true,
+                       "evidence":  "planId=4, slices=3, mappedMembers=43"
+                   },
+                   {
+                       "name":  "Reusable saved job package has an immutable version",
+                       "passed":  true,
+                       "evidence":  "packageId=4, versions=2"
+                   },
+                   {
+                       "name":  "Approved execution plan is pinned to the current Micro-DB version",
+                       "passed":  true,
+                       "evidence":  "planId=6, capsuleId=2, version=5"
+                   },
+                   {
+                       "name":  "Micro-DB saved job package is reusable and immutable",
+                       "passed":  true,
+                       "evidence":  "packageId=6, planId=6, versions=2"
+                   },
+                   {
+                       "name":  "Business Entity catalog is complete",
+                       "passed":  true,
+                       "evidence":  "catalogAssets=44"
+                   },
+                   {
+                       "name":  "Published visual flow validates and completes a dry run",
+                       "passed":  true,
+                       "evidence":  "flowId=5, validation=PASS, debug=COMPLETED"
+                   },
+                   {
+                       "name":  "DataScope preview is bounded and valid: dataset 32",
+                       "passed":  true,
+                       "evidence":  "rows=939, warnings=0"
+                   },
+                   {
+                       "name":  "DataScope preview is bounded and valid: dataset 33",
+                       "passed":  true,
+                       "evidence":  "rows=295, warnings=0"
+                   },
+                   {
+                       "name":  "DataScope preview is bounded and valid: dataset 34",
+                       "passed":  true,
+                       "evidence":  "rows=144, warnings=0"
+                   }
+               ]
+}

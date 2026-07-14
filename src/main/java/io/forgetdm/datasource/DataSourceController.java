@@ -11,9 +11,14 @@ import java.util.Map;
 public class DataSourceController {
     private final DataSourceService svc;
     private final NativeLoadRegistry nativeLoaders;
-    public DataSourceController(DataSourceService svc, NativeLoadRegistry nativeLoaders) {
+    private final ConnectorDiagnosticsService diagnostics;
+    private final ExternalJdbcDriverLoader drivers;
+    public DataSourceController(DataSourceService svc, NativeLoadRegistry nativeLoaders,
+                                ConnectorDiagnosticsService diagnostics, ExternalJdbcDriverLoader drivers) {
         this.svc = svc;
         this.nativeLoaders = nativeLoaders;
+        this.diagnostics = diagnostics;
+        this.drivers = drivers;
     }
 
     @GetMapping public List<DataSourceEntity> list() { return svc.list(); }
@@ -24,6 +29,13 @@ public class DataSourceController {
     @PostMapping("/{id}/test") public Map<String, Object> test(@PathVariable Long id) { return svc.testConnection(id); }
     @PostMapping("/test-connection") public Map<String, Object> testTransient(@RequestBody DataSourceEntity ds) { return svc.testTransient(ds); }
     @GetMapping("/native-loaders") public List<Map<String, Object>> nativeLoaders() { return nativeLoaders.status(); }
+    @GetMapping("/drivers") public List<ExternalJdbcDriverLoader.DriverStatus> drivers() { return drivers.status(); }
+    @GetMapping("/{id}/diagnostics")
+    public ConnectorDiagnosticsService.Report diagnostics(@PathVariable Long id,
+                                                           @RequestParam(required = false) String schema,
+                                                           @RequestParam(required = false) Integer maxTables) {
+        return diagnostics.inspect(svc.get(id), schema, maxTables);
+    }
     @GetMapping("/{id}/schemas") public List<Map<String, Object>> schemas(@PathVariable Long id) { return svc.schemas(id); }
     @GetMapping("/{id}/tables")
     public List<Map<String, Object>> tables(@PathVariable Long id, @RequestParam(required = false) String schema) {

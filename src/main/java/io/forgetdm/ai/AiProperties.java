@@ -58,6 +58,12 @@ public class AiProperties {
     private boolean leanLocalPrompt = true;
     private String selfBaseUrl = "http://localhost:8088";
     private int timeoutSeconds = 180;  // local models can be slow to cold-load; allow generous time
+    /** Interactive ceiling for workstation/local inference before deterministic planning takes over. */
+    private int localTimeoutSeconds = 20;
+    /** Prevent a model from turning an intent extraction or chat response into an unbounded generation. */
+    private int maxOutputTokens = 900;
+    /** Smaller ceiling for workstation models; enough for intent JSON without long-form generation. */
+    private int localMaxOutputTokens = 450;
     private String defaultProvider = "openai";
 
     // ---- built-in self-hosted presets (on-prem; no key). Env: FORGETDM_AI_OLLAMA_BASE_URL / _MODEL / _ENABLED, etc. ----
@@ -128,6 +134,12 @@ public class AiProperties {
     public void setSelfBaseUrl(String v) { selfBaseUrl = v; }
     public int getTimeoutSeconds() { return timeoutSeconds; }
     public void setTimeoutSeconds(int v) { timeoutSeconds = v; }
+    public int getLocalTimeoutSeconds() { return localTimeoutSeconds; }
+    public void setLocalTimeoutSeconds(int v) { localTimeoutSeconds = v; }
+    public int getMaxOutputTokens() { return maxOutputTokens; }
+    public void setMaxOutputTokens(int v) { maxOutputTokens = v; }
+    public int getLocalMaxOutputTokens() { return localMaxOutputTokens; }
+    public void setLocalMaxOutputTokens(int v) { localMaxOutputTokens = v; }
     public String getDefaultProvider() { return defaultProvider; }
     public void setDefaultProvider(String v) { defaultProvider = v; }
     public boolean isOllamaEnabled() { return ollamaEnabled; }

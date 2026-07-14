@@ -21,6 +21,7 @@ import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
+import java.net.URLEncoder;
 import java.security.MessageDigest;
 import java.sql.PreparedStatement;
 import java.sql.Statement;
@@ -125,7 +126,8 @@ public class BusinessEntityEnterpriseService {
         out.put("executionPlans", rows("""
                 SELECT id, name, operation_type AS "operationType", source_environment AS "sourceEnvironment",
                        target_environment AS "targetEnvironment", mode, status, approved_request_id AS "approvedRequestId",
-                       plan_json AS "planJson", created_by AS "createdBy", updated_at AS "updatedAt"
+                       plan_json AS "planJson", validation_json AS "validationJson",
+                       loader_strategy_json AS "loaderStrategyJson", created_by AS "createdBy", updated_at AS "updatedAt"
                   FROM be_entity_execution_plans WHERE entity_id = ? ORDER BY created_at DESC
                 """, entityId));
         out.put("operationalPackages", rows("""
@@ -221,8 +223,11 @@ public class BusinessEntityEnterpriseService {
 
     public Map<String, Object> syncCatalog(Long entityId) {
         BusinessEntityService.BusinessEntityDetail detail = entities.getDetail(entityId);
+        List<String> currentQualifiedNames = new ArrayList<>();
+        String entityQualifiedName = "be://" + detail.entity().getId();
+        currentQualifiedNames.add(entityQualifiedName);
         upsertCatalog(entityId, "BUSINESS_ENTITY", detail.entity().getId(),
-                "be://" + detail.entity().getId(), detail.entity().getName(), detail.entity().getOwnerUsername(),
+                entityQualifiedName, detail.entity().getName(), detail.entity().getOwnerUsername(),
                 detail.entity().getDomain(), "business-entity," + safe(detail.entity().getDomain()),
                 "CERTIFIED", Map.of("rootTable", safe(detail.entity().getRootTable())),
                 Map.of("members", detail.members().stream().map(BusinessEntityMemberEntity::getTableName).toList()),
@@ -230,8 +235,11 @@ public class BusinessEntityEnterpriseService {
         for (BusinessEntityMemberEntity m : detail.members()) {
             double quality = (m.getDataSourceId() == null ? 0 : .25) + (m.getKeyColumns() == null ? 0 : .35)
                     + (m.getJoinToRole() == null ? .15 : .25) + .15;
+            String memberQualifiedName = "be://" + detail.entity().getId() + "/member/"
+                    + pathSegment(m.getLogicalRole()) + "/" + pathSegment(m.getTableName());
+            currentQualifiedNames.add(memberQualifiedName);
             upsertCatalog(entityId, "ENTITY_MEMBER", m.getId(),
-                    "be://" + detail.entity().getId() + "/member/" + m.getId(),
+                    memberQualifiedName,
                     m.getLogicalRole() + " / " + m.getTableName(), detail.entity().getOwnerUsername(),
                     detail.entity().getDomain(), "member," + safe(m.getSystemName()),
                     quality >= .75 ? "CERTIFIED" : "NEEDS_REVIEW",
@@ -239,6 +247,7 @@ public class BusinessEntityEnterpriseService {
                     Map.of("joinToRole", safe(m.getJoinToRole()), "datasetId", String.valueOf(m.getDatasetId())),
                     Math.round(quality * 100.0) / 100.0);
         }
+        deleteStaleCatalogAssets(entityId, currentQualifiedNames);
         audit.log("system", "BUSINESS_ENTITY_CATALOG_SYNC", "entity=" + detail.entity().getName());
         return dashboard(entityId);
     }
@@ -270,7 +279,7 @@ public class BusinessEntityEnterpriseService {
 
     public Map<String, Object> approveGovernanceRequest(Long id, DecisionRequest decision) {
         Map<String, Object> row = getGovernanceRequest(id);
-        String actor = blankToDefault(decision == null ? null : decision.reviewer(), currentUsername());
+        String actor = authenticatedDecisionActor(decision);
         String requestedBy = String.valueOf(row.get("requestedBy"));
         if (actor.equalsIgnoreCase(requestedBy)) {
             throw ApiException.conflict("Maker-checker violation: requester cannot approve their own governance request.");
@@ -282,7 +291,7 @@ public class BusinessEntityEnterpriseService {
 
     public Map<String, Object> rejectGovernanceRequest(Long id, DecisionRequest decision) {
         Map<String, Object> row = getGovernanceRequest(id);
-        String actor = blankToDefault(decision == null ? null : decision.reviewer(), currentUsername());
+        String actor = authenticatedDecisionActor(decision);
         updateDecision(id, "REJECTED", actor, decision == null ? null : decision.comments(), decision == null ? null : decision.eSignature());
         audit.log(actor, "BUSINESS_ENTITY_GOVERNANCE_REJECTED", "request=" + id + " prior=" + row.get("status"));
         return getGovernanceRequest(id);
@@ -344,12 +353,57 @@ public class BusinessEntityEnterpriseService {
         }
         Long entityId = num(plan.get("entityId"));
         BusinessEntityService.BusinessEntityDetail detail = entities.getDetail(entityId);
+        Long capsuleInstanceId = attachedCapsuleId(plan);
+        if (capsuleInstanceId != null) {
+            return launchCapsulePlan(detail, plan, request, capsuleInstanceId);
+        }
         String operation = safe((String) plan.get("operationType")).toUpperCase(Locale.ROOT);
         return switch (operation) {
             case "SUBSET_MASK", "ISSUE_RECREATE" -> launchDataScopePlan(detail, plan, request);
             case "SYNTHETIC_LOOKALIKE" -> launchSyntheticLookalikePlan(detail, plan, request);
             default -> throw ApiException.bad("Unsupported Business Entity execution operation: " + operation);
         };
+    }
+
+    private Map<String, Object> launchCapsulePlan(BusinessEntityService.BusinessEntityDetail detail,
+                                                   Map<String, Object> plan,
+                                                   LaunchRequest request,
+                                                   Long capsuleInstanceId) {
+        if (request == null || request.targetDataSourceId() == null) {
+            throw ApiException.bad("A capsule-backed plan requires targetDataSourceId; the source systems are not read during this run.");
+        }
+        String prep = upperDefault(request.targetPrep(), "DELETE");
+        boolean deleteExistingByKey = !"APPEND".equals(prep) && !"INSERT".equals(prep);
+        Map<String, Object> provisioned = capsules.provisionToTarget(capsuleInstanceId,
+                new BusinessEntityCapsuleService.ProvisionFromCapsuleRequest(
+                        request.targetDataSourceId(), blank(request.targetSchema()), deleteExistingByKey));
+        String runId = "microdb-" + capsuleInstanceId + "-v" + provisioned.get("version")
+                + "-" + Instant.now().toEpochMilli();
+        Map<String, Object> result = new LinkedHashMap<>(provisioned);
+        result.put("engine", "MICRO_DB");
+        result.put("runId", runId);
+        result.put("status", "COMPLETED");
+        result.put("sourceRead", false);
+        result.put("message", "Provisioned from encrypted Micro-DB capsule #" + capsuleInstanceId
+                + "; live source applications were not queried.");
+        Map<String, Object> evidence = new LinkedHashMap<>();
+        evidence.put("strategy", "MICRO_DB_ENCRYPTED_FRAGMENTS");
+        evidence.put("capsuleInstanceId", capsuleInstanceId);
+        evidence.put("capsuleVersion", provisioned.get("version"));
+        evidence.put("sourceRead", false);
+        recordExecutionRun(detail.entity().getId(), num(plan.get("id")), "MICRO_DB", runId,
+                "COMPLETED", request, result, evidence);
+        jdbc.update("UPDATE be_entity_execution_plans SET updated_at = ? WHERE id = ?",
+                ts(Instant.now()), plan.get("id"));
+        audit.log(currentUsername(), "BUSINESS_ENTITY_MICRO_DB_PLAN_LAUNCH",
+                "plan=" + plan.get("id") + " capsule=" + capsuleInstanceId + " target=" + request.targetDataSourceId());
+        return result;
+    }
+
+    private Long attachedCapsuleId(Map<String, Object> plan) {
+        JsonNode validation = readJson(plan.get("validationJson"), "execution plan validation");
+        JsonNode value = validation.path("capsuleEvidence").path("capsuleInstanceId");
+        return value.isIntegralNumber() ? value.longValue() : null;
     }
 
     public Map<String, Object> createOperationalPackage(Long entityId, OperationalPackageRequest request) {
@@ -1008,6 +1062,23 @@ public class BusinessEntityEnterpriseService {
         }
     }
 
+    private void deleteStaleCatalogAssets(Long entityId, List<String> currentQualifiedNames) {
+        if (currentQualifiedNames.isEmpty()) {
+            jdbc.update("DELETE FROM be_catalog_assets WHERE entity_id = ?", entityId);
+            return;
+        }
+        String placeholders = String.join(",", Collections.nCopies(currentQualifiedNames.size(), "?"));
+        List<Object> params = new ArrayList<>(currentQualifiedNames.size() + 1);
+        params.add(entityId);
+        params.addAll(currentQualifiedNames);
+        jdbc.update("DELETE FROM be_catalog_assets WHERE entity_id = ? AND qualified_name NOT IN (" + placeholders + ")",
+                params.toArray());
+    }
+
+    private static String pathSegment(String value) {
+        return URLEncoder.encode(safe(value).toLowerCase(Locale.ROOT), StandardCharsets.UTF_8).replace("+", "%20");
+    }
+
     private void updateDecision(Long id, String status, String signedBy, String comments, String signature) {
         String hash = sha256(id + "|" + status + "|" + signedBy + "|" + blank(comments) + "|" + blank(signature));
         jdbc.update("""
@@ -1212,6 +1283,14 @@ public class BusinessEntityEnterpriseService {
     }
     private static String currentUsername() {
         return AccessContext.current().map(p -> p.username()).orElse("system");
+    }
+    private static String authenticatedDecisionActor(DecisionRequest decision) {
+        String actor = currentUsername();
+        String suppliedReviewer = blank(decision == null ? null : decision.reviewer());
+        if (suppliedReviewer != null && !suppliedReviewer.equalsIgnoreCase(actor)) {
+            throw ApiException.bad("Reviewer must match the authenticated user.");
+        }
+        return actor;
     }
     private static String sha256(String s) {
         try {

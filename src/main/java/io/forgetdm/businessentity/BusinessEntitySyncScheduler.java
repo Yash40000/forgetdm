@@ -7,6 +7,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.support.CronExpression;
 import org.springframework.stereotype.Component;
+import io.forgetdm.platform.ClusterLeaseService;
 
 import java.sql.Timestamp;
 import java.time.Duration;
@@ -25,12 +26,14 @@ public class BusinessEntitySyncScheduler {
     private final JdbcTemplate jdbc;
     private final BusinessEntitySyncService sync;
     private final boolean enabled;
+    private final ClusterLeaseService leases;
     private final AtomicBoolean running = new AtomicBoolean(false);
 
-    public BusinessEntitySyncScheduler(JdbcTemplate jdbc, BusinessEntitySyncService sync,
+    public BusinessEntitySyncScheduler(JdbcTemplate jdbc, BusinessEntitySyncService sync, ClusterLeaseService leases,
                                        @Value("${forgetdm.business-entity.sync.auto-enabled:true}") boolean enabled) {
         this.jdbc = jdbc;
         this.sync = sync;
+        this.leases = leases;
         this.enabled = enabled;
     }
 
@@ -38,6 +41,7 @@ public class BusinessEntitySyncScheduler {
     public void runDuePolicies() {
         if (!enabled || !running.compareAndSet(false, true)) return;
         try {
+            if (!leases.acquire("business-entity-freshness-scheduler", Duration.ofSeconds(55))) return;
             List<Map<String, Object>> policies = jdbc.queryForList("""
                     SELECT p.id, p.max_lag_seconds AS "maxLagSeconds", p.schedule_cron AS "scheduleCron",
                            MAX(r.started_at) AS "lastRunAt"

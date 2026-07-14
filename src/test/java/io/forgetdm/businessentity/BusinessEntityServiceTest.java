@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.atomic.AtomicLong;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -32,6 +33,7 @@ class BusinessEntityServiceTest {
         AuditService audit = mock(AuditService.class);
         AtomicReference<BusinessEntityDefinitionEntity> savedDef = new AtomicReference<>();
         AtomicReference<List<BusinessEntityMemberEntity>> savedMembers = new AtomicReference<>(List.of());
+        AtomicLong memberIds = new AtomicLong(100L);
 
         DataSetDefinitionEntity ds = new DataSetDefinitionEntity();
         ReflectionTestUtils.setField(ds, "id", 7L);
@@ -62,6 +64,9 @@ class BusinessEntityServiceTest {
         });
         when(members.saveAll(any())).thenAnswer(inv -> {
             List<BusinessEntityMemberEntity> rows = new ArrayList<>(inv.getArgument(0));
+            rows.forEach(row -> {
+                if (row.getId() == null) ReflectionTestUtils.setField(row, "id", memberIds.getAndIncrement());
+            });
             savedMembers.set(rows);
             return rows;
         });
@@ -81,6 +86,11 @@ class BusinessEntityServiceTest {
         assertEquals("finance", detail.members().get(1).getSchemaName());
         assertEquals(false, detail.members().get(1).isIncludeInSubset());
         assertNotNull(detail.entity().getUpdatedAt());
+
+        List<Long> originalIds = detail.members().stream().map(BusinessEntityMemberEntity::getId).toList();
+        List<BusinessEntityMemberEntity> resaved = service.replaceMembers(1L, detail.members());
+        assertEquals(originalIds, resaved.stream().map(BusinessEntityMemberEntity::getId).toList());
+        verify(members, never()).deleteAll(any());
         verify(audit, atLeastOnce()).log(any(), startsWith("BUSINESS_ENTITY"), any());
     }
 

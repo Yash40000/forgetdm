@@ -31,6 +31,11 @@ public class DiscoveryJobService {
     }
 
     public JobSnapshot start(Long dataSourceId, String schemaName, Set<String> selectedTypes) {
+        return start(dataSourceId, schemaName, selectedTypes, Set.of());
+    }
+
+    public JobSnapshot start(Long dataSourceId, String schemaName, Set<String> selectedTypes,
+                             Set<String> selectedTables) {
         if (dataSourceId == null) throw ApiException.bad("dataSourceId is required");
         AccessPrincipal caller = AccessContext.current().orElse(null);
         String token = AccessContext.currentToken().orElse(null);
@@ -40,6 +45,7 @@ public class DiscoveryJobService {
                 dataSourceId,
                 blankNull(schemaName),
                 selectedTypes == null ? Set.of() : Set.copyOf(selectedTypes),
+                selectedTables == null ? Set.of() : Set.copyOf(selectedTables),
                 owner,
                 Instant.now());
         jobs.put(job.jobId, job);
@@ -74,7 +80,8 @@ public class DiscoveryJobService {
         job.running("Opening source metadata");
         try {
             List<ClassificationEntity> result = discovery.scan(job.dataSourceId, job.requestedSchemaName,
-                    job.selectedTypes.isEmpty() ? null : job.selectedTypes, job.progress());
+                    job.selectedTypes.isEmpty() ? null : job.selectedTypes,
+                    job.selectedTables.isEmpty() ? null : job.selectedTables, job.progress());
             job.completed(result.size());
         } catch (Exception e) {
             job.failed(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
@@ -108,7 +115,7 @@ public class DiscoveryJobService {
     }
 
     public record JobSnapshot(String jobId, Long dataSourceId, String requestedSchemaName, String schemaName,
-                              Set<String> selectedTypes, String ownerUsername, String status, Instant startedAt,
+                              Set<String> selectedTypes, Set<String> selectedTables, String ownerUsername, String status, Instant startedAt,
                               Instant finishedAt, int totalTables, int completedTables, String currentTable,
                               String currentColumn, int findings, int percent, String message, String error,
                               List<TableSnapshot> tables) {}
@@ -122,6 +129,7 @@ public class DiscoveryJobService {
         private final Long dataSourceId;
         private final String requestedSchemaName;
         private final Set<String> selectedTypes;
+        private final Set<String> selectedTables;
         private final String ownerUsername;
         private final Instant startedAt;
         private final Map<String, TableState> tables = new LinkedHashMap<>();
@@ -137,11 +145,12 @@ public class DiscoveryJobService {
         private String error;
 
         private DiscoveryJob(String jobId, Long dataSourceId, String requestedSchemaName, Set<String> selectedTypes,
-                             String ownerUsername, Instant startedAt) {
+                             Set<String> selectedTables, String ownerUsername, Instant startedAt) {
             this.jobId = jobId;
             this.dataSourceId = dataSourceId;
             this.requestedSchemaName = requestedSchemaName;
             this.selectedTypes = selectedTypes;
+            this.selectedTables = selectedTables;
             this.ownerUsername = ownerUsername;
             this.startedAt = startedAt;
         }
@@ -259,7 +268,8 @@ public class DiscoveryJobService {
         synchronized JobSnapshot snapshot() {
             List<TableSnapshot> tableSnapshots = new ArrayList<>();
             for (TableState t : tables.values()) tableSnapshots.add(t.snapshot());
-            return new JobSnapshot(jobId, dataSourceId, requestedSchemaName, schemaName, selectedTypes, ownerUsername,
+            return new JobSnapshot(jobId, dataSourceId, requestedSchemaName, schemaName, selectedTypes, selectedTables,
+                    ownerUsername,
                     status, startedAt, finishedAt, tables.size(), completedTables, currentTable, currentColumn,
                     findings, percent(), message, error, tableSnapshots);
         }

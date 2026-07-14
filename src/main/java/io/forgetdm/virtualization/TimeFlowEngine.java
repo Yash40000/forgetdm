@@ -132,24 +132,30 @@ public class TimeFlowEngine {
             boolean auto = target.getAutoCommit();
             target.setAutoCommit(false);
             try (Statement st = target.createStatement()) {
+                String schema = normalizedTargetSchema(target, manifest.schemaName());
+
+                // Preserve the captured application schema. Previously all logical
+                // VDB tables were unqualified, which put DB2 OMD1 snapshots in H2 PUBLIC.
+                ensureSchema(target, st, dialect, schema);
+
                 // 1) Drop existing tables children-first so FK constraints don't block the drop
-                dropTablesIfExist(st, dialect, manifest);
+                dropTablesIfExist(st, dialect, manifest, schema);
                 target.commit();
 
                 // 2) Create tables (PKs inline, FKs deferred)
                 for (SnapshotManifest.TableManifest t : manifest.tables()) {
-                    st.execute(createTableDdl(t, dialect));
+                    st.execute(createTableDdl(t, dialect, schema));
                 }
                 target.commit();
 
                 // 3) Load data
                 for (SnapshotManifest.TableManifest t : manifest.tables()) {
-                    rows += loadTable(target, t);
+                    rows += loadTable(target, schema, t);
                     target.commit();
                 }
 
                 // 4) Add FK constraints after data is fully loaded (avoids ordering issues)
-                for (String fk : foreignKeyDdl(manifest, dialect)) {
+                for (String fk : foreignKeyDdl(manifest, dialect, schema)) {
                     try {
                         st.execute(fk);
                     } catch (SQLException e) {
@@ -171,14 +177,14 @@ public class TimeFlowEngine {
      * Uses DROP TABLE IF EXISTS where the dialect supports it; otherwise suppresses
      * "table does not exist" errors from a plain DROP TABLE.
      */
-    private void dropTablesIfExist(Statement st, SqlDialect dialect, SnapshotManifest manifest) {
+    private void dropTablesIfExist(Statement st, SqlDialect dialect, SnapshotManifest manifest, String schema) {
         List<String> order = new ArrayList<>(manifest.tables().stream()
                 .map(SnapshotManifest.TableManifest::name).toList());
         // Children before parents: sort by FK depth descending
         order.sort(Comparator.comparingInt((String t) -> depth(t, manifest)).reversed());
         for (String table : order) {
             try {
-                String sql = dropIfExistsSql(dialect, table);
+                String sql = dropIfExistsSql(dialect, schema, table);
                 st.execute(sql);
             } catch (SQLException ignored) {
                 // Dialect doesn't support IF EXISTS (DB2 < 10.5, older Oracle) — already dropped or never existed
@@ -193,10 +199,10 @@ public class TimeFlowEngine {
      * Oracle:              uses exception-suppression (no native IF EXISTS before 23c)
      * DB2:                 plain DROP TABLE (exception suppressed by caller)
      */
-    private static String dropIfExistsSql(SqlDialect dialect, String table) {
-        String qt = q(table);
+    private static String dropIfExistsSql(SqlDialect dialect, String schema, String table) {
+        String qt = q(schema, table);
         return switch (dialect) {
-            case SQLSERVER -> "IF OBJECT_ID(N'" + table.replace("'", "''") + "', N'U') IS NOT NULL DROP TABLE " + qt;
+            case SQLSERVER -> "IF OBJECT_ID(N'" + sqlServerObjectName(schema, table) + "', N'U') IS NOT NULL DROP TABLE " + qt;
             case ORACLE    -> "BEGIN EXECUTE IMMEDIATE 'DROP TABLE " + qt + " CASCADE CONSTRAINTS'; EXCEPTION WHEN OTHERS THEN IF SQLCODE != -942 THEN RAISE; END IF; END;";
             case DB2       -> "DROP TABLE " + qt;   // caller suppresses "table not found" (SQLCODE -204)
             default        -> "DROP TABLE IF EXISTS " + qt;  // Postgres, H2, MySQL, Generic
@@ -205,13 +211,14 @@ public class TimeFlowEngine {
 
     /** Drop the manifest's tables from a target (children before parents). Missing tables are skipped. */
     public void dropTables(Connection target, SnapshotManifest manifest) {
+        String schema = normalizedTargetSchema(target, manifest.schemaName());
         List<String> order = new ArrayList<>(manifest.tables().stream().map(SnapshotManifest.TableManifest::name).toList());
         // children first: reverse a parent-first topological order over the FK edges
         order.sort(Comparator.comparingInt(t -> depth(t, manifest)));
         Collections.reverse(order);
         for (String table : order) {
             try (Statement st = target.createStatement()) {
-                st.execute("DROP TABLE " + q(table));
+                st.execute("DROP TABLE " + q(schema, table));
             } catch (SQLException ignored) {
                 // table may not exist yet on this target
             }
@@ -231,9 +238,9 @@ public class TimeFlowEngine {
         return d;
     }
 
-    private long loadTable(Connection target, SnapshotManifest.TableManifest t) throws Exception {
+    private long loadTable(Connection target, String schema, SnapshotManifest.TableManifest t) throws Exception {
         if (t.chunks().isEmpty()) return 0;
-        String sql = "INSERT INTO " + q(t.name()) + " ("
+        String sql = "INSERT INTO " + q(schema, t.name()) + " ("
                 + String.join(", ", t.columns().stream().map(c -> q(c.name())).toList())
                 + ") VALUES (" + String.join(", ", Collections.nCopies(t.columns().size(), "?")) + ")";
         long rows = 0;
@@ -304,7 +311,11 @@ public class TimeFlowEngine {
     // ------------------------------------------------------------------ DDL
 
     String createTableDdl(SnapshotManifest.TableManifest t, SqlDialect dialect) {
-        StringBuilder sb = new StringBuilder("CREATE TABLE ").append(q(t.name())).append(" (");
+        return createTableDdl(t, dialect, null);
+    }
+
+    String createTableDdl(SnapshotManifest.TableManifest t, SqlDialect dialect, String schema) {
+        StringBuilder sb = new StringBuilder("CREATE TABLE ").append(q(schema, t.name())).append(" (");
         for (int i = 0; i < t.columns().size(); i++) {
             SnapshotManifest.ColumnInfo c = t.columns().get(i);
             if (i > 0) sb.append(", ");
@@ -320,19 +331,56 @@ public class TimeFlowEngine {
     }
 
     List<String> foreignKeyDdl(SnapshotManifest manifest, SqlDialect dialect) {
+        return foreignKeyDdl(manifest, dialect, null);
+    }
+
+    List<String> foreignKeyDdl(SnapshotManifest manifest, SqlDialect dialect, String schema) {
         Set<String> tables = new HashSet<>();
         manifest.tables().forEach(t -> tables.add(t.name()));
         List<String> out = new ArrayList<>();
         int n = 0;
         for (SnapshotManifest.FkInfo fk : manifest.foreignKeys()) {
             if (!tables.contains(fk.childTable()) || !tables.contains(fk.parentTable())) continue;
-            out.add("ALTER TABLE " + q(fk.childTable())
+            out.add("ALTER TABLE " + q(schema, fk.childTable())
                     + " ADD CONSTRAINT " + q("fk_vdb_" + fk.childTable() + "_" + (++n))
                     + " FOREIGN KEY (" + String.join(", ", fk.childColumns().stream().map(TimeFlowEngine::q).toList())
-                    + ") REFERENCES " + q(fk.parentTable())
+                    + ") REFERENCES " + q(schema, fk.parentTable())
                     + " (" + String.join(", ", fk.parentColumns().stream().map(TimeFlowEngine::q).toList()) + ")");
         }
         return out;
+    }
+
+    private static String normalizedTargetSchema(Connection target, String capturedSchema) {
+        if (capturedSchema == null || capturedSchema.isBlank()) return null;
+        return io.forgetdm.datasource.DataSourceService.normalizeSchema(target, capturedSchema);
+    }
+
+    private static void ensureSchema(Connection target, Statement st, SqlDialect dialect, String schema) throws SQLException {
+        if (schema == null || schema.isBlank() || schemaExists(target, schema)) return;
+        String sql = switch (dialect) {
+            case ORACLE -> null; // Oracle schemas are users; never create an account implicitly.
+            default -> "CREATE SCHEMA " + q(schema);
+        };
+        if (sql == null) {
+            throw ApiException.bad("Target Oracle schema " + schema
+                    + " does not exist. Create the Oracle user/schema first or use an existing target schema.");
+        }
+        st.execute(sql);
+    }
+
+    private static boolean schemaExists(Connection target, String schema) throws SQLException {
+        try (ResultSet rs = target.getMetaData().getSchemas()) {
+            while (rs.next()) {
+                String physical = rs.getString("TABLE_SCHEM");
+                if (physical != null && physical.equalsIgnoreCase(schema)) return true;
+            }
+        }
+        return false;
+    }
+
+    private static String sqlServerObjectName(String schema, String table) {
+        String name = schema == null || schema.isBlank() ? table : schema + "." + table;
+        return name.replace("'", "''");
     }
 
     /** Portable column type rendered for the target dialect. */

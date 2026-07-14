@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 
 @Service
 public class AccessControlService {
@@ -78,9 +79,60 @@ public class AccessControlService {
                 "SELECT u.id FROM forge_sessions s JOIN forge_users u ON u.id = s.user_id " +
                         "WHERE s.token_hash = ? AND s.expires_at > ? AND u.active = TRUE",
                 (rs, rowNum) -> rs.getLong(1), hash, ts(Instant.now()));
-        if (ids.isEmpty()) return Optional.empty();
-        jdbc.update("UPDATE forge_sessions SET last_seen_at = ? WHERE token_hash = ?", ts(Instant.now()), hash);
+        if (ids.isEmpty()) {
+            ids = jdbc.query(
+                    "SELECT u.id FROM forge_api_tokens t JOIN forge_users u ON u.id = t.user_id " +
+                            "WHERE t.token_hash = ? AND t.revoked_at IS NULL AND (t.expires_at IS NULL OR t.expires_at > ?) AND u.active = TRUE",
+                    (rs, rowNum) -> rs.getLong(1), hash, ts(Instant.now()));
+            if (ids.isEmpty()) return Optional.empty();
+            jdbc.update("UPDATE forge_api_tokens SET last_used_at = ? WHERE token_hash = ?", ts(Instant.now()), hash);
+        } else {
+            jdbc.update("UPDATE forge_sessions SET last_seen_at = ? WHERE token_hash = ?", ts(Instant.now()), hash);
+        }
         return Optional.of(principal(ids.get(0)));
+    }
+
+    @Transactional
+    public ApiTokenCreated createApiToken(ApiTokenRequest request) {
+        AccessPrincipal principal = AccessContext.current()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Login required"));
+        String name = blankToNull(request == null ? null : request.name());
+        if (name == null) throw ApiException.bad("Token name is required");
+        if (name.length() > 160) throw ApiException.bad("Token name must be 160 characters or fewer");
+        Instant expiresAt = request == null ? null : request.expiresAt();
+        if (expiresAt != null && !expiresAt.isAfter(Instant.now())) throw ApiException.bad("Token expiry must be in the future");
+        String id = UUID.randomUUID().toString();
+        String clear = "ftdm_" + newToken();
+        Instant now = Instant.now();
+        try {
+            jdbc.update("INSERT INTO forge_api_tokens(id, user_id, name, token_hash, token_prefix, created_at, expires_at) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    id, principal.userId(), name, tokenHash(clear), clear.substring(0, Math.min(16, clear.length())),
+                    ts(now), expiresAt == null ? null : ts(expiresAt));
+        } catch (org.springframework.dao.DuplicateKeyException e) {
+            throw ApiException.conflict("You already have an API token named " + name);
+        }
+        audit.log(principal.username(), "API_TOKEN_CREATED", "token=" + id + " name=" + name);
+        return new ApiTokenCreated(id, name, clear, expiresAt, now);
+    }
+
+    public List<ApiTokenView> apiTokens() {
+        AccessPrincipal principal = AccessContext.current()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Login required"));
+        return jdbc.query("SELECT id, name, token_prefix, created_at, expires_at, last_used_at, revoked_at " +
+                        "FROM forge_api_tokens WHERE user_id = ? ORDER BY created_at DESC",
+                (rs, rowNum) -> new ApiTokenView(rs.getString("id"), rs.getString("name"), rs.getString("token_prefix"),
+                        instant(rs, "created_at"), instant(rs, "expires_at"), instant(rs, "last_used_at"), instant(rs, "revoked_at")),
+                principal.userId());
+    }
+
+    public void revokeApiToken(String id) {
+        AccessPrincipal principal = AccessContext.current()
+                .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Login required"));
+        int changed = jdbc.update("UPDATE forge_api_tokens SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL",
+                ts(Instant.now()), id, principal.userId());
+        if (changed == 0) throw ApiException.notFound("Active API token " + id + " not found");
+        audit.log(principal.username(), "API_TOKEN_REVOKED", "token=" + id);
     }
 
     @Transactional
@@ -364,7 +416,16 @@ public class AccessControlService {
         return Timestamp.from(instant);
     }
 
+    private static Instant instant(ResultSet rs, String column) throws SQLException {
+        Timestamp value = rs.getTimestamp(column);
+        return value == null ? null : value.toInstant();
+    }
+
     public record LoginResult(String token, Instant expiresAt, AccessPrincipal principal) {}
+    public record ApiTokenRequest(String name, Instant expiresAt) {}
+    public record ApiTokenCreated(String id, String name, String token, Instant expiresAt, Instant createdAt) {}
+    public record ApiTokenView(String id, String name, String tokenPrefix, Instant createdAt, Instant expiresAt,
+                               Instant lastUsedAt, Instant revokedAt) {}
     private record UserSecret(Long id, String username, String displayName, String passwordHash, boolean active) {}
     public record GroupLite(Long id, String name) {}
 

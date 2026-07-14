@@ -128,6 +128,7 @@ public class SyntheticGenService {
         volatile Instant lastPersistedAt = Instant.EPOCH;
         volatile String status = "PENDING";
         volatile boolean cancelRequested;
+        volatile long lastCancelProbeNanos;
         volatile Statement activeStatement;
         final Set<Statement> activeStatements = ConcurrentHashMap.newKeySet();
         volatile Long ownerUserId;
@@ -558,10 +559,10 @@ public class SyntheticGenService {
             // The regular progress throttle would otherwise leave this row PENDING for the first 900 ms.
             persistSyntheticJob(job, true);
             try {
-                if (job.cancelRequested) throw new SyntheticJobCancelledException();
+                if (syntheticCancelRequested(job)) throw new SyntheticJobCancelledException();
                 ProgressSink sink = new ProgressSink() {
                     private void abortIfCancelled() {
-                        if (job.cancelRequested || Thread.currentThread().isInterrupted())
+                        if (syntheticCancelRequested(job) || Thread.currentThread().isInterrupted())
                             throw new SyntheticJobCancelledException();
                     }
                     @Override public void update(int percent, String stage, String message) {
@@ -590,7 +591,7 @@ public class SyntheticGenService {
             } catch (SyntheticJobCancelledException | CancellationException e) {
                 markCancelled(job);
             } catch (Throwable e) {
-                if (job.cancelRequested || Thread.currentThread().isInterrupted()) {
+                if (syntheticCancelRequested(job) || Thread.currentThread().isInterrupted()) {
                     markCancelled(job);
                 } else {
                     if (e instanceof SyntheticPartialFailureException partial) {
@@ -673,6 +674,20 @@ public class SyntheticGenService {
         persistSyntheticJob(job, true);
         audit.log("system", "SYNTHETIC_JOB_CANCEL_REQUESTED", "run=" + id + " status=" + previousStatus);
         return snapshot(job, false);
+    }
+
+    /** Observe cancellation written by another HA replica without querying the config DB on every generated row. */
+    private boolean syntheticCancelRequested(SyntheticJob job) {
+        if (job.cancelRequested) return true;
+        long now = System.nanoTime();
+        if (now - job.lastCancelProbeNanos < java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(500)) return false;
+        job.lastCancelProbeNanos = now;
+        try {
+            List<Boolean> flags = jdbc.query("SELECT cancel_requested FROM synthetic_generation_jobs WHERE id=?",
+                    (rs, rowNum) -> rs.getBoolean(1), job.id);
+            if (!flags.isEmpty() && Boolean.TRUE.equals(flags.get(0))) job.cancelRequested = true;
+        } catch (Exception ignored) { /* keep running through a transient control-plane read failure */ }
+        return job.cancelRequested;
     }
 
     public Map<String, Object> cancelPartition(String jobId, String partitionId) {
@@ -786,6 +801,23 @@ public class SyntheticGenService {
                     String.valueOf(runId), ts(Instant.now()), id);
         }
         audit.log("system", "SYNTHETIC_JOB_RUN", "savedJob=" + id + " run=" + runId + " approval=" + approvalStatus);
+        return started;
+    }
+
+    /** Execute a catalog-published synthetic case for the current self-service requester.
+     *  Catalog publication is checked by the self-service service; this method deliberately
+     *  bypasses artifact ownership while retaining approval and normal generation safeguards. */
+    public Map<String, Object> runSelfServiceSavedJob(String id) {
+        List<Map<String, Object>> rows = jdbc.query("SELECT plan_json,approval_status,name FROM synthetic_saved_jobs WHERE id = ?",
+                (rs, rowNum) -> Map.of("plan", rs.getString(1), "approval", Objects.toString(rs.getString(2), "DRAFT"),
+                        "name", Objects.toString(rs.getString(3), "Synthetic case")), id);
+        if (rows.isEmpty()) throw ApiException.notFound("Published synthetic case " + id + " not found");
+        Map<String, Object> row = rows.get(0);
+        if (!"APPROVED".equalsIgnoreCase(String.valueOf(row.get("approval"))))
+            throw ApiException.bad("Synthetic self-service cases must be approved before publication");
+        GenPlan plan = fromJsonPlan(String.valueOf(row.get("plan")));
+        Map<String, Object> started = startGenerate(plan);
+        audit.log(requesterName(), "SYNTHETIC_SELF_SERVICE_RUN", "savedJob=" + id + " run=" + started.get("id"));
         return started;
     }
 
@@ -1990,6 +2022,7 @@ public class SyntheticGenService {
             case "H2" -> SqlDialect.H2;
             case "MYSQL", "MARIADB" -> SqlDialect.MYSQL;
             case "DB2", "DB2UDB", "DB2_UDB", "DB2LUW", "DB2ZOS" -> SqlDialect.DB2;
+            case "TERADATA", "VANTAGE" -> SqlDialect.TERADATA;
             case "ORACLE" -> SqlDialect.ORACLE;
             case "SQLSERVER", "SQL_SERVER", "MSSQL" -> SqlDialect.SQLSERVER;
             default -> SqlDialect.GENERIC;

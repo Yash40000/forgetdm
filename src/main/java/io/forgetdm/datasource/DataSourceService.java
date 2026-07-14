@@ -51,11 +51,13 @@ public class DataSourceService {
         ds.setEnvironment(in.getEnvironment());
         ds.setTags(in.getTags());
         DataSourceEntity saved = repo.save(ds);
+        connections.evict(id);
         audit.log("system", "DATASOURCE_UPDATED", saved.getName() + " (id=" + id + ")");
         return saved;
     }
 
     public void delete(Long id) {
+        connections.evict(id);
         repo.deleteById(id);
         audit.log("system", "DATASOURCE_DELETED", "id=" + id);
     }
@@ -72,7 +74,7 @@ public class DataSourceService {
     }
 
     private Map<String, Object> probe(DataSourceEntity ds) {
-        try (Connection c = connections.open(ds)) {
+        try (Connection c = connections.openPooled(ds)) {
             DatabaseMetaData md = c.getMetaData();
             return Map.of("ok", true, "product", md.getDatabaseProductName(),
                     "version", md.getDatabaseProductVersion());
@@ -84,15 +86,24 @@ public class DataSourceService {
     public List<Map<String, Object>> foreignKeys(Long id, String schema, String table) {
         DataSourceEntity ds = get(id);
         List<Map<String, Object>> out = new ArrayList<>();
-        try (Connection c = connections.open(ds)) {
+        try (Connection c = connections.openPooled(ds)) {
             String sch = normalizeSchema(c, schema);
             if (isPostgres(ds)) return postgresForeignKeys(c, sch, table);
-            try (ResultSet rs = c.getMetaData().getImportedKeys(null, sch, table)) {
+            SqlDialect dialect = SqlDialect.of(ds);
+            String catalog = dialect == SqlDialect.MYSQL ? (sch == null ? c.getCatalog() : sch) : null;
+            String schemaPattern = dialect == SqlDialect.MYSQL ? null : sch;
+            try (ResultSet rs = c.getMetaData().getImportedKeys(catalog, schemaPattern, table)) {
                 while (rs.next()) {
                     Map<String, Object> m = new LinkedHashMap<>();
                     m.put("column", rs.getString("FKCOLUMN_NAME"));
+                    m.put("fkName", rs.getString("FK_NAME"));
+                    m.put("sequence", rs.getShort("KEY_SEQ"));
                     m.put("refTable", rs.getString("PKTABLE_NAME"));
                     m.put("refColumn", rs.getString("PKCOLUMN_NAME"));
+                    m.put("refSchema", rs.getString("PKTABLE_SCHEM"));
+                    m.put("updateRule", rs.getShort("UPDATE_RULE"));
+                    m.put("deleteRule", rs.getShort("DELETE_RULE"));
+                    m.put("deferrability", rs.getShort("DEFERRABILITY"));
                     out.add(m);
                 }
             }
@@ -111,8 +122,9 @@ public class DataSourceService {
         DataSourceEntity ds = get(id);
         List<Map<String, Object>> out = new ArrayList<>();
         Set<String> seen = new HashSet<>();
-        try (Connection c = connections.open(ds)) {
+        try (Connection c = connections.openPooled(ds)) {
             if (isPostgres(ds)) return postgresSchemas(c);
+            if (SqlDialect.of(ds) == SqlDialect.MYSQL) return catalogSchemas(c);
             String current = schemaOf(c);
             try (ResultSet rs = c.getMetaData().getSchemas()) {
                 while (rs.next()) {
@@ -140,16 +152,21 @@ public class DataSourceService {
     public List<Map<String, Object>> tables(Long id, String schemaName) {
         DataSourceEntity ds = get(id);
         List<Map<String, Object>> out = new ArrayList<>();
-        try (Connection c = connections.open(ds)) {
+        try (Connection c = connections.openPooled(ds)) {
             String schema = normalizeSchema(c, schemaName);
             if (isPostgres(ds)) return postgresTables(c, schema);
-            try (ResultSet rs = c.getMetaData().getTables(null, schema, "%", new String[]{"TABLE"})) {
+            SqlDialect dialect = SqlDialect.of(ds);
+            String catalog = dialect == SqlDialect.MYSQL ? (schema == null ? c.getCatalog() : schema) : null;
+            String schemaPattern = dialect == SqlDialect.MYSQL ? null : schema;
+            try (ResultSet rs = c.getMetaData().getTables(catalog, schemaPattern, "%", new String[]{"TABLE"})) {
                 while (rs.next()) {
                     String name = rs.getString("TABLE_NAME");
                     if (SqlDialect.isSystemTable(name)) continue; // e.g. Oracle recycle-bin BIN$ tables
                     Map<String, Object> t = new LinkedHashMap<>();
                     t.put("table", name);
                     t.put("schema", rs.getString("TABLE_SCHEM"));
+                    t.put("type", rs.getString("TABLE_TYPE"));
+                    t.put("remarks", rs.getString("REMARKS"));
                     out.add(t);
                 }
             }
@@ -165,16 +182,25 @@ public class DataSourceService {
     public List<Map<String, Object>> columns(Long id, String schemaName, String table) {
         DataSourceEntity ds = get(id);
         List<Map<String, Object>> out = new ArrayList<>();
-        try (Connection c = connections.open(ds)) {
+        try (Connection c = connections.openPooled(ds)) {
             String schema = normalizeSchema(c, schemaName);
             if (isPostgres(ds)) return postgresColumns(c, schema, table);
-            try (ResultSet rs = c.getMetaData().getColumns(null, schema, table, "%")) {
+            SqlDialect dialect = SqlDialect.of(ds);
+            String catalog = dialect == SqlDialect.MYSQL ? (schema == null ? c.getCatalog() : schema) : null;
+            String schemaPattern = dialect == SqlDialect.MYSQL ? null : schema;
+            try (ResultSet rs = c.getMetaData().getColumns(catalog, schemaPattern, table, "%")) {
                 while (rs.next()) {
                     Map<String, Object> col = new LinkedHashMap<>();
                     col.put("column", rs.getString("COLUMN_NAME"));
                     col.put("type", rs.getString("TYPE_NAME"));
+                    col.put("jdbcType", rs.getInt("DATA_TYPE"));
                     col.put("size", rs.getInt("COLUMN_SIZE"));
+                    col.put("scale", rs.getInt("DECIMAL_DIGITS"));
+                    col.put("ordinal", rs.getInt("ORDINAL_POSITION"));
                     col.put("nullable", rs.getInt("NULLABLE") == DatabaseMetaData.columnNullable);
+                    col.put("defaultValue", rs.getString("COLUMN_DEF"));
+                    col.put("autoIncrement", "YES".equalsIgnoreCase(safeString(rs, "IS_AUTOINCREMENT")));
+                    col.put("generated", "YES".equalsIgnoreCase(safeString(rs, "IS_GENERATEDCOLUMN")));
                     out.add(col);
                 }
             }
@@ -189,9 +215,24 @@ public class DataSourceService {
     }
 
     public static String normalizeSchema(Connection c, String schemaName) {
-        return schemaName == null || schemaName.isBlank() || "__default__".equals(schemaName)
-                ? schemaOf(c)
-                : schemaName;
+        if (schemaName == null || schemaName.isBlank() || "__default__".equals(schemaName)) {
+            return schemaOf(c);
+        }
+
+        String requested = schemaName.trim();
+        // DB2 and Oracle normally expose unquoted schemas in upper case. JDBC
+        // metadata matching is often case-sensitive, so retain the exact physical
+        // spelling when a user types "omd1" for schema OMD1.
+        try (ResultSet rs = c.getMetaData().getSchemas()) {
+            while (rs.next()) {
+                String physical = rs.getString("TABLE_SCHEM");
+                if (physical != null && physical.equalsIgnoreCase(requested)) return physical;
+            }
+        } catch (Exception ignored) {
+            // Some drivers do not implement getSchemas. Do not replace an explicit
+            // user choice with the connection's unrelated default schema.
+        }
+        return requested;
     }
 
     private static boolean isPostgres(DataSourceEntity ds) {
@@ -228,6 +269,23 @@ public class DataSourceService {
         return out;
     }
 
+    private static List<Map<String, Object>> catalogSchemas(Connection c) throws SQLException {
+        List<Map<String, Object>> out = new ArrayList<>();
+        String current = c.getCatalog();
+        try (ResultSet rs = c.getMetaData().getCatalogs()) {
+            while (rs.next()) {
+                String catalog = rs.getString("TABLE_CAT");
+                if (catalog == null || SqlDialect.isSystemSchema(catalog)) continue;
+                Map<String, Object> row = new LinkedHashMap<>();
+                row.put("schema", catalog);
+                row.put("current", catalog.equalsIgnoreCase(String.valueOf(current)));
+                out.add(row);
+            }
+        }
+        out.sort((a, b) -> String.valueOf(a.get("schema")).compareToIgnoreCase(String.valueOf(b.get("schema"))));
+        return out;
+    }
+
     private static List<Map<String, Object>> postgresTables(Connection c, String schema) throws SQLException {
         List<Map<String, Object>> out = new ArrayList<>();
         String sql = """
@@ -257,7 +315,8 @@ public class DataSourceService {
         List<Map<String, Object>> out = new ArrayList<>();
         String sql = """
                 SELECT column_name, data_type, udt_name, character_maximum_length,
-                       numeric_precision, datetime_precision, is_nullable
+                       numeric_precision, numeric_scale, datetime_precision, is_nullable,
+                       ordinal_position, column_default, is_identity, is_generated
                 FROM information_schema.columns
                 WHERE table_schema = ?
                   AND table_name = ?
@@ -274,7 +333,13 @@ public class DataSourceService {
                     col.put("column", rs.getString("column_name"));
                     col.put("type", type);
                     col.put("size", firstInt(rs, "character_maximum_length", "numeric_precision", "datetime_precision"));
+                    col.put("scale", rs.getObject("numeric_scale"));
+                    col.put("ordinal", rs.getInt("ordinal_position"));
                     col.put("nullable", "YES".equalsIgnoreCase(rs.getString("is_nullable")));
+                    col.put("defaultValue", rs.getString("column_default"));
+                    col.put("autoIncrement", "YES".equalsIgnoreCase(rs.getString("is_identity")));
+                    String generated = rs.getString("is_generated");
+                    col.put("generated", generated != null && !"NEVER".equalsIgnoreCase(generated));
                     out.add(col);
                 }
             }
@@ -285,11 +350,14 @@ public class DataSourceService {
     private static List<Map<String, Object>> postgresForeignKeys(Connection c, String schema, String table) throws SQLException {
         List<Map<String, Object>> out = new ArrayList<>();
         String sql = """
-                SELECT a.attname AS column_name, ref_class.relname AS ref_table, ref_attr.attname AS ref_column
+                SELECT a.attname AS column_name, con.conname AS fk_name, child_cols.ord AS key_seq,
+                       ref_ns.nspname AS ref_schema, ref_class.relname AS ref_table,
+                       ref_attr.attname AS ref_column, con.confupdtype, con.confdeltype, con.condeferrable
                 FROM pg_constraint con
                 JOIN pg_class child_class ON child_class.oid = con.conrelid
                 JOIN pg_namespace child_ns ON child_ns.oid = child_class.relnamespace
                 JOIN pg_class ref_class ON ref_class.oid = con.confrelid
+                JOIN pg_namespace ref_ns ON ref_ns.oid = ref_class.relnamespace
                 JOIN LATERAL unnest(con.conkey) WITH ORDINALITY AS child_cols(attnum, ord) ON TRUE
                 JOIN LATERAL unnest(con.confkey) WITH ORDINALITY AS ref_cols(attnum, ord) ON ref_cols.ord = child_cols.ord
                 JOIN pg_attribute a ON a.attrelid = con.conrelid AND a.attnum = child_cols.attnum
@@ -306,8 +374,14 @@ public class DataSourceService {
                 while (rs.next()) {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("column", rs.getString("column_name"));
+                    row.put("fkName", rs.getString("fk_name"));
+                    row.put("sequence", rs.getInt("key_seq"));
+                    row.put("refSchema", rs.getString("ref_schema"));
                     row.put("refTable", rs.getString("ref_table"));
                     row.put("refColumn", rs.getString("ref_column"));
+                    row.put("updateRule", rs.getString("confupdtype"));
+                    row.put("deleteRule", rs.getString("confdeltype"));
+                    row.put("deferrable", rs.getBoolean("condeferrable"));
                     out.add(row);
                 }
             }
@@ -321,6 +395,11 @@ public class DataSourceService {
             if (value instanceof Number n && n.intValue() > 0) return n.intValue();
         }
         return 0;
+    }
+
+    private static String safeString(ResultSet rs, String column) {
+        try { return rs.getString(column); }
+        catch (Exception ignored) { return null; }
     }
 
 }

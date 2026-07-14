@@ -1,0 +1,137 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: forgetdm
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: forgetdm-config
+data:
+  FORGETDM_DEPLOYMENT_MODE: "tenant-isolated-ha"
+  FORGETDM_TENANT_ID: "replace-tenant-id"
+  FORGETDM_OPENAPI_ENABLED: "true"
+  FORGETDM_OPENAPI_UI_ENABLED: "false"
+  FORGETDM_MANAGEMENT_PORT: "8090"
+  FORGETDM_JDBC_POOL_MAX: "8"
+  FORGETDM_GOVERNANCE_REQUIRE_APPROVAL: "prod-only"
+  FORGETDM_GOVERNANCE_BLOCK_UNMASKED_PROD: "true"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: forgetdm
+  labels: { app.kubernetes.io/name: forgetdm }
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels: { app.kubernetes.io/name: forgetdm }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: forgetdm }
+    spec:
+      serviceAccountName: forgetdm
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 60
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile: { type: RuntimeDefault }
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels: { app.kubernetes.io/name: forgetdm }
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          labelSelector:
+            matchLabels: { app.kubernetes.io/name: forgetdm }
+      containers:
+        - name: forgetdm
+          image: ghcr.io/yash40000/forgetdm:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8088 }
+            - { name: management, containerPort: 8090 }
+          envFrom:
+            - configMapRef: { name: forgetdm-config }
+            - secretRef: { name: forgetdm-secrets }
+          env:
+            - name: FORGETDM_INSTANCE_ID
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          startupProbe:
+            httpGet: { path: /actuator/health/liveness, port: management }
+            failureThreshold: 30
+            periodSeconds: 5
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: management }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: management }
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          lifecycle:
+            preStop: { exec: { command: ["sh", "-c", "sleep 10"] } }
+          resources:
+            requests: { cpu: 500m, memory: 1Gi }
+            limits: { cpu: "2", memory: 4Gi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+            - { name: drivers, mountPath: /app/jdbc-drivers, readOnly: true }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 4Gi }
+        - name: drivers
+          projected:
+            sources:
+              - secret: { name: forgetdm-jdbc-drivers, optional: true }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: forgetdm
+  labels: { app.kubernetes.io/name: forgetdm }
+spec:
+  selector: { app.kubernetes.io/name: forgetdm }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: forgetdm
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: forgetdm }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: forgetdm
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: forgetdm }
+  minReplicas: 2
+  maxReplicas: 6
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 65 }

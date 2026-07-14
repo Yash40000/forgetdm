@@ -208,8 +208,8 @@ public class BusinessEntityReservationService {
         DataSourceEntity ds = dataSources.get(member.getDataSourceId());
         try (Connection c = connections.open(ds); Statement st = c.createStatement()) {
             st.setMaxRows(Math.max(count * 10, 100));
-            String sql = "SELECT " + cols.stream().map(BusinessEntityReservationService::q).reduce((a, b) -> a + ", " + b).orElseThrow()
-                    + " FROM " + qName(member.getSchemaName(), member.getTableName())
+            String sql = "SELECT " + cols.stream().map(column -> BusinessEntitySql.identifier(ds, column)).reduce((a, b) -> a + ", " + b).orElseThrow()
+                    + " FROM " + BusinessEntitySql.name(ds, member.getSchemaName(), member.getTableName())
                     + (criteria == null || criteria.isBlank() ? "" : " WHERE " + criteria);
             try (ResultSet rs = st.executeQuery(sql)) {
                 while (rs.next() && out.size() < count) {
@@ -274,16 +274,6 @@ public class BusinessEntityReservationService {
                 .map(String::trim)
                 .filter(s -> !s.isBlank())
                 .toList();
-    }
-
-    private static String qName(String schema, String table) {
-        if (schema == null || schema.isBlank()) return q(table);
-        return q(schema) + "." + q(table);
-    }
-
-    private static String q(String ident) {
-        if (ident == null || !ident.matches("[A-Za-z0-9_]+")) throw ApiException.bad("Illegal identifier: " + ident);
-        return "\"" + ident + "\"";
     }
 
     private static String blankToDefault(String value, String fallback) {

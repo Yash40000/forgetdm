@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Badge,
@@ -22,6 +22,7 @@ import { IconAlertTriangle } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { apiPost, apiPut } from '@/lib/api';
+import { useConfirm } from '@/components/confirm';
 import { keys } from '@/lib/keys';
 import type { ColumnOverride, DataSetDefinition, DataSource, MaskingPolicy, TableProfile } from '@/lib/types';
 import { useColumns, usePolicyRules } from '../hooks';
@@ -66,11 +67,14 @@ export function ColumnMapDrawer({
   overrides: ColumnOverride[];
 }) {
   const queryClient = useQueryClient();
+  const { confirm, confirmElement } = useConfirm();
   const [rows, setRows] = useState<ColumnMapRow[]>([]);
   const [selectedPolicyId, setSelectedPolicyId] = useState('');
   const [bulkAction, setBulkAction] = useState<ColumnMapRow['action']>('USE_POLICY');
   const [bulkLiteral, setBulkLiteral] = useState('');
   const [previewResult, setPreviewResult] = useState<ColumnMapPreviewResult | null>(null);
+  const initializedMapKey = useRef<string | null>(null);
+  const [initialDraftSignature, setInitialDraftSignature] = useState('');
   const sourceDataSourceId = profile?.sourceDataSourceId || blueprint.dataSourceId || null;
   const sourceSchema = profile?.sourceSchemaName || blueprint.schemaName || '';
   const sourceTable = profile?.tableName || '';
@@ -78,10 +82,14 @@ export function ColumnMapDrawer({
   const targetSchema = blueprint.targetSchemaName || sourceSchema;
   const targetTable = profile?.targetTableName || profile?.tableName || '';
   const selectedPolicyNumber = numberOrNull(selectedPolicyId);
+  const mapKey = opened && profile
+    ? `${profile.id || profile.tableName}|${sourceDataSourceId || ''}|${sourceSchema}|${sourceTable}|${targetDataSourceId || ''}|${targetSchema}|${targetTable}`
+    : null;
 
   const sourceColumnsQuery = useColumns(sourceDataSourceId, sourceTable, sourceSchema, opened);
   const targetColumnsQuery = useColumns(targetDataSourceId, targetTable, targetSchema, opened);
   const policyRulesQuery = usePolicyRules(selectedPolicyNumber, opened);
+  const dirty = Boolean(initialDraftSignature) && initialDraftSignature !== mapDraftSignature(rows, selectedPolicyId);
 
   const tableOverrides = useMemo(
     () => overrides.filter((item) => equalsIgnoreCase(item.tableName, profile?.tableName || '')),
@@ -89,8 +97,12 @@ export function ColumnMapDrawer({
   );
 
   useEffect(() => {
-    if (!opened || !profile) return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!opened || !profile) {
+      initializedMapKey.current = null;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setInitialDraftSignature('');
+      return;
+    }
     setSelectedPolicyId(String(profile.policyId || blueprint.policyId || ''));
     setBulkAction('USE_POLICY');
     setBulkLiteral('');
@@ -98,13 +110,18 @@ export function ColumnMapDrawer({
   }, [opened, profile, profile?.policyId, blueprint.policyId]);
 
   useEffect(() => {
-    if (!opened || !profile) return;
+    if (!opened || !profile || !mapKey || initializedMapKey.current === mapKey) return;
+    if (!sourceColumnsQuery.isSuccess || (!targetColumnsQuery.isSuccess && !targetColumnsQuery.isError)) return;
     const sourceColumns = sourceColumnsQuery.data || [];
     const targetColumns = targetColumnsQuery.data?.length ? targetColumnsQuery.data : sourceColumns;
     if (!targetColumns.length) return;
+    initializedMapKey.current = mapKey;
+    const builtRows = buildColumnRows(targetColumns, sourceColumns, tableOverrides);
+    // Reset both the editable rows and their comparison baseline for this table.
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setRows(buildColumnRows(targetColumns, sourceColumns, tableOverrides));
-  }, [opened, profile, sourceColumnsQuery.data, targetColumnsQuery.data, tableOverrides]);
+    setInitialDraftSignature(mapDraftSignature(builtRows, String(profile.policyId || blueprint.policyId || '')));
+    setRows(builtRows);
+  }, [blueprint.policyId, mapKey, opened, profile, sourceColumnsQuery.data, sourceColumnsQuery.isSuccess, tableOverrides, targetColumnsQuery.data, targetColumnsQuery.isError, targetColumnsQuery.isSuccess]);
 
   const saveOverrides = useMutation({
     mutationFn: async (payload: ColumnOverride[]) => {
@@ -226,8 +243,23 @@ export function ColumnMapDrawer({
     saveOverrides.mutate(next);
   };
 
+  const requestClose = async () => {
+    if (dirty) {
+      const discard = await confirm({
+        title: 'Discard column-map changes?',
+        message: `Unsaved changes for ${profile?.tableName || 'this table'} will be lost.`,
+        okText: 'Discard',
+        danger: true
+      });
+      if (!discard) return;
+    }
+    onClose();
+  };
+
   return (
-    <Drawer opened={opened} onClose={onClose} title="Column Map" size="92%" position="right">
+    <>
+      {confirmElement}
+      <Drawer opened={opened} onClose={() => void requestClose()} title="Column Map" size="92%" position="right">
       {!profile ? (
         <Alert color="yellow">Choose a table first.</Alert>
       ) : (
@@ -244,6 +276,7 @@ export function ColumnMapDrawer({
                   </Text>
                 </div>
                 <Group gap="xs">
+                  {dirty ? <Badge variant="light" color="yellow">Unsaved changes</Badge> : null}
                   <Badge variant="light">{rows.filter((row) => row.action !== 'SUPPRESS').length} active columns</Badge>
                   <Badge variant="light" color={rows.some((row) => row.condEnabled) ? 'blue' : 'gray'}>
                     {rows.filter((row) => row.condEnabled).length} conditional
@@ -444,8 +477,13 @@ export function ColumnMapDrawer({
           <ColumnMapPreviewPanel preview={previewResult} onClose={() => setPreviewResult(null)} />
         </Stack>
       )}
-    </Drawer>
+      </Drawer>
+    </>
   );
+}
+
+function mapDraftSignature(rows: ColumnMapRow[], policyId: string) {
+  return JSON.stringify({ policyId, rows });
 }
 
 function ColumnMapPreviewPanel({ preview, onClose }: { preview: ColumnMapPreviewResult | null; onClose: () => void }) {

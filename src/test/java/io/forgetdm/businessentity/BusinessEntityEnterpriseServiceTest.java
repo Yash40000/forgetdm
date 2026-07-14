@@ -9,6 +9,8 @@ import io.forgetdm.provision.ProvisionJobEntity;
 import io.forgetdm.provision.ProvisioningService;
 import io.forgetdm.provision.SyntheticGenService;
 import io.forgetdm.provision.loader.NativeLoadRegistry;
+import io.forgetdm.security.AccessContext;
+import io.forgetdm.security.AccessPrincipal;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -18,7 +20,9 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.util.Optional;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -32,6 +36,7 @@ class BusinessEntityEnterpriseServiceTest {
     private DataSetDefinitionRepository datasets;
     private SyntheticGenService synthetic;
     private NativeLoadRegistry loaders;
+    private BusinessEntityCapsuleService capsules;
     private BusinessEntityEnterpriseService service;
 
     @BeforeEach
@@ -45,8 +50,9 @@ class BusinessEntityEnterpriseServiceTest {
         datasets = mock(DataSetDefinitionRepository.class);
         synthetic = mock(SyntheticGenService.class);
         loaders = new NativeLoadRegistry();
+        capsules = mock(BusinessEntityCapsuleService.class);
         service = new BusinessEntityEnterpriseService(jdbc, entities, dataSources, audit, provisioning, datasets, synthetic, loaders,
-                mock(BusinessEntityCapsuleService.class), new io.forgetdm.config.ForgeProps());
+                capsules, new io.forgetdm.config.ForgeProps());
 
         BusinessEntityDefinitionEntity entity = new BusinessEntityDefinitionEntity();
         entity.setId(1L);
@@ -69,12 +75,14 @@ class BusinessEntityEnterpriseServiceTest {
     void createsEnterpriseArtifactsAndRunnerPackage() {
         Map<String, Object> catalog = service.syncCatalog(1L);
         assertEquals(3, ((List<?>) catalog.get("catalogAssets")).size());
+        Map<String, Object> repeatedCatalog = service.syncCatalog(1L);
+        assertEquals(3, ((List<?>) repeatedCatalog.get("catalogAssets")).size());
 
         Map<String, Object> gov = service.createGovernanceRequest(1L,
                 new BusinessEntityEnterpriseService.GovernanceRequestRequest("BUSINESS_ENTITY", 1L, "RUN", "checker1", "HIGH", "UAT release"));
         assertEquals("PENDING", gov.get("status"));
-        Map<String, Object> approved = service.approveGovernanceRequest(((Number) gov.get("id")).longValue(),
-                new BusinessEntityEnterpriseService.DecisionRequest("checker1", "approved", "signed"));
+        Map<String, Object> approved = asUser("checker1", () -> service.approveGovernanceRequest(((Number) gov.get("id")).longValue(),
+                new BusinessEntityEnterpriseService.DecisionRequest("checker1", "approved", "signed")));
         assertEquals("APPROVED", approved.get("status"));
         assertNotNull(approved.get("eSignatureHash"));
 
@@ -120,6 +128,16 @@ class BusinessEntityEnterpriseServiceTest {
     }
 
     @Test
+    void reviewerCannotBeImpersonatedInDecisionPayload() {
+        Map<String, Object> gov = service.createGovernanceRequest(1L,
+                new BusinessEntityEnterpriseService.GovernanceRequestRequest("BUSINESS_ENTITY", 1L, "RELEASE", "checker1", "MEDIUM", null));
+        var ex = assertThrows(io.forgetdm.common.ApiException.class, () -> asUser("intruder", () ->
+                service.approveGovernanceRequest(((Number) gov.get("id")).longValue(),
+                        new BusinessEntityEnterpriseService.DecisionRequest("checker1", "spoofed approval", "signed"))));
+        assertTrue(ex.getMessage().contains("authenticated user"));
+    }
+
+    @Test
     void launchBlocksUnapprovedPlan() {
         Map<String, Object> plan = service.createExecutionPlan(1L,
                 new BusinessEntityEnterpriseService.ExecutionPlanRequest("Unapproved", "SUBSET_MASK", "PROD", "UAT",
@@ -158,6 +176,34 @@ class BusinessEntityEnterpriseServiceTest {
                         && job.getSpecJson().contains("\"POSTGRES_COPY\"")));
         Integer runs = jdbc.queryForObject("SELECT COUNT(*) FROM be_execution_plan_runs WHERE execution_plan_id = ?",
                 Integer.class, plan.get("id"));
+        assertEquals(1, runs);
+    }
+
+    @Test
+    void capsuleBackedPlanProvisionsWithoutReadingLiveSources() {
+        approveRun();
+        when(capsules.planAttachmentEvidence(1L, 55L)).thenReturn(Map.of(
+                "capsuleInstanceId", 55L, "capsuleVersion", 5, "capsuleStatus", "ACTIVE"));
+        when(capsules.provisionToTarget(eq(55L), any())).thenReturn(Map.of(
+                "instanceId", 55L, "version", 5, "fragmentsLoaded", 43, "rowsInserted", 265L));
+
+        Map<String, Object> plan = service.createExecutionPlan(1L,
+                new BusinessEntityEnterpriseService.ExecutionPlanRequest("Customer Micro-DB release", "SUBSET_MASK",
+                        "MICRO_DB", "UAT", "PLAN_ONLY", null, null, 55L));
+        Map<String, Object> launch = service.launchExecutionPlan(((Number) plan.get("id")).longValue(),
+                new BusinessEntityEnterpriseService.LaunchRequest(102L, "uat", null, null,
+                        "REPLACE", "DELETE", null, null, 99L, "SINGLE", null, null));
+
+        assertEquals("MICRO_DB", launch.get("engine"));
+        assertEquals(false, launch.get("sourceRead"));
+        assertEquals(43, launch.get("fragmentsLoaded"));
+        verify(capsules).provisionToTarget(eq(55L), argThat(request ->
+                Long.valueOf(102L).equals(request.targetDataSourceId())
+                        && "uat".equals(request.targetSchema())
+                        && Boolean.TRUE.equals(request.deleteExistingByKey())));
+        verifyNoInteractions(provisioning);
+        Integer runs = jdbc.queryForObject("SELECT COUNT(*) FROM be_execution_plan_runs WHERE engine = 'MICRO_DB'",
+                Integer.class);
         assertEquals(1, runs);
     }
 
@@ -246,8 +292,13 @@ class BusinessEntityEnterpriseServiceTest {
     private void approveRun() {
         Map<String, Object> gov = service.createGovernanceRequest(1L,
                 new BusinessEntityEnterpriseService.GovernanceRequestRequest("BUSINESS_ENTITY", 1L, "RUN", "checker1", "HIGH", null));
-        service.approveGovernanceRequest(((Number) gov.get("id")).longValue(),
-                new BusinessEntityEnterpriseService.DecisionRequest("checker1", "approved", "signed"));
+        asUser("checker1", () -> service.approveGovernanceRequest(((Number) gov.get("id")).longValue(),
+                new BusinessEntityEnterpriseService.DecisionRequest("checker1", "approved", "signed")));
+    }
+
+    private <T> T asUser(String username, Supplier<T> work) {
+        return AccessContext.callAs(new AccessPrincipal(99L, username, username, Set.of("TDM_ARCHITECT"),
+                Set.of("datascope.manage", "provision.approve")), null, work);
     }
 
     private BusinessEntityMemberEntity member(Long id, Long ds, String table, String keys, String role) {

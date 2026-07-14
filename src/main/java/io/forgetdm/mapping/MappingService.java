@@ -1,6 +1,7 @@
 package io.forgetdm.mapping;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.forgetdm.audit.AuditService;
 import io.forgetdm.common.ApiException;
 import io.forgetdm.datasource.ConnectionFactory;
@@ -8,6 +9,7 @@ import io.forgetdm.datasource.DataSourceEntity;
 import io.forgetdm.datasource.DataSourceService;
 import io.forgetdm.query.QueryService;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.sql.*;
 import java.time.Instant;
@@ -21,11 +23,16 @@ public class MappingService {
     private final DataSourceService dataSources;
     private final ConnectionFactory connections;
     private final AuditService audit;
+    private final ObjectMapper json;
+    private final MappingVersionRepository versions;
+    private final MappingFileAssetRepository assets;
 
     public MappingService(MappingRepository repo, QueryService query, DataSourceService dataSources,
-                          ConnectionFactory connections, AuditService audit) {
+                          ConnectionFactory connections, AuditService audit, ObjectMapper json,
+                          MappingVersionRepository versions, MappingFileAssetRepository assets) {
         this.repo = repo; this.query = query; this.dataSources = dataSources;
-        this.connections = connections; this.audit = audit;
+        this.connections = connections; this.audit = audit; this.json = json;
+        this.versions = versions; this.assets = assets;
     }
 
     public List<MappingEntity> list() {
@@ -38,6 +45,7 @@ public class MappingService {
         return repo.findById(id).orElseThrow(() -> ApiException.notFound("Mapping " + id + " not found"));
     }
 
+    @Transactional
     public MappingEntity save(MappingEntity in) {
         if (in.getName() == null || in.getName().isBlank()) throw ApiException.bad("Mapping name is required");
         MappingEntity m = in.getId() != null
@@ -49,9 +57,27 @@ public class MappingService {
         });
         m.setName(in.getName().trim());
         m.setDescription(in.getDescription());
-        m.setSpecJson(in.getSpecJson() == null || in.getSpecJson().isBlank() ? "{}" : in.getSpecJson());
+        String specJson = in.getSpecJson() == null || in.getSpecJson().isBlank() ? "{}" : in.getSpecJson();
+        JsonNode spec = parseSpec(specJson);
+        Map<String, Object> validation = validateSpec(spec);
+        if (!Boolean.TRUE.equals(validation.get("valid")))
+            throw ApiException.bad("Mapping is not valid: " + String.join("; ", castStrings(validation.get("errors"))));
+        m.setSpecJson(canonical(spec));
         m.setUpdatedAt(Instant.now());
         MappingEntity saved = repo.save(m);
+        String hash = sha256(saved.getSpecJson());
+        List<MappingVersionEntity> existing = versions.findByMappingIdOrderByVersionNoDesc(saved.getId());
+        if (existing.isEmpty() || !hash.equals(existing.get(0).getSpecHash())) {
+            MappingVersionEntity version = new MappingVersionEntity();
+            version.setMappingId(saved.getId());
+            version.setVersionNo(existing.isEmpty() ? 1 : existing.get(0).getVersionNo() + 1);
+            version.setName(saved.getName());
+            version.setDescription(saved.getDescription());
+            version.setSpecJson(saved.getSpecJson());
+            version.setSpecHash(hash);
+            version.setCreatedBy(actor());
+            versions.save(version);
+        }
         audit.log("system", "MAPPING_SAVED", saved.getName() + " id=" + saved.getId());
         return saved;
     }
@@ -59,6 +85,107 @@ public class MappingService {
     public void delete(Long id) {
         repo.deleteById(id);
         audit.log("system", "MAPPING_DELETED", "id=" + id);
+    }
+
+    public List<MappingVersionEntity> versions(Long mappingId) {
+        get(mappingId);
+        return versions.findByMappingIdOrderByVersionNoDesc(mappingId);
+    }
+
+    @Transactional
+    public MappingEntity restoreVersion(Long mappingId, Long versionId) {
+        MappingEntity mapping = get(mappingId);
+        MappingVersionEntity version = versions.findById(versionId)
+                .filter(v -> mappingId.equals(v.getMappingId()))
+                .orElseThrow(() -> ApiException.notFound("Mapping version " + versionId + " not found"));
+        MappingEntity input = new MappingEntity();
+        input.setId(mapping.getId()); input.setName(mapping.getName());
+        input.setDescription(version.getDescription()); input.setSpecJson(version.getSpecJson());
+        MappingEntity restored = save(input);
+        audit.log(actor(), "MAPPING_VERSION_RESTORED", mapping.getName() + " version=" + version.getVersionNo());
+        return restored;
+    }
+
+    public Map<String, Object> validateSpec(JsonNode spec) {
+        List<String> errors = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        if (spec == null || !spec.isObject()) errors.add("Mapping specification must be a JSON object");
+        else if (spec.has("sources") || spec.path("specVersion").asInt(1) >= 2) {
+            JsonNode sources = spec.path("sources");
+            if (!sources.isArray() || sources.isEmpty()) errors.add("Add at least one source");
+            else {
+              Set<String> aliases = new HashSet<>();
+              for (int i = 0; i < sources.size(); i++) {
+                JsonNode source = sources.get(i);
+                String alias = source.path("alias").asText("source_" + (i + 1)).toLowerCase(Locale.ROOT);
+                if (!alias.matches("[a-z_][a-z0-9_]*")) errors.add("Source " + (i + 1) + " alias must contain letters, numbers, and underscores");
+                if (!aliases.add(alias)) errors.add("Source aliases must be unique: " + alias);
+                String type = source.path("type").asText("DATABASE").toUpperCase(Locale.ROOT);
+                if ("DATABASE".equals(type)) {
+                    if (!source.hasNonNull("dataSourceId")) errors.add("Source " + (i + 1) + " needs a data source");
+                    else try { dataSources.get(source.get("dataSourceId").asLong()); } catch (Exception e) { errors.add("Source " + (i + 1) + " data source does not exist"); }
+                    if (source.path("table").asText().isBlank() && source.path("sql").asText().isBlank())
+                        errors.add("Source " + (i + 1) + " needs a table or read-only SQL");
+                } else if ("FILE".equals(type)) {
+                    if (!source.hasNonNull("assetId")) errors.add("Source " + (i + 1) + " needs a managed file asset");
+                    else if (!assets.existsById(source.get("assetId").asLong())) errors.add("Source " + (i + 1) + " file asset does not exist");
+                } else errors.add("Source " + (i + 1) + " type must be DATABASE or FILE");
+              }
+              if (sources.size() > 1) {
+                  JsonNode joins = spec.path("joins");
+                  if (!joins.isArray() || joins.size() < sources.size() - 1) errors.add("Connect every additional source with a join rule");
+                  else for (JsonNode join : joins) if (join.path("left").asText().isBlank() || join.path("right").asText().isBlank()) errors.add("Join columns cannot be blank");
+              }
+            }
+            JsonNode target = spec.path("target");
+            String targetType = target.path("type").asText("PREVIEW").toUpperCase(Locale.ROOT);
+            if ("DATABASE".equals(targetType)) {
+                if (!target.hasNonNull("dataSourceId")) errors.add("Database target needs a data source");
+                if (target.path("table").asText().isBlank()) errors.add("Database target needs a table");
+            } else if (!Set.of("FILE", "PREVIEW").contains(targetType)) errors.add("Target type must be DATABASE, FILE, or PREVIEW");
+            Set<String> targets = new HashSet<>();
+            JsonNode columns = spec.path("columns");
+            if (!columns.isArray() || columns.isEmpty()) warnings.add("No column map is defined; source columns will pass through by name");
+            else for (JsonNode column : columns) {
+                String action = column.path("action").asText("COPY").toUpperCase(Locale.ROOT);
+                String targetName = column.path("target").asText().trim();
+                if (!"UNUSED".equals(action) && targetName.isBlank()) errors.add("Every used column needs a target name");
+                if (!targetName.isBlank() && !targets.add(targetName.toLowerCase(Locale.ROOT))) errors.add("Duplicate target column: " + targetName);
+                if ("COPY".equals(action) && column.path("source").asText().isBlank()) errors.add("COPY column " + targetName + " needs a source");
+                if ("MASK".equals(action) && column.path("maskFunction").asText().isBlank()) errors.add("MASK column " + targetName + " needs a masking function");
+                if (!Set.of("COPY", "MASK", "LITERAL", "UNUSED").contains(action)) errors.add("Unknown column action: " + action);
+            }
+            validateJoins(spec.path("joins"), sources, errors);
+            validateTransforms(spec.path("transforms"), errors, warnings);
+            validateStaging(spec.path("stagingTables"), errors);
+            if (errors.isEmpty()) preflightCompiledSql(spec, errors, warnings);
+            if (sources.size() > 1 && !sameDatabaseSources(sources))
+                warnings.add("Cross-database/file joins use bounded federation for preview; production execution requires a saved staging/load route");
+        }
+        return Map.of("valid", errors.isEmpty(), "errors", errors, "warnings", warnings);
+    }
+
+    public Map<String, Object> plan(Long mappingId) {
+        MappingEntity mapping = get(mappingId);
+        JsonNode spec = parseSpec(mapping.getSpecJson());
+        Map<String, Object> validation = validateSpec(spec);
+        JsonNode target = spec.path("target");
+        String targetType = target.path("type").asText(target.path("mode").asText("PREVIEW")).toUpperCase(Locale.ROOT);
+        String preAction = target.path("preAction").asText("NONE").toUpperCase(Locale.ROOT);
+        List<Map<String, Object>> steps = new ArrayList<>();
+        steps.add(step("VALIDATE", "Validate mapping and connector references", !Boolean.TRUE.equals(validation.get("valid")) ? "BLOCKED" : "READY"));
+        steps.add(step("READ", "Read " + sourceCount(spec) + " source(s) with bounded streaming", "READY"));
+        steps.add(step("TRANSFORM", "Apply column mapping, literals, and deterministic masking", "READY"));
+        if (!"NONE".equals(preAction)) steps.add(step("PREPARE", preAction + " target before load", "DESTRUCTIVE"));
+        steps.add(step("DELIVER", "DATABASE".equals(targetType) ? "Batch load the target and validate row counts" : "Create an encrypted downloadable " + target.path("format").asText("CSV") + " output", "READY"));
+        int version = versions.findByMappingIdOrderByVersionNoDesc(mappingId).stream().findFirst().map(MappingVersionEntity::getVersionNo).orElse(1);
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("mappingId", mappingId); out.put("mappingName", mapping.getName()); out.put("mappingVersion", version);
+        out.put("valid", validation.get("valid")); out.put("errors", validation.get("errors")); out.put("warnings", validation.get("warnings"));
+        out.put("targetType", targetType); out.put("preAction", preAction); out.put("destructive", !"NONE".equals(preAction));
+        out.put("steps", steps); out.put("sourceCount", sourceCount(spec));
+        out.put("executionMode", executionMode(spec));
+        return out;
     }
 
     /** Preview the generated SELECT (read-only, capped) by delegating to the Data Explorer engine. */
@@ -320,5 +447,155 @@ public class MappingService {
         StringBuilder sb = new StringBuilder();
         for (String k : keys) sb.append(norm(row.get(k))).append('');
         return sb.toString();
+    }
+
+    private JsonNode parseSpec(String value) {
+        try { return json.readTree(value == null || value.isBlank() ? "{}" : value); }
+        catch (Exception e) { throw ApiException.bad("Mapping specification is not valid JSON: " + e.getMessage()); }
+    }
+
+    private String canonical(JsonNode spec) {
+        try { return json.writeValueAsString(spec); }
+        catch (Exception e) { throw ApiException.bad("Mapping specification could not be saved"); }
+    }
+
+    private static String sha256(String value) {
+        try { return java.util.HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8))); }
+        catch (Exception e) { throw new IllegalStateException(e); }
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> castStrings(Object value) { return value instanceof List<?> list ? list.stream().map(String::valueOf).toList() : List.of(); }
+    private static String actor() { return io.forgetdm.security.AccessContext.current().map(p -> p.username()).orElse("system"); }
+    private static Map<String, Object> step(String code, String label, String status) { return Map.of("code", code, "label", label, "status", status); }
+    private static int sourceCount(JsonNode spec) { return spec.path("sources").isArray() ? spec.path("sources").size() : spec.path("tables").size(); }
+    private static boolean sameDatabaseSources(JsonNode sources) {
+        Long ds = null;
+        for (JsonNode source : sources) {
+            if (!"DATABASE".equalsIgnoreCase(source.path("type").asText("DATABASE")) || !source.hasNonNull("dataSourceId")) return false;
+            long current = source.get("dataSourceId").asLong();
+            if (ds != null && ds != current) return false;
+            ds = current;
+        }
+        return true;
+    }
+
+    private static final Set<String> TRANSFORM_TYPES = Set.of("FILTER", "EXPRESSION", "AGGREGATOR", "SORTER", "DISTINCT", "LIMIT", "ROUTER", "UNION", "LOOKUP", "RANK", "SEQUENCE", "PIVOT");
+    private static final Set<String> AGGREGATES = Set.of("SUM", "COUNT", "AVG", "MIN", "MAX");
+    private static final java.util.regex.Pattern IDENTIFIER = java.util.regex.Pattern.compile("[A-Za-z_][A-Za-z0-9_]*");
+    private static final java.util.regex.Pattern SQL_TYPE = java.util.regex.Pattern.compile("[A-Za-z][A-Za-z0-9_ ]*(?:\\(\\s*\\d+\\s*(?:,\\s*\\d+\\s*)?\\))?(?:\\[\\])?");
+    private static final java.util.regex.Pattern UNSAFE_FRAGMENT = java.util.regex.Pattern.compile("(?is)(;|--|/\\*|\\*/|\\b(insert|update|delete|drop|alter|create|grant|revoke|call|execute|merge|truncate)\\b)");
+
+    private static void validateJoins(JsonNode joins, JsonNode sources, List<String> errors) {
+        if (!joins.isArray()) return;
+        Set<String> aliases = new HashSet<>();
+        sources.forEach(source -> aliases.add(source.path("alias").asText().toLowerCase(Locale.ROOT)));
+        Set<String> pairs = new HashSet<>();
+        for (int i = 0; i < joins.size(); i++) {
+            JsonNode join = joins.get(i); String left = join.path("left").asText().trim(); String right = join.path("right").asText().trim();
+            String label = "Join " + (i + 1);
+            if (!qualifiedColumn(left) || !qualifiedColumn(right)) { errors.add(label + " must connect qualified source columns"); continue; }
+            String leftAlias = left.substring(0, left.indexOf('.')).toLowerCase(Locale.ROOT), rightAlias = right.substring(0, right.indexOf('.')).toLowerCase(Locale.ROOT);
+            if (!aliases.contains(leftAlias) || !aliases.contains(rightAlias)) errors.add(label + " references a source alias that is not on the canvas");
+            if (leftAlias.equals(rightAlias)) errors.add(label + " must connect two different source nodes");
+            String type = join.path("type").asText("INNER").toUpperCase(Locale.ROOT);
+            if (!Set.of("INNER", "LEFT", "RIGHT", "FULL").contains(type)) errors.add(label + " has unsupported type " + type);
+            String key = left.compareToIgnoreCase(right) <= 0 ? left.toLowerCase(Locale.ROOT) + "=" + right.toLowerCase(Locale.ROOT) : right.toLowerCase(Locale.ROOT) + "=" + left.toLowerCase(Locale.ROOT);
+            if (!pairs.add(key)) errors.add("Duplicate join condition: " + left + " = " + right);
+        }
+    }
+
+    private static void validateTransforms(JsonNode transforms, List<String> errors, List<String> warnings) {
+        if (transforms.isMissingNode() || transforms.isNull()) return;
+        if (!transforms.isArray()) { errors.add("Transformations must be an ordered array"); return; }
+        Set<String> ids = new HashSet<>(), outputs = new HashSet<>();
+        for (int i = 0; i < transforms.size(); i++) {
+            JsonNode transform = transforms.get(i); String type = transform.path("type").asText().toUpperCase(Locale.ROOT); String label = "Transformation " + (i + 1) + " (" + (type.isBlank() ? "unknown" : type) + ")";
+            if (!TRANSFORM_TYPES.contains(type)) { errors.add(label + " is not supported"); continue; }
+            String id = transform.path("id").asText(); if (id.isBlank() || !ids.add(id)) errors.add(label + " needs a unique persistent id");
+            if (transform.path("requiresConfiguration").asBoolean(false)) errors.add(label + " was added from the function library and must be reviewed in Transformations");
+            switch (type) {
+                case "FILTER" -> safeRequired(label + " condition", transform.path("condition").asText(), errors);
+                case "EXPRESSION" -> validateNamedExpressions(label, transform.path("columns"), outputs, errors);
+                case "AGGREGATOR" -> {
+                    JsonNode aggregates = transform.path("aggregates");
+                    if ((!aggregates.isArray() || aggregates.isEmpty()) && transform.path("groupBy").isEmpty()) errors.add(label + " needs group-by columns or aggregates");
+                    validateNamedExpressions(label + " aggregate", aggregates, outputs, errors);
+                    validateSafeArray(label + " group by", transform.path("groupBy"), errors);
+                }
+                case "SORTER" -> {
+                    JsonNode sort = transform.path("sort"); if (!sort.isArray() || sort.isEmpty()) errors.add(label + " needs at least one sort key");
+                    else for (JsonNode key : sort) { safeRequired(label + " sort column", key.path("col").asText(), errors); String direction = key.path("dir").asText("ASC").toUpperCase(Locale.ROOT); if (!Set.of("ASC", "DESC").contains(direction)) errors.add(label + " sort direction must be ASC or DESC"); }
+                }
+                case "LIMIT" -> { long rows = transform.path("rows").asLong(0); if (rows < 1 || rows > 1_000_000_000L) errors.add(label + " row limit must be between 1 and 1,000,000,000"); }
+                case "ROUTER" -> validateRouter(label, transform.path("groups"), errors);
+                case "UNION" -> { requiredIdentifier(label + " table", transform.path("table").asText(), errors); safeOptional(label + " condition", transform.path("condition").asText(), errors); safeOptional(label + " projected columns", transform.path("columns").asText(), errors); }
+                case "LOOKUP" -> { requiredIdentifier(label + " lookup table", transform.path("table").asText(), errors); optionalIdentifier(label + " alias", transform.path("alias").asText(), errors); safeRequired(label + " match condition", transform.path("on").asText(), errors); safeRequired(label + " return columns", transform.path("returns").asText(), errors); }
+                case "RANK" -> { safeRequired(label + " order by", transform.path("orderBy").asText(), errors); optionalIdentifier(label + " output", transform.path("name").asText(), errors); if (transform.has("topN") && transform.path("topN").asLong() < 1) errors.add(label + " Top N must be positive"); }
+                case "SEQUENCE" -> { optionalIdentifier(label + " output", transform.path("name").asText(), errors); if (transform.path("orderBy").asText().isBlank()) warnings.add(label + " has no order-by expression, so sequence assignment may not be reproducible"); else safeOptional(label + " order by", transform.path("orderBy").asText(), errors); }
+                case "PIVOT" -> { safeRequired(label + " category", transform.path("category").asText(), errors); safeRequired(label + " value", transform.path("value").asText(), errors); safeRequired(label + " values", transform.path("values").asText(), errors); if (!AGGREGATES.contains(transform.path("agg").asText("SUM").toUpperCase(Locale.ROOT))) errors.add(label + " aggregate must be SUM, COUNT, AVG, MIN, or MAX"); }
+                default -> { }
+            }
+        }
+    }
+
+    private static void validateNamedExpressions(String label, JsonNode rows, Set<String> outputs, List<String> errors) {
+        if (!rows.isArray() || rows.isEmpty()) { errors.add(label + " needs at least one configured expression"); return; }
+        for (int i = 0; i < rows.size(); i++) {
+            JsonNode row = rows.get(i); String name = row.path("name").asText().trim(); String expression = row.path("expr").asText().trim();
+            requiredIdentifier(label + " output " + (i + 1), name, errors); safeRequired(label + " expression " + (i + 1), expression, errors);
+            if (!name.isBlank() && !outputs.add(name.toLowerCase(Locale.ROOT))) errors.add("Duplicate transformation output: " + name);
+        }
+    }
+
+    private static void validateRouter(String label, JsonNode groups, List<String> errors) {
+        if (!groups.isArray() || groups.isEmpty()) { errors.add(label + " needs at least one route"); return; }
+        Set<String> names = new HashSet<>(); boolean hasDefault = false;
+        for (int i = 0; i < groups.size(); i++) {
+            JsonNode group = groups.get(i); String name = group.path("name").asText().trim(); String condition = group.path("condition").asText().trim();
+            if (name.isBlank() || !names.add(name.toLowerCase(Locale.ROOT))) errors.add(label + " route names must be present and unique");
+            if (condition.isBlank()) { if (hasDefault || i != groups.size() - 1) errors.add(label + " may have one blank default route, and it must be last"); hasDefault = true; }
+            else safeRequired(label + " route " + (i + 1) + " condition", condition, errors);
+            if (!group.path("target").asText().isBlank()) requiredIdentifier(label + " route target", group.path("target").asText(), errors);
+        }
+    }
+
+    private static void validateStaging(JsonNode staging, List<String> errors) {
+        if (staging.isMissingNode() || staging.isNull()) return;
+        if (!staging.isArray()) { errors.add("Staging objects must be an array"); return; }
+        Set<String> names = new HashSet<>();
+        for (JsonNode table : staging) {
+            String name = table.path("name").asText().trim(); requiredIdentifier("Staging name", name, errors); if (!name.isBlank() && !names.add(name.toLowerCase(Locale.ROOT))) errors.add("Duplicate staging name: " + name);
+            Set<String> columns = new HashSet<>(); if (table.path("columns").isArray()) for (JsonNode column : table.path("columns")) { String value = column.asText(); requiredIdentifier("Staging column", value, errors); if (!columns.add(value.toLowerCase(Locale.ROOT))) errors.add("Duplicate staging column " + name + "." + value); }
+            JsonNode types = table.path("columnTypes"); if (types.isObject()) types.fields().forEachRemaining(entry -> { String value = entry.getValue().asText().trim(); if (!value.isBlank() && !SQL_TYPE.matcher(value).matches()) errors.add("Unsafe or invalid type for " + name + "." + entry.getKey()); });
+        }
+    }
+
+    private void preflightCompiledSql(JsonNode spec, List<String> errors, List<String> warnings) {
+        String sql = spec.path("compiledSql").asText().trim(); if (sql.isBlank()) return;
+        if (UNSAFE_FRAGMENT.matcher(sql).find() || !(sql.toLowerCase(Locale.ROOT).startsWith("select") || sql.toLowerCase(Locale.ROOT).startsWith("with"))) { errors.add("Compiled SQL must be one read-only SELECT or WITH query"); return; }
+        if (!spec.hasNonNull("compiledDataSourceId")) { errors.add("Compiled SQL needs a source data source"); return; }
+        try {
+            DataSourceEntity source = dataSources.get(spec.get("compiledDataSourceId").asLong());
+            try (Connection connection = connections.openPooled(source); PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setMaxRows(1); statement.setQueryTimeout(15);
+                try (ResultSet result = statement.executeQuery()) { if (result.getMetaData().getColumnCount() < 1) errors.add("Compiled SQL does not expose any output columns"); }
+            }
+        } catch (Exception e) { errors.add("Compiled transformation SQL failed database preflight: " + concise(e)); }
+    }
+
+    private static void validateSafeArray(String label, JsonNode values, List<String> errors) { if (values.isArray()) for (JsonNode value : values) safeRequired(label, value.asText(), errors); }
+    private static void safeRequired(String label, String value, List<String> errors) { if (value == null || value.isBlank()) errors.add(label + " is required"); else if (UNSAFE_FRAGMENT.matcher(value).find()) errors.add(label + " contains unsafe SQL"); }
+    private static void safeOptional(String label, String value, List<String> errors) { if (value != null && !value.isBlank() && UNSAFE_FRAGMENT.matcher(value).find()) errors.add(label + " contains unsafe SQL"); }
+    private static void requiredIdentifier(String label, String value, List<String> errors) { if (value == null || value.isBlank()) errors.add(label + " is required"); else if (!IDENTIFIER.matcher(value).matches()) errors.add(label + " must be a simple SQL identifier"); }
+    private static void optionalIdentifier(String label, String value, List<String> errors) { if (value != null && !value.isBlank() && !IDENTIFIER.matcher(value).matches()) errors.add(label + " must be a simple SQL identifier"); }
+    private static boolean qualifiedColumn(String value) { if (value == null) return false; int dot = value.indexOf('.'); return dot > 0 && dot < value.length() - 1 && IDENTIFIER.matcher(value.substring(0, dot)).matches() && IDENTIFIER.matcher(value.substring(dot + 1)).matches(); }
+    private static String concise(Exception error) { Throwable current = error; while (current.getCause() != null && current.getCause() != current) current = current.getCause(); String message = current.getMessage(); return message == null || message.isBlank() ? current.getClass().getSimpleName() : message.replaceAll("[\\r\\n]+", " "); }
+    private static String executionMode(JsonNode spec) {
+        JsonNode sources = spec.path("sources");
+        if (!sources.isArray() || sources.isEmpty()) return "LEGACY_SQL";
+        if (sources.size() > 1) return sameDatabaseSources(sources) ? "DATABASE_SQL_OR_STAGING" : "BOUNDED_FEDERATION_OR_STAGING";
+        return "FILE".equalsIgnoreCase(sources.get(0).path("type").asText()) ? "FILE_STREAM" : "JDBC_STREAM";
     }
 }

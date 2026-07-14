@@ -20,7 +20,7 @@ public final class PiiPatterns {
 
     static {
         name("EMAIL", "(^|_)(e?mail)(_|$)|email_address");
-        name("SSN", "(^|_)(ssn|social_sec|social_security|national_id|tax_id)(_|$)?");
+        name("SSN", "(^|_)(ssn|social_sec|social_security)(_|$)?");
         name("CREDIT_CARD", "(card_num|card_no|cc_num|ccn|credit_card|pan)(_|$)?");
         name("FIRST_NAME", "(^|_)(first_?name|fname|given_?name)(_|$)?");
         name("LAST_NAME", "(^|_)(last_?name|lname|sur_?name|family_?name)(_|$)?");
@@ -38,7 +38,7 @@ public final class PiiPatterns {
         name("SWIFT_BIC", "(^|_)(swift|bic|swift_?code|bic_?code)(_|$)?");
         name("BANK_ACCOUNT", "(^|_)(account_?no|account_?num|acct_?no|acct_?num|bank_?account|account_?number|iban)(_|$)?");
         name("ROUTING", "(^|_)(routing|aba|sort_?code|ifsc)(_|$)?");
-        name("TAX_ID", "(^|_)(tax_?id|tin|ein|vat|pan_?no|pan_?number)(_|$)?");
+        name("TAX_ID", "(^|_)(national_?id|tax_?id|tin|ein|vat|pan_?no|pan_?number)(_|$)?");
         name("IP_ADDRESS", "(^|_)(ip|ip_?addr|ip_?address|ipv4|ipv6)(_|$)?");
         name("PASSPORT", "(^|_)(passport|passport_?no|passport_?number)(_|$)?");
         name("DRIVER_LICENSE", "(^|_)(driver_?license|dl_?no|license_?no|licence_?no)(_|$)?");
@@ -73,18 +73,18 @@ public final class PiiPatterns {
         SUGGESTED.put("STATE", "CITY_STATE_ZIP");
         SUGGESTED.put("COMPANY", "COMPANY");
         // No dedicated maskers for these yet — fall back to safe, format-aware functions.
-        SUGGESTED.put("IBAN", "FORMAT_PRESERVE");
-        SUGGESTED.put("SWIFT_BIC", "FORMAT_PRESERVE");
-        SUGGESTED.put("BANK_ACCOUNT", "REDACT_KEEP_LAST4");
-        SUGGESTED.put("ROUTING", "FORMAT_PRESERVE");
-        SUGGESTED.put("TAX_ID", "FORMAT_PRESERVE");
-        SUGGESTED.put("IP_ADDRESS", "FORMAT_PRESERVE");
-        SUGGESTED.put("PASSPORT", "FORMAT_PRESERVE");
-        SUGGESTED.put("DRIVER_LICENSE", "FORMAT_PRESERVE");
-        SUGGESTED.put("USERNAME", "HASH_LOV");
+        SUGGESTED.put("IBAN", "IBAN");
+        SUGGESTED.put("SWIFT_BIC", "SWIFT_BIC");
+        SUGGESTED.put("BANK_ACCOUNT", "BANK_ACCOUNT");
+        SUGGESTED.put("ROUTING", "ABA_ROUTING");
+        SUGGESTED.put("TAX_ID", "NATIONAL_ID");
+        SUGGESTED.put("IP_ADDRESS", "IP_ADDRESS");
+        SUGGESTED.put("PASSPORT", "CHARACTER_MAP");
+        SUGGESTED.put("DRIVER_LICENSE", "CHARACTER_MAP");
+        SUGGESTED.put("USERNAME", "TOKENIZE");
         SUGGESTED.put("PASSWORD", "NULLIFY");
-        SUGGESTED.put("MAC_ADDRESS", "FORMAT_PRESERVE");
-        SUGGESTED.put("GENDER", "HASH_LOV");
+        SUGGESTED.put("MAC_ADDRESS", "MAC_ADDRESS");
+        SUGGESTED.put("GENDER", "SECURE_LOOKUP");
     }
 
     private static void name(String t, String re) { NAME_HINTS.put(t, Pattern.compile(re, Pattern.CASE_INSENSITIVE)); }

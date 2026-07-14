@@ -51,7 +51,7 @@ function LoginForm() {
                 Sign in to ForgeTDM
               </Title>
               <Text size="sm" c="dimmed">
-                Same account as the classic console.
+                Use your ForgeTDM workspace credentials.
               </Text>
             </div>
             {error ? (

@@ -142,6 +142,31 @@ public class VirtualizationService {
         return Map.of("opId", opId, "kind", "PROVISION", "label", label);
     }
 
+    /** Kick off a VDB refresh in the background; returns an opId to poll for live progress. */
+    public Map<String, Object> startRefresh(Long vdbId, Long snapshotId) {
+        VirtualDatabaseEntity vdb = getVdb(vdbId);   // validate now so a bad id fails fast (in the request)
+        String label = "Refresh VDB " + vdb.getName();
+        String opId = ops.run("REFRESH", label, () -> Map.of("vdbId", refresh(vdbId, snapshotId).getId()));
+        return Map.of("opId", opId, "kind", "REFRESH", "label", label);
+    }
+
+    /** Kick off a VDB rewind in the background; returns an opId to poll for live progress. */
+    public Map<String, Object> startRewind(Long vdbId, Long snapshotId) {
+        VirtualDatabaseEntity vdb = getVdb(vdbId);
+        String label = "Rewind VDB " + vdb.getName();
+        String opId = ops.run("REWIND", label, () -> Map.of("vdbId", rewind(vdbId, snapshotId).getId()));
+        return Map.of("opId", opId, "kind", "REWIND", "label", label);
+    }
+
+    /** Kick off a VDB snapshot/bookmark in the background; returns an opId to poll for live progress. */
+    public Map<String, Object> startVdbSnapshot(Long vdbId, String name, boolean bookmark) {
+        VirtualDatabaseEntity vdb = getVdb(vdbId);
+        String label = (bookmark ? "Bookmark " : "Snapshot ") + vdb.getName();
+        String kind = bookmark ? "BOOKMARK" : "VDB_SNAPSHOT";
+        String opId = ops.run(kind, label, () -> Map.of("snapshotId", snapshotVdb(vdbId, name, bookmark).getId()));
+        return Map.of("opId", opId, "kind", kind, "label", label);
+    }
+
     public Map<String, Object> operation(String id) {
         Map<String, Object> v = ops.view(id);
         if (v == null) throw ApiException.notFound("Operation " + id + " not found");
@@ -170,12 +195,13 @@ public class VirtualizationService {
             return containerProvider.snapshotDataSource(ds, name, note);
         }
         if ("ZFS".equalsIgnoreCase(provider)) {
-            return zfsProvider.snapshotDataSource(ds, name, note);
+            return zfsProvider.snapshotDataSource(ds, schemaName, name, note);
         }
         try (Connection c = connections.open(ds)) {
             String schema = DataSourceService.normalizeSchema(c, schemaName);
             TimeFlowEntity flow = dsourceTimeflow(ds, schema);
             TimeFlowEngine.IngestResult r = engine.ingest(c, schema);
+            requireCapturedTables(ds, schema, r);
 
             VirtualSnapshotEntity e = new VirtualSnapshotEntity();
             e.setName(name == null || name.isBlank() ? ds.getName() + " snapshot" : name.trim());
@@ -205,7 +231,10 @@ public class VirtualizationService {
         }
         DataSourceEntity ds = dataSources.get(vdb.getDataSourceId());
         try (Connection c = connections.open(ds)) {
-            String schema = DataSourceService.normalizeSchema(c, null);
+            VirtualSnapshotEntity current = vdb.getCurrentSnapshotId() == null
+                    ? null : snapshots.findById(vdb.getCurrentSnapshotId()).orElse(null);
+            String requestedSchema = current == null ? null : current.getSchemaName();
+            String schema = DataSourceService.normalizeSchema(c, requestedSchema);
             TimeFlowEngine.IngestResult r = engine.ingest(c, schema);
 
             String type = bookmark ? "BOOKMARK" : "VDB_SNAPSHOT";
@@ -264,6 +293,10 @@ public class VirtualizationService {
         VirtualSnapshotEntity snapshot = getSnapshot(snapshotId);
         String cleanName = requireName(name, "VDB name");
         if (vdbs.findByName(cleanName).isPresent()) throw ApiException.bad("VDB '" + cleanName + "' already exists");
+        if (snapshot.getTableCount() <= 0) {
+            throw ApiException.bad("Snapshot '" + snapshot.getName() + "' contains no tables. Capture it again with the correct "
+                    + "source schema (DB2 names are commonly uppercase, for example OMD1) before provisioning a VDB.");
+        }
         if ("ZFS".equals(snapshot.getProvider())) {
             return zfsProvider.provision(snapshot, cleanName, pointInTime, environmentId); // block-level thin clone
         }
@@ -290,10 +323,11 @@ public class VirtualizationService {
                     throw ApiException.bad("Data source '" + dsName + "' already exists");
                 Files.createDirectories(root.resolve("vdbs"));
                 Path base = root.resolve("vdbs").resolve(safeName(cleanName) + "-" + System.currentTimeMillis());
-                String jdbcUrl = h2FileUrl(base);
-                try (Connection h2 = DriverManager.getConnection(jdbcUrl, "demo", "demo")) {
+                String materializeUrl = h2FileUrl(base);
+                try (Connection h2 = DriverManager.getConnection(materializeUrl, "demo", "demo")) {
                     engine.materialize(h2, SqlDialect.H2, manifest);
                 }
+                String jdbcUrl = h2FileUrl(base, manifest.schemaName());
                 DataSourceEntity ds = new DataSourceEntity();
                 ds.setName(dsName);
                 ds.setKind("H2");
@@ -444,6 +478,14 @@ public class VirtualizationService {
         return "jdbc:h2:file:" + base.toAbsolutePath().toString().replace('\\', '/') + H2_OPTIONS;
     }
 
+    private static String h2FileUrl(Path base, String defaultSchema) {
+        String url = h2FileUrl(base);
+        if (defaultSchema == null || defaultSchema.isBlank()) return url;
+        if (!defaultSchema.matches("[A-Za-z0-9_]+"))
+            throw ApiException.bad("Illegal VDB schema: " + defaultSchema);
+        return url + ";INIT=SET SCHEMA " + defaultSchema;
+    }
+
     private static String safeName(String name) {
         String safe = String.valueOf(name == null ? "snapshot" : name).trim().toLowerCase(Locale.ROOT)
                 .replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", "");
@@ -457,6 +499,12 @@ public class VirtualizationService {
 
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static void requireCapturedTables(DataSourceEntity ds, String schema, TimeFlowEngine.IngestResult result) {
+        if (result.tableCount() > 0) return;
+        throw ApiException.bad("No tables were found in schema '" + String.valueOf(schema) + "' on data source '"
+                + ds.getName() + "'. Verify the schema in Browse and capture again; no empty snapshot was saved.");
     }
 
     // ------------------------------------------------------- delete operations

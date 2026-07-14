@@ -320,6 +320,7 @@ public class SyntheticProfileService {
             case SQLSERVER-> "(SELECT TOP (" + SAMPLE + ") " + colExpr + " AS v FROM " + fq + " TABLESAMPLE (" + pctStr(pct) + " PERCENT)) s";
             case MYSQL    -> "(SELECT " + colExpr + " AS v FROM " + fq + " WHERE RAND() < " + pctStr(frac) + " LIMIT " + SAMPLE + ") s";
             case H2       -> "(SELECT " + colExpr + " AS v FROM " + fq + " ORDER BY RAND() LIMIT " + SAMPLE + ") s";
+            case TERADATA -> "(SELECT " + colExpr + " AS v FROM " + fq + " SAMPLE " + SAMPLE + ") s";
             default       -> cappedSource(d, fq, colExpr);
         };
     }
@@ -331,6 +332,7 @@ public class SyntheticProfileService {
             case ORACLE    -> "(SELECT " + colExpr + " AS v FROM " + fq + " WHERE ROWNUM <= " + SAMPLE + ") s";
             case SQLSERVER -> "(SELECT TOP (" + SAMPLE + ") " + colExpr + " AS v FROM " + fq + ") s";
             case DB2       -> "(SELECT " + colExpr + " AS v FROM " + fq + " FETCH FIRST " + SAMPLE + " ROWS ONLY) s";
+            case TERADATA  -> "(SELECT " + colExpr + " AS v FROM " + fq + " SAMPLE " + SAMPLE + ") s";
             default        -> "(SELECT " + colExpr + " AS v FROM " + fq + " LIMIT " + SAMPLE + ") s";
         };
     }

@@ -417,6 +417,22 @@ const MASK_PARAM_META = {
   ADDRESS_STREET: [null, 'Output case'],
   ADDRESS_US: ['Address part', 'State handling'],
   FORMAT_PRESERVE: [null, 'Output case'],
+  CHARACTER_MAP: ['Preserve characters', 'Output case'],
+  TOKENIZE: ['Token prefix', 'Token length'],
+  SECURE_LOOKUP: ['Replacement values or seedlist', 'Output case'],
+  DIRECT_LOOKUP: ['Mappings or @value-list', 'Lookup options'],
+  HASH_LOOKUP: ['Rows or @value-list', 'Hash lookup options'],
+  REDACT: ['Mask character', 'Redaction mode'],
+  NUMERIC_NOISE: ['Noise amount', 'Clamp range'],
+  MIN_MAX: ['Minimum value', 'Maximum value'],
+  BANK_ACCOUNT: ['Account mode', null],
+  IBAN: ['IBAN country', 'IBAN format'],
+  SWIFT_BIC: ['BIC country', null],
+  ABA_ROUTING: ['Routing mode', null],
+  NATIONAL_ID: ['Country', 'ID format'],
+  IP_ADDRESS: ['IP mode', null],
+  MAC_ADDRESS: ['MAC mode', null],
+  UUID: [null, null],
   DATE_SHIFT: ['Max days', 'Date format'],
   DOB_AGE_BAND: ['Band years', 'Date format'],
   CITY_STATE_ZIP: ['Part: CITY/STATE/ZIP/FULL', 'State handling'],
@@ -495,14 +511,21 @@ const CARD_FORMAT_OPTIONS = [
   ['DASHES', 'Groups with dashes'],
   ['DIGITS_ONLY', 'Digits only']
 ];
+const TOKEN_LENGTH_OPTIONS = ['16', '24', '32', '48', '64'];
+const REDACTION_MODE_OPTIONS = ['FULL', 'KEEP_LAST4', 'KEEP_FIRST2', 'KEEP_FIRST2_LAST4', 'STANDARD:8'];
+const ACCOUNT_MODE_OPTIONS = ['KEEP_LAST4', 'FORMAT_PRESERVE', 'REDACT'];
+const COUNTRY_MODE_OPTIONS = ['GENERIC', 'US', 'CA', 'UK'];
 
 const PII_TYPE_OPTIONS = ['FIRST_NAME','LAST_NAME','FULL_NAME','EMAIL','PHONE','SSN','CREDIT_CARD','DOB',
-  'FULL_ADDRESS','ADDRESS','CITY','STATE','ZIP','COMPANY','BANK_ACCOUNT','IP_ADDRESS','TAX_ID','MANUAL_PII'];
+  'FULL_ADDRESS','ADDRESS','CITY','STATE','ZIP','COMPANY','BANK_ACCOUNT','IBAN','SWIFT_BIC','ROUTING',
+  'IP_ADDRESS','MAC_ADDRESS','USERNAME','PASSWORD','PASSPORT','DRIVER_LICENSE','GENDER','TAX_ID','MANUAL_PII'];
 const PII_DEFAULT_FUNCTIONS = {
   EMAIL:'EMAIL', SSN:'SSN', CREDIT_CARD:'CREDIT_CARD', FIRST_NAME:'FIRST_NAME', LAST_NAME:'LAST_NAME',
   FULL_NAME:'FULL_NAME', DOB:'DOB_AGE_BAND', PHONE:'PHONE', FULL_ADDRESS:'ADDRESS_US',
   ADDRESS:'ADDRESS_STREET', CITY:'CITY_STATE_ZIP', STATE:'CITY_STATE_ZIP', ZIP:'CITY_STATE_ZIP',
-  COMPANY:'COMPANY'
+  COMPANY:'COMPANY', BANK_ACCOUNT:'BANK_ACCOUNT', IBAN:'IBAN', SWIFT_BIC:'SWIFT_BIC', ROUTING:'ABA_ROUTING',
+  TAX_ID:'NATIONAL_ID', IP_ADDRESS:'IP_ADDRESS', MAC_ADDRESS:'MAC_ADDRESS', PASSPORT:'CHARACTER_MAP',
+  DRIVER_LICENSE:'CHARACTER_MAP', USERNAME:'TOKENIZE', PASSWORD:'NULLIFY', GENDER:'SECURE_LOOKUP'
 };
 
 async function refreshShared() {
@@ -1141,12 +1164,19 @@ async function loadPiiTypeScope() {
 }
 function renderTypeScope() {
   const el = $('disc-type-scope'); if (!el) return;
+  updateDiscScopeCount();
   if (!discPiiTypes.length) { el.innerHTML = '<span class="sub">No PII types available.</span>'; return; }
   el.innerHTML = discPiiTypes.map(t =>
     `<label class="chip"><input type="checkbox" value="${esc(t)}" ${discSelectedTypes.has(t) ? 'checked' : ''} onchange="discToggleType(${js(t)}, this.checked)"><span>${esc(t)}</span></label>`).join('');
 }
-function discToggleType(t, on) { if (on) discSelectedTypes.add(t); else discSelectedTypes.delete(t); }
-function discScopeAll(on) { discSelectedTypes = new Set(on ? discPiiTypes : []); renderTypeScope(); }
+function updateDiscScopeCount() {
+  const el = $('disc-scope-count'); if (!el) return;
+  const selected = discSelectedTypes.size;
+  el.className = 'pill ' + (selected ? 'info' : 'dim');
+  el.textContent = selected ? `${selected} selected type${selected === 1 ? '' : 's'}` : 'all PII types';
+}
+function discToggleType(t, on) { if (on) discSelectedTypes.add(t); else discSelectedTypes.delete(t); updateDiscScopeCount(); }
+function discScopeAll(on) { discSelectedTypes = new Set(on ? discPiiTypes : []); renderTypeScope(); updateDiscScopeCount(); }
 
 function toggleCustomPatterns() {
   const c = $('disc-custom-card'); if (!c) return;
@@ -1222,7 +1252,7 @@ function jsMaskCompatible(fn, cat) {
   if (MASK_TYPE_AGNOSTIC.includes(fn)) return true;
   switch (cat) {
     case 'TEXT': return true;
-    case 'NUMERIC': return fn === 'FORMAT_PRESERVE' || fn === 'SEQUENCE';
+    case 'NUMERIC': return ['FORMAT_PRESERVE','CHARACTER_MAP','SEQUENCE','NUMERIC_NOISE','MIN_MAX','SSN','CREDIT_CARD','PHONE','BANK_ACCOUNT','ABA_ROUTING'].includes(fn);
     case 'DATE': return fn === 'DATE_SHIFT' || fn === 'DOB_AGE_BAND' || fn === 'AGE';
     default: return false;   // BOOLEAN / BINARY → only the type-agnostic ones
   }
@@ -1268,6 +1298,16 @@ function paramControlHtml(id, label, value, onchange) {
   if (label === 'SSN format') return `<select id="${id}" class="param-select"${attr}>${optionTags(SSN_FORMAT_OPTIONS, current || 'PRESERVE_FORMAT')}</select>`;
   if (label === 'Card mode') return `<select id="${id}" class="param-select"${attr}>${optionTags(CARD_MODE_OPTIONS, current || 'VALID_PRESERVE_BIN')}</select>`;
   if (label === 'Card format') return `<select id="${id}" class="param-select"${attr}>${optionTags(CARD_FORMAT_OPTIONS, current || 'PRESERVE_FORMAT')}</select>`;
+  if (label === 'Token length') return `<select id="${id}" class="param-select"${attr}>${optionTags(TOKEN_LENGTH_OPTIONS, current || '32')}</select>`;
+  if (label === 'Redaction mode') return `<select id="${id}" class="param-select"${attr}>${optionTags(REDACTION_MODE_OPTIONS, current || 'FULL')}</select>`;
+  if (label === 'Account mode') return `<select id="${id}" class="param-select"${attr}>${optionTags(ACCOUNT_MODE_OPTIONS, current || 'KEEP_LAST4')}</select>`;
+  if (label === 'IBAN country' || label === 'BIC country') return `<select id="${id}" class="param-select"${attr}>${optionTags(['PRESERVE_COUNTRY','RANDOM_COUNTRY'], current || 'PRESERVE_COUNTRY')}</select>`;
+  if (label === 'IBAN format') return `<select id="${id}" class="param-select"${attr}>${optionTags(['PRESERVE_FORMAT','COMPACT'], current || 'PRESERVE_FORMAT')}</select>`;
+  if (label === 'Routing mode') return `<select id="${id}" class="param-select"${attr}>${optionTags(['PRESERVE_FED_DISTRICT','RANDOM_DISTRICT'], current || 'PRESERVE_FED_DISTRICT')}</select>`;
+  if (label === 'Country') return `<select id="${id}" class="param-select"${attr}>${optionTags(COUNTRY_MODE_OPTIONS, current || 'GENERIC')}</select>`;
+  if (label === 'ID format') return `<select id="${id}" class="param-select"${attr}>${optionTags(['PRESERVE_FORMAT','DASHED','DIGITS_ONLY'], current || 'PRESERVE_FORMAT')}</select>`;
+  if (label === 'IP mode') return `<select id="${id}" class="param-select"${attr}>${optionTags(['SAFE_TEST_RANGE','PRESERVE_PRIVATE'], current || 'SAFE_TEST_RANGE')}</select>`;
+  if (label === 'MAC mode') return `<select id="${id}" class="param-select"${attr}>${optionTags(['LOCAL_ADMIN','PRESERVE_OUI'], current || 'LOCAL_ADMIN')}</select>`;
   if (label === 'Address part') return `<select id="${id}" class="param-select"${attr}>${optionTags(ADDRESS_PART_OPTIONS, current || 'FULL')}</select>`;
   if (label === 'State handling') return `<select id="${id}" class="param-select"${attr}>${optionTags(STATE_MODE_OPTIONS, current || 'PRESERVE_STATE')}</select>`;
   if (label && label.includes('CITY/STATE/ZIP')) return `<select id="${id}" class="param-select"${attr}>${optionTags(GEO_PART_OPTIONS, current || 'FULL')}</select>`;
@@ -1385,7 +1425,13 @@ function renderFindings() {
 
   const el = $('disc-table');
   if (!all.length) { el.innerHTML = '<div class="empty">No findings yet — run a scan from the Scan Source tab.</div>'; return; }
-  el.innerHTML = rows.length ? `<div class="disc-find-wrap"><table class="disc-find-table"><thead><tr>
+  const resultSummary = `<div class="disc-result-summary">
+      <b>${rows.length}</b> of <b>${all.length}</b> finding(s) shown
+      ${tf ? `<span>Table: ${esc(tf)}</span>` : ''}
+      ${tp ? `<span>PII type: ${esc(tp)}</span>` : ''}
+      ${stf ? `<span>Status: ${esc(stf)}</span>` : ''}
+    </div>`;
+  el.innerHTML = rows.length ? `${resultSummary}<div class="disc-find-wrap"><table class="disc-find-table"><thead><tr>
       <th>Column</th><th>Type</th><th>PII type</th><th>Confidence</th><th>Suggested mask</th><th>Params</th><th>Sample</th><th>Status</th><th></th></tr></thead><tbody>` +
     rows.map(r => `<tr>
       <td class="disc-col"><code>${esc(r.tableName)}</code>.<b>${esc(r.columnName)}</b></td>
@@ -1399,7 +1445,7 @@ function renderFindings() {
       <td class="nowrap"><button class="small" onclick="setClass(${r.id},'APPROVED')">Approve</button>
           <button class="small ghost" onclick="setClass(${r.id},'REJECTED')">Not PII</button></td>
     </tr>`).join('') + '</tbody></table></div>'
-    : '<div class="empty">No findings match the current filters.</div>';
+    : `${resultSummary}<div class="empty">No findings match the current filters.</div>`;
 }
 
 async function approveVisibleFindings() {
@@ -1489,7 +1535,13 @@ async function setClass(id, status) {
 
 async function setFindingFunction(id, fn) {
   try {
-    await api.patch(`/api/discovery/classifications/${id}`, { suggestedFunction: fn });
+    const finding = discFindings.find(row => Number(row.id) === Number(id));
+    const params = defaultMaskParamsForMap(fn, finding?.piiType);
+    await api.patch(`/api/discovery/classifications/${id}`, {
+      suggestedFunction: fn,
+      suggestedParam1: params.param1,
+      suggestedParam2: params.param2
+    });
     toast('Masking function changed to ' + fn, 'ok');
     await loadFindings();
     await loadColumnReview();
@@ -2263,6 +2315,21 @@ function defaultMaskParamsForMap(fn, pii) {
   if (fn === 'PHONE') return { param1: 'FORMAT_PRESERVE', param2: 'PRESERVE_COUNTRY' };
   if (fn === 'SSN') return { param1: 'VALID_PRESERVE_AREA', param2: 'PRESERVE_FORMAT' };
   if (fn === 'CREDIT_CARD') return { param1: 'VALID_PRESERVE_BIN', param2: 'PRESERVE_FORMAT' };
+  if (fn === 'CHARACTER_MAP') return { param1: null, param2: 'AS_IS' };
+  if (fn === 'TOKENIZE') return { param1: pii === 'USERNAME' ? 'USR_' : 'TKN_', param2: pii === 'USERNAME' ? '24' : '32' };
+  if (fn === 'SECURE_LOOKUP') return { param1: pii === 'GENDER' ? 'F|M|X' : 'ALPHA|BETA|GAMMA', param2: pii === 'GENDER' ? 'UPPER' : 'AS_IS' };
+  if (fn === 'DIRECT_LOOKUP') return { param1: '@lookup:direct:demo.account-tier', param2: 'NOT_FOUND=ERROR;TRIM=BOTH;CASE=UPPER;CACHE=ON' };
+  if (fn === 'HASH_LOOKUP') return { param1: '@lookup:hash:demo.us-first-names', param2: 'SEED=0;CASE=SENSITIVE;CACHE=ON' };
+  if (fn === 'REDACT') return { param1: '*', param2: 'FULL' };
+  if (fn === 'NUMERIC_NOISE') return { param1: 'PERCENT:10', param2: null };
+  if (fn === 'MIN_MAX') return { param1: '0', param2: '100' };
+  if (fn === 'BANK_ACCOUNT') return { param1: 'KEEP_LAST4', param2: null };
+  if (fn === 'IBAN') return { param1: 'PRESERVE_COUNTRY', param2: 'PRESERVE_FORMAT' };
+  if (fn === 'SWIFT_BIC') return { param1: 'PRESERVE_COUNTRY', param2: null };
+  if (fn === 'ABA_ROUTING') return { param1: 'PRESERVE_FED_DISTRICT', param2: null };
+  if (fn === 'NATIONAL_ID') return { param1: 'GENERIC', param2: 'PRESERVE_FORMAT' };
+  if (fn === 'IP_ADDRESS') return { param1: 'SAFE_TEST_RANGE', param2: null };
+  if (fn === 'MAC_ADDRESS') return { param1: 'LOCAL_ADMIN', param2: null };
   if (['FIRST_NAME', 'LAST_NAME', 'COMPANY', 'ADDRESS_STREET'].includes(fn)) return { param1: null, param2: 'PROPER' };
   return { param1: null, param2: null };
 }

@@ -352,11 +352,15 @@ public class SubsetService {
         if (scopeTables == null || scopeTables.isEmpty()) return fkGraph(c, schema);
         List<FkEdge> edges = new ArrayList<>();
         Set<String> scopeLower = new LinkedHashSet<>();
+        Map<String, String> requestedNames = new LinkedHashMap<>();
         List<String> tables = new ArrayList<>();
         for (String table : scopeTables) {
             if (table == null || table.isBlank()) continue;
             String lower = table.toLowerCase(Locale.ROOT);
-            if (scopeLower.add(lower)) tables.add(table);
+            if (scopeLower.add(lower)) {
+                requestedNames.put(lower, table);
+                tables.add(metadataIdentifier(c, table));
+            }
         }
         if (tables.isEmpty()) return edges;
         for (String t : tables) {
@@ -368,8 +372,8 @@ public class SubsetService {
                             !scopeLower.contains(parentTable.toLowerCase(Locale.ROOT))) {
                         continue;
                     }
-                    edges.add(new FkEdge(childTable, rs.getString("FKCOLUMN_NAME"),
-                                         parentTable, rs.getString("PKCOLUMN_NAME")));
+                    edges.add(new FkEdge(requestedNames.get(childTable.toLowerCase(Locale.ROOT)), rs.getString("FKCOLUMN_NAME"),
+                                         requestedNames.get(parentTable.toLowerCase(Locale.ROOT)), rs.getString("PKCOLUMN_NAME")));
                 }
             }
         }
@@ -390,7 +394,8 @@ public class SubsetService {
     }
 
     public Optional<String> primaryKeyOptional(Connection c, String schema, String table) throws SQLException {
-        try (ResultSet rs = c.getMetaData().getPrimaryKeys(null, schema == null ? DataSourceService.schemaOf(c) : schema, table)) {
+        try (ResultSet rs = c.getMetaData().getPrimaryKeys(null, schema == null ? DataSourceService.schemaOf(c) : schema,
+                metadataIdentifier(c, table))) {
             if (rs.next()) return Optional.of(rs.getString("COLUMN_NAME"));
         }
         return Optional.empty();
@@ -601,7 +606,7 @@ public class SubsetService {
     }
 
     private LinkedHashSet<String> selectKeys(Connection c, String schema, String table, String pk, String filter, int max) throws SQLException {
-        String sql = "SELECT " + q(pk) + " FROM " + q(schema, table) + where(filter) + " ORDER BY " + q(pk);
+        String sql = "SELECT " + q(c, pk) + " FROM " + q(c, schema, table) + where(filter) + " ORDER BY " + q(c, pk);
         LinkedHashSet<String> out = new LinkedHashSet<>();
         try (Statement st = c.createStatement()) {
             st.setMaxRows(max);
@@ -615,7 +620,7 @@ public class SubsetService {
     }
 
     private LinkedHashSet<String> selectKeysIn(Connection c, String schema, String table, String selectCol, String inCol, Set<String> values) throws SQLException {
-        return chunkedIn(c, "SELECT " + q(selectCol) + " FROM " + q(schema, table) + " WHERE " + q(inCol), values);
+        return chunkedIn(c, "SELECT " + q(c, selectCol) + " FROM " + q(c, schema, table) + " WHERE " + q(c, inCol), values);
     }
 
     private LinkedHashSet<String> selectColumnIn(Connection c, String table, String selectCol, String inCol, Set<String> values) throws SQLException {
@@ -623,15 +628,16 @@ public class SubsetService {
     }
 
     private LinkedHashSet<String> selectColumnIn(Connection c, String schema, String table, String selectCol, String inCol, Set<String> values) throws SQLException {
-        return chunkedIn(c, "SELECT DISTINCT " + q(selectCol) + " FROM " + q(schema, table) + " WHERE " + q(inCol), values);
+        return chunkedIn(c, "SELECT DISTINCT " + q(c, selectCol) + " FROM " + q(c, schema, table) + " WHERE " + q(c, inCol), values);
     }
 
     private LinkedHashSet<String> chunkedIn(Connection c, String prefix, Set<String> values) throws SQLException {
         LinkedHashSet<String> out = new LinkedHashSet<>();
         if (values == null || values.isEmpty()) return out;
         List<String> all = new ArrayList<>(values);
-        for (int i = 0; i < all.size(); i += KEY_CHUNK_SIZE) {
-            List<String> chunk = all.subList(i, Math.min(i + KEY_CHUNK_SIZE, all.size()));
+        int chunkLimit = keyChunkSize(c);
+        for (int i = 0; i < all.size(); i += chunkLimit) {
+            List<String> chunk = all.subList(i, Math.min(i + chunkLimit, all.size()));
             String sql = prefix + " IN (" + String.join(",", Collections.nCopies(chunk.size(), "?")) + ")";
             try (PreparedStatement ps = c.prepareStatement(sql)) {
                 for (int j = 0; j < chunk.size(); j++) bindValue(ps, j + 1, chunk.get(j));
@@ -663,7 +669,7 @@ public class SubsetService {
     }
 
     private int countRows(Connection c, String schema, String table, String filter, int max) throws SQLException {
-        String sql = "SELECT 1 FROM " + q(schema, table) + where(filter);
+        String sql = "SELECT 1 FROM " + q(c, schema, table) + where(filter);
         int rows = 0;
         try (Statement st = c.createStatement()) {
             st.setMaxRows(max);
@@ -683,10 +689,11 @@ public class SubsetService {
         if (existingKeys == null || existingKeys.isEmpty()) return existingKeys;
         LinkedHashSet<String> result = new LinkedHashSet<>();
         List<String> all = new ArrayList<>(existingKeys);
-        for (int i = 0; i < all.size(); i += KEY_CHUNK_SIZE) {
-            List<String> chunk = all.subList(i, Math.min(i + KEY_CHUNK_SIZE, all.size()));
-            String sql = "SELECT " + q(pkColumn) + " FROM " + q(schema, table)
-                    + " WHERE " + q(pkColumn) + " IN (" + String.join(",", Collections.nCopies(chunk.size(), "?")) + ")"
+        int chunkLimit = keyChunkSize(c);
+        for (int i = 0; i < all.size(); i += chunkLimit) {
+            List<String> chunk = all.subList(i, Math.min(i + chunkLimit, all.size()));
+            String sql = "SELECT " + q(c, pkColumn) + " FROM " + q(c, schema, table)
+                    + " WHERE " + q(c, pkColumn) + " IN (" + String.join(",", Collections.nCopies(chunk.size(), "?")) + ")"
                     + " AND (" + filterExpr + ")";
             try (PreparedStatement ps = c.prepareStatement(sql)) {
                 for (int j = 0; j < chunk.size(); j++) bindValue(ps, j + 1, chunk.get(j));
@@ -783,6 +790,35 @@ public class SubsetService {
 
     static String q(String schema, String table) {
         return schema == null || schema.isBlank() ? q(table) : q(schema) + "." + q(table);
+    }
+
+    static String q(Connection connection, String ident) throws SQLException {
+        if (ident == null || !ident.matches("[A-Za-z0-9_$#]+")) throw ApiException.bad("Illegal identifier: " + ident);
+        String product = connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT);
+        String normalized = product.contains("oracle") || product.contains("db2")
+                ? ident.toUpperCase(Locale.ROOT) : ident;
+        if (product.contains("mysql") || product.contains("mariadb")) return "`" + normalized + "`";
+        if (product.contains("sql server") || product.contains("microsoft")) return "[" + normalized + "]";
+        return "\"" + normalized + "\"";
+    }
+
+    static String q(Connection connection, String schema, String table) throws SQLException {
+        return schema == null || schema.isBlank() ? q(connection, table)
+                : q(connection, schema) + "." + q(connection, table);
+    }
+
+    private static String metadataIdentifier(Connection connection, String identifier) throws SQLException {
+        DatabaseMetaData metadata = connection.getMetaData();
+        if (metadata.storesUpperCaseIdentifiers()) return identifier.toUpperCase(Locale.ROOT);
+        if (metadata.storesLowerCaseIdentifiers()) return identifier.toLowerCase(Locale.ROOT);
+        return identifier;
+    }
+
+    private static int keyChunkSize(Connection connection) throws SQLException {
+        String product = connection.getMetaData().getDatabaseProductName().toLowerCase(Locale.ROOT);
+        if (product.contains("oracle") || product.contains("db2")) return 900;
+        if (product.contains("sql server") || product.contains("microsoft")) return 1_800;
+        return KEY_CHUNK_SIZE;
     }
 
     private static String blankToNull(String value) {

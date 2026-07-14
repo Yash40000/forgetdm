@@ -65,6 +65,13 @@ public class AccessControlFilter extends OncePerRequestFilter {
         String m = method.toUpperCase(Locale.ROOT);
         boolean read = "GET".equals(m);
         if (path.startsWith("/api/security")) return "security.admin";
+        if (path.startsWith("/api/auth/tokens")) return null; // Any authenticated user manages only their own tokens.
+        if (path.startsWith("/api/integrations")) return read ? "integration.read" : "integration.manage";
+        if (path.startsWith("/api/self-service")) {
+            if (path.contains("/decision/")) return "provision.approve";
+            if (path.contains("/templates/")) return "datascope.manage";
+            return read ? "provision.read" : "provision.run";
+        }
         if (path.startsWith("/api/audit")) return "audit.read";
         if (path.startsWith("/api/dashboard")) return "dashboard.read";
         if (path.startsWith("/api/datasources")) return read ? "datasource.read" : "datasource.manage";
@@ -74,18 +81,26 @@ public class AccessControlFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/ri")) return read ? "ri.read" : "ri.manage";
         if (path.startsWith("/api/datasets")) return read ? "datascope.read" : "datascope.manage";
         if (path.startsWith("/api/datascope")) return read ? "datascope.read" : "datascope.manage";
-        if (path.startsWith("/api/business-entities")) return read ? "datascope.read" : "datascope.manage";
+        if (path.startsWith("/api/business-entities")) {
+            if (path.contains("/governance-requests/") && (path.endsWith("/approve") || path.endsWith("/reject"))) {
+                return "provision.approve";
+            }
+            return read ? "datascope.read" : "datascope.manage";
+        }
         if (path.startsWith("/api/subset")) return "datascope.manage";
         if (path.startsWith("/api/jobs")) {
             if (path.contains("/approval/")) return "provision.approve";
             return read ? "provision.read" : "provision.run";
         }
         if (path.startsWith("/api/synthetic")) return syntheticPermission(m, path);
-        if (path.startsWith("/api/mappings")) return read ? "mapping.read" : "mapping.manage";
+        if (path.startsWith("/api/mappings")) return mappingPermission(m, path);
+        if (path.startsWith("/api/unstructured")) return unstructuredPermission(m, path);
         if (path.startsWith("/api/reservations")) return read ? "reservation.read" : "reservation.manage";
         if (path.startsWith("/api/validation")) return read ? "validation.read" : "validation.run";
         if (path.startsWith("/api/virtualization")) return read ? "virtualization.read" : "virtualization.manage";
         if (path.startsWith("/api/mainframe") || path.startsWith("/api/copybook")) return read ? "mainframe.read" : "mainframe.manage";
+        if (path.startsWith("/api/agent/data-store") && !read) return "assistant.manage";
+        if (path.startsWith("/api/agent/runs/") && path.endsWith("/approve-plan")) return "provision.approve";
         if (path.startsWith("/api/ai") || path.startsWith("/api/agent")) return "assistant.use";
         return read ? "dashboard.read" : "admin.all";
     }
@@ -103,6 +118,22 @@ public class AccessControlFilter extends OncePerRequestFilter {
         if (path.matches(".*/saved-jobs/[^/]+/run$")) return "synthetic.run";
         if (path.startsWith("/api/synthetic/saved-jobs")) return "synthetic.manage";
         return "synthetic.run";
+    }
+
+    private String mappingPermission(String method, String path) {
+        boolean read = "GET".equals(method);
+        if (read) return "mapping.read";
+        if (path.matches(".*/runs(/[^/]+/cancel)?$") || path.matches(".*/[^/]+/runs$")) return "mapping.run";
+        if (path.endsWith("/preview") || path.endsWith("/preview-spec") || path.endsWith("/federated") || path.endsWith("/validate")) return "mapping.read";
+        return "mapping.manage";
+    }
+
+    private String unstructuredPermission(String method, String path) {
+        boolean read = "GET".equals(method);
+        if (read || path.endsWith("/preview")) return "unstructured.read";
+        if (path.matches(".*/jobs/[^/]+/cancel$")) return "unstructured.cancel";
+        if (path.equals("/api/unstructured/jobs")) return "unstructured.run";
+        return "unstructured.manage";
     }
 
     private void writeJson(HttpServletResponse response, int status, String error) throws IOException {

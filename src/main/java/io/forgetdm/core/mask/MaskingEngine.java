@@ -4,13 +4,20 @@ import io.forgetdm.core.util.Determinism;
 import io.forgetdm.core.util.Luhn;
 import io.forgetdm.core.util.SeedLists;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -46,6 +53,20 @@ public class MaskingEngine {
      */
     public String pushdownKey() { return secret; }
 
+    /** Validate governed lookup syntax and references before a policy is persisted or executed. */
+    public void validateLookupConfiguration(MaskFunction fn, String sourceSpec, String optionsSpec) {
+        if (fn != MaskFunction.SECURE_LOOKUP && fn != MaskFunction.DIRECT_LOOKUP && fn != MaskFunction.HASH_LOOKUP) return;
+        Map<String, String> options = lookupOptions(optionsSpec);
+        String definition = lookupDefinition(sourceSpec, lookupUsesCache(options));
+        if (fn == MaskFunction.DIRECT_LOOKUP) directLookupMappings(definition, options);
+        else if (fn == MaskFunction.HASH_LOOKUP) hashLookupTable(definition);
+        else {
+            List<String> values = Arrays.stream(definition.split("\\|"))
+                    .map(String::trim).filter(part -> !part.isBlank()).map(MaskingEngine::stripLookupWeight).toList();
+            if (values.isEmpty()) throw new IllegalStateException("SECURE_LOOKUP has no usable replacement values");
+        }
+    }
+
     /**
      * Seeded variant: derives a new deterministic key from (project secret, user seed).
      * Same seed => identical results across runs and tables (referential integrity preserved);
@@ -54,7 +75,10 @@ public class MaskingEngine {
      */
     public MaskingEngine withSeed(String seed) {
         if (seed == null || seed.isBlank()) return this;
-        return new MaskingEngine(secret + "::seed::" + seed.trim());
+        MaskingEngine seeded = new MaskingEngine(secret + "::seed::" + seed.trim());
+        seeded.scriptProvider = scriptProvider;
+        seeded.lookupProvider = lookupProvider;
+        return seeded;
     }
 
     /** Mask a single value. salt should be stable per logical attribute (e.g. "person.ssn" or just "ssn"). */
@@ -63,6 +87,8 @@ public class MaskingEngine {
         if (fn == MaskFunction.NULLIFY) return null;
         if (fn == MaskFunction.FIXED) return applyCase(param1, caseMode(param1, param2));
         if (fn == MaskFunction.SEQUENCE) return (param1 == null ? "ID-" : param1) + (ctx == null ? 0 : ctx.rowIndex);
+        if (fn == MaskFunction.DIRECT_LOOKUP) return directLookup(value, param1, param2, ctx);
+        if (fn == MaskFunction.HASH_LOOKUP) return hashLookup(value, param1, param2, ctx);
         if (value == null || value.isEmpty()) return value;
 
         switch (fn) {
@@ -80,7 +106,21 @@ public class MaskingEngine {
             case ADDRESS_US: return usAddress(salt, value, param1, param2, ctx);
             case CITY_STATE_ZIP: return cityStateZip(salt, value, param1, param2, ctx);
             case FORMAT_PRESERVE: return applyCase(formatPreserve(salt, value, false), caseMode(param1, param2));
+            case CHARACTER_MAP: return applyCase(characterMap(salt, value, param1), caseMode(null, param2));
+            case TOKENIZE: return tokenize(salt, value, param1, param2);
+            case SECURE_LOOKUP: return secureLookup(salt, value, param1, param2);
+            case REDACT: return redact(value, param1, param2);
             case REDACT_KEEP_LAST4: return redactKeepLast4(value);
+            case NUMERIC_NOISE: return numericNoise(salt, value, param1, param2);
+            case MIN_MAX: return minMax(salt, value, param1, param2);
+            case BANK_ACCOUNT: return bankAccount(salt, value, param1);
+            case IBAN: return iban(salt, value, param1, param2);
+            case SWIFT_BIC: return swiftBic(salt, value, param1);
+            case ABA_ROUTING: return abaRouting(salt, value, param1);
+            case NATIONAL_ID: return nationalId(salt, value, param1, param2);
+            case IP_ADDRESS: return ipAddress(salt, value, param1);
+            case MAC_ADDRESS: return macAddress(salt, value, param1);
+            case UUID: return uuid(salt, value);
             case HASH_LOV: return applyCase(pick(param1 == null ? "first_names.txt" : param1, salt, value), caseMode(null, param2));
             case BY_INDICATOR: return byIndicator(salt, value, param1, param2, ctx);
             case PARTIAL_MASK: return partialMask(salt, value, param1, param2, ctx);
@@ -279,6 +319,13 @@ public class MaskingEngine {
             case ADDRESS_US -> "addr.us";
             case COMPANY -> "company";
             case DOB_AGE_BAND -> "dob";
+            case BANK_ACCOUNT -> "bank.account";
+            case IBAN -> "iban";
+            case SWIFT_BIC -> "swift.bic";
+            case ABA_ROUTING -> "routing.aba";
+            case NATIONAL_ID -> "national.id";
+            case IP_ADDRESS -> "network.ip";
+            case MAC_ADDRESS -> "network.mac";
             default -> fallback;
         };
     }
@@ -430,7 +477,8 @@ public class MaskingEngine {
     /** Card: default preserves BIN(6) + length + separators, regenerates middle, repairs Luhn digit. */
     private String creditCard(String salt, String value, String mode, String format) {
         String digits = value.replaceAll("\\D", "");
-        if (digits.length() < 12 || digits.length() > 19 || !Luhn.isValid(digits)) return value;
+        // Fail closed: a malformed PAN is still sensitive and must never pass through unchanged.
+        if (digits.length() < 12 || digits.length() > 19) return formatPreserve(salt + "|ccn-nonconform", value, false);
         String m = mode == null || mode.isBlank() ? "VALID_PRESERVE_BIN" : mode.trim().toUpperCase(Locale.ROOT);
         Random r = Determinism.rng(secret, salt + "|ccn", digits);
         String full;
@@ -652,6 +700,567 @@ public class MaskingEngine {
         return c.equals("US") || c.equals("USA") || c.equals("UNITED STATES") || c.equals("UNITED STATES OF AMERICA");
     }
 
+    /** Delphix-style whole-value character mapping with optional leading/trailing preserve ranges. */
+    private String characterMap(String salt, String value, String preserveSpec) {
+        String masked = formatPreserve(salt + "|character-map", value, false);
+        int keepFirst = preserveCount(preserveSpec, "FIRST");
+        int keepLast = preserveCount(preserveSpec, "LAST");
+        if (keepFirst == 0 && keepLast == 0) return masked;
+        int length = value.length();
+        StringBuilder out = new StringBuilder(masked);
+        for (int i = 0; i < Math.min(keepFirst, length); i++) out.setCharAt(i, value.charAt(i));
+        for (int i = Math.max(0, length - keepLast); i < length; i++) out.setCharAt(i, value.charAt(i));
+        return out.toString();
+    }
+
+    private static int preserveCount(String spec, String key) {
+        if (spec == null || spec.isBlank()) return 0;
+        Matcher matcher = Pattern.compile("(?:^|[,;])\\s*" + key + "\\s*[:=]\\s*(\\d+)", Pattern.CASE_INSENSITIVE)
+                .matcher(spec);
+        return matcher.find() ? Math.min(1024, Integer.parseInt(matcher.group(1))) : 0;
+    }
+
+    /** Collision-resistant, irreversible HMAC token. A 32-hex-character token carries 128 bits. */
+    private String tokenize(String salt, String value, String prefixSpec, String lengthSpec) {
+        String prefix = prefixSpec == null ? "TKN_" : prefixSpec;
+        if ("NONE".equalsIgnoreCase(prefix)) prefix = "";
+        int length = Math.max(12, Math.min(64, parseIntOr(lengthSpec, 32)));
+        byte[] digest = Determinism.hmac(secret, salt + "|token", normalize(value));
+        StringBuilder hex = new StringBuilder(64);
+        for (byte b : digest) hex.append(String.format("%02x", b & 0xff));
+        return prefix + hex.substring(0, length);
+    }
+
+    /** Cryptographic lookup from an inline pipe list or a packaged UTF-8 seedlist. */
+    private String secureLookup(String salt, String value, String source, String outputCase) {
+        if (source == null || source.isBlank())
+            throw new IllegalStateException("SECURE_LOOKUP needs pipe-delimited values or a seedlist file in param1");
+        String definition = lookupDefinition(source, true);
+        List<String> values = Arrays.stream(definition.split("\\|"))
+                .map(String::trim)
+                .filter(part -> !part.isBlank())
+                .map(MaskingEngine::stripLookupWeight)
+                .toList();
+        if (values.isEmpty()) throw new IllegalStateException("SECURE_LOOKUP has no usable replacement values");
+        String picked = values.get(Determinism.pick(secret, salt + "|secure-lookup", normalize(value), values.size()));
+        return applyCase(picked, caseMode(null, outputCase));
+    }
+
+    /** Exact Optim-style lookup: source keys map directly to governed replacement values. */
+    private String directLookup(String value, String sourceSpec, String optionsSpec, MaskContext ctx) {
+        Map<String, String> options = lookupOptions(optionsSpec);
+        String definition = lookupDefinition(sourceSpec, lookupUsesCache(options));
+        Map<String, String> mappings = directLookupMappings(definition, options);
+
+        String sourceValue = lookupSourceValue(value, options, ctx);
+        String key = specialLookupKey(sourceValue);
+        if (key == null) key = lookupKey(sourceValue, options);
+        String replacement = mappings.get(key);
+        if (replacement == null) return lookupFallback(options.getOrDefault("NOT_FOUND", "ERROR"), value, options,
+                "DIRECT_LOOKUP found no matching source key");
+        return applyCase(replacement, options.get("OUTPUT"));
+    }
+
+    private static Map<String, String> directLookupMappings(String definition, Map<String, String> options) {
+        Map<String, String> mappings = new LinkedHashMap<>();
+        for (String part : definition.split("\\|", -1)) {
+            if (part.isBlank()) continue;
+            LookupPair pair = lookupPair(part);
+            if (pair == null) throw new IllegalStateException("DIRECT_LOOKUP entries must use source=>replacement pairs");
+            String key = lookupKey(pair.key(), options);
+            if (key.isEmpty()) throw new IllegalStateException("DIRECT_LOOKUP contains an empty source key");
+            if (mappings.putIfAbsent(key, pair.value().trim()) != null)
+                throw new IllegalStateException("DIRECT_LOOKUP contains duplicate keys after trim/case rules");
+        }
+        if (mappings.isEmpty()) throw new IllegalStateException("DIRECT_LOOKUP has no usable source=>replacement pairs");
+        return Map.copyOf(mappings);
+    }
+
+    /**
+     * Optim-style hash lookup. A source value is hashed to a contiguous 1..N replacement row. Optional
+     * -1/-2/-3 rows represent NULL, spaces, and zero-length input, matching Optim's reserved lookup keys.
+     */
+    private String hashLookup(String value, String sourceSpec, String optionsSpec, MaskContext ctx) {
+        Map<String, String> options = lookupOptions(optionsSpec);
+        String definition = lookupDefinition(sourceSpec, lookupUsesCache(options));
+        HashLookupTable table = hashLookupTable(definition);
+        String sourceValue = lookupSourceValue(value, options, ctx);
+        int reservedKey = sourceValue == null ? -1 : sourceValue.isEmpty() ? -3 : sourceValue.trim().isEmpty() ? -2 : 0;
+        if (reservedKey != 0) {
+            String reserved = table.reserved().get(reservedKey);
+            if (reserved != null) return applyCase(selectLookupColumn(reserved, options), options.get("OUTPUT"));
+            String option = reservedKey == -1 ? "NULL" : reservedKey == -2 ? "SPACES" : "ZERO_LEN";
+            return lookupFallback(options.getOrDefault(option, "ERROR"), value, options,
+                    "HASH_LOOKUP needs reserved key " + reservedKey + " or " + option + "=PRESERVE/NULL/REDACT");
+        }
+
+        String prepared = lookupKey(sourceValue, options);
+        if (prepared.isEmpty()) {
+            String reserved = table.reserved().get(-2);
+            if (reserved != null) return applyCase(selectLookupColumn(reserved, options), options.get("OUTPUT"));
+            return lookupFallback(options.getOrDefault("SPACES", "ERROR"), value, options,
+                    "HASH_LOOKUP input became blank after trim rules");
+        }
+        String identity = lookupIdentity(sourceSpec);
+        String seed = options.getOrDefault("SEED", "0");
+        int index = Determinism.pick(secret, "hash-lookup|" + identity + "|seed=" + seed, prepared, table.values().size());
+        return applyCase(selectLookupColumn(table.values().get(index), options), options.get("OUTPUT"));
+    }
+
+    private String lookupDefinition(String sourceSpec, boolean useCache) {
+        if (sourceSpec == null || sourceSpec.isBlank())
+            throw new IllegalStateException("Lookup param1 needs inline values, a seedlist file, or @value-list");
+        String source = sourceSpec.trim();
+        if (source.startsWith("@")) {
+            MaskLookupProvider provider = lookupProvider;
+            if (provider == null) throw new IllegalStateException("Governed masking value-list registry is unavailable");
+            return provider.valuesFor(source.substring(1), useCache);
+        }
+        if (source.contains("|") || source.contains("=>") || source.contains("=")) return source;
+        return String.join("|", substitutionList(source));
+    }
+
+    private static Map<String, String> lookupOptions(String spec) {
+        Map<String, String> options = new LinkedHashMap<>();
+        if (spec == null || spec.isBlank()) return options;
+        for (String raw : spec.split(";")) {
+            String part = raw.trim();
+            if (part.isEmpty()) continue;
+            int equals = part.indexOf('=');
+            if (equals < 0) options.put(part.toUpperCase(Locale.ROOT), "TRUE");
+            else options.put(part.substring(0, equals).trim().toUpperCase(Locale.ROOT), part.substring(equals + 1).trim());
+        }
+        return options;
+    }
+
+    private static boolean lookupUsesCache(Map<String, String> options) {
+        return !options.containsKey("NOCACHE") && !"OFF".equalsIgnoreCase(options.get("CACHE"));
+    }
+
+    private static String lookupSourceValue(String value, Map<String, String> options, MaskContext ctx) {
+        String sourceColumns = options.get("SOURCE");
+        if (sourceColumns == null || sourceColumns.isBlank()) return value;
+        if (ctx == null) throw new IllegalStateException("Lookup SOURCE columns need row context");
+        String join = options.getOrDefault("JOIN", "~");
+        List<String> values = new ArrayList<>();
+        for (String column : sourceColumns.split(",")) {
+            String name = column.trim();
+            if (name.isEmpty()) continue;
+            String source = ctx.original(name);
+            values.add(source == null ? "<NULL>" : source);
+        }
+        if (values.isEmpty()) throw new IllegalStateException("Lookup SOURCE must name at least one column");
+        return String.join(join, values);
+    }
+
+    /**
+     * Multi-column destination support (Optim HASH_LOOKUP dest=/values= equivalent). A lookup row may carry
+     * several replacement columns separated by VCOLSEP (default '~'), e.g. "Olivia~Johnson". Each destination
+     * column names its slice with VALUE=n (1-based); sibling HASH_LOOKUP rules using the same source, seed and
+     * lookup rows all hash to the SAME row, so column 1 goes to one destination and column 2 to another and the
+     * generated identity stays coherent across the row. VALUE absent (or =1 on a single-value row) is the
+     * original single-column behaviour, so existing lookups are unaffected.
+     */
+    private static String selectLookupColumn(String rowValue, Map<String, String> options) {
+        if (rowValue == null) return null;
+        String selector = options.get("VALUE");
+        if (selector == null || selector.isBlank()) return rowValue;
+        int column;
+        try { column = Integer.parseInt(selector.trim()); }
+        catch (NumberFormatException e) { throw new IllegalStateException("HASH_LOOKUP VALUE must be a 1-based column number", e); }
+        if (column < 1) throw new IllegalStateException("HASH_LOOKUP VALUE must be 1 or greater");
+        String separator = options.getOrDefault("VCOLSEP", "~");
+        String[] columns = rowValue.split(java.util.regex.Pattern.quote(separator), -1);
+        if (column > columns.length)
+            throw new IllegalStateException("HASH_LOOKUP VALUE=" + column + " but the lookup row has only " + columns.length + " column(s)");
+        return columns[column - 1].trim();
+    }
+
+    private static String specialLookupKey(String value) {
+        if (value == null) return "<NULL>";
+        if (value.isEmpty()) return "<EMPTY>";
+        if (value.trim().isEmpty()) return "<SPACES>";
+        return null;
+    }
+
+    private static String lookupKey(String value, Map<String, String> options) {
+        String special = specialLookupKey(value);
+        if (special != null) return special;
+        if (value.equalsIgnoreCase("<NULL>") || value.equalsIgnoreCase("<EMPTY>") || value.equalsIgnoreCase("<SPACES>"))
+            return value.toUpperCase(Locale.ROOT);
+        String out = value;
+        String trim = options.getOrDefault("TRIM", "NONE").toUpperCase(Locale.ROOT);
+        if (trim.equals("TRUE") || trim.equals("BOTH")) out = out.trim();
+        else if (trim.equals("LEFT")) out = out.replaceFirst("^\\s+", "");
+        else if (trim.equals("RIGHT")) out = out.replaceFirst("\\s+$", "");
+        String trimChars = options.get("TRIM_CHARS");
+        if (trimChars != null && !trimChars.isEmpty()) {
+            String chars = trimChars.replace("<SPACE>", " ");
+            StringBuilder kept = new StringBuilder(out.length());
+            for (char c : out.toCharArray()) if (chars.indexOf(c) < 0) kept.append(c);
+            out = kept.toString();
+        }
+        String caseMode = options.getOrDefault("CASE", options.containsKey("UPPER") ? "UPPER" : "SENSITIVE");
+        if (caseMode.equalsIgnoreCase("UPPER") || caseMode.equalsIgnoreCase("INSENSITIVE")) out = out.toUpperCase(Locale.ROOT);
+        else if (caseMode.equalsIgnoreCase("LOWER")) out = out.toLowerCase(Locale.ROOT);
+        return out;
+    }
+
+    private static LookupPair lookupPair(String raw) {
+        int arrow = raw.indexOf("=>");
+        if (arrow >= 0) return new LookupPair(raw.substring(0, arrow).trim(), raw.substring(arrow + 2).trim());
+        int equals = raw.indexOf('=');
+        return equals < 0 ? null : new LookupPair(raw.substring(0, equals).trim(), raw.substring(equals + 1).trim());
+    }
+
+    private static String lookupFallback(String actionSpec, String original, Map<String, String> options, String error) {
+        String action = actionSpec == null ? "ERROR" : actionSpec.trim().toUpperCase(Locale.ROOT);
+        return switch (action) {
+            case "PRESERVE", "IGNORE" -> original;
+            case "NULL", "NULLIFY" -> null;
+            case "REDACT" -> original == null ? null : redact(original, "*", "KEEP_FIRST:0");
+            case "DEFAULT" -> {
+                if (!options.containsKey("DEFAULT")) throw new IllegalStateException("Lookup DEFAULT action needs DEFAULT=value");
+                yield options.get("DEFAULT");
+            }
+            case "ERROR" -> throw new IllegalStateException(error);
+            default -> throw new IllegalStateException("Unknown lookup fallback action: " + actionSpec);
+        };
+    }
+
+    private static HashLookupTable hashLookupTable(String definition) {
+        List<String> entries = Arrays.stream(definition.split("\\|", -1)).map(String::trim).filter(v -> !v.isEmpty()).toList();
+        if (entries.isEmpty()) throw new IllegalStateException("HASH_LOOKUP has no replacement rows");
+        boolean keyed = entries.stream().map(MaskingEngine::lookupPair).anyMatch(pair -> pair != null && pair.key().matches("-?\\d+"));
+        if (!keyed) {
+            if (entries.stream().anyMatch(entry -> lookupPair(entry) != null))
+                throw new IllegalStateException("HASH_LOOKUP keyed rows must use sequential numeric keys");
+            return new HashLookupTable(entries.stream().map(MaskingEngine::stripLookupWeight).toList(), Map.of());
+        }
+
+        TreeMap<Integer, String> positive = new TreeMap<>();
+        Map<Integer, String> reserved = new LinkedHashMap<>();
+        for (String entry : entries) {
+            LookupPair pair = lookupPair(entry);
+            if (pair == null || !pair.key().matches("-?\\d+"))
+                throw new IllegalStateException("HASH_LOOKUP cannot mix keyed and unkeyed rows");
+            int key;
+            try { key = Integer.parseInt(pair.key()); }
+            catch (NumberFormatException e) { throw new IllegalStateException("HASH_LOOKUP key is outside integer range", e); }
+            if (key > 0) {
+                if (positive.putIfAbsent(key, pair.value()) != null) throw new IllegalStateException("HASH_LOOKUP contains duplicate key " + key);
+            } else if (key == -1 || key == -2 || key == -3) {
+                if (reserved.putIfAbsent(key, pair.value()) != null) throw new IllegalStateException("HASH_LOOKUP contains duplicate key " + key);
+            } else throw new IllegalStateException("HASH_LOOKUP only supports positive keys and reserved keys -1, -2, -3");
+        }
+        if (positive.isEmpty()) throw new IllegalStateException("HASH_LOOKUP needs sequential positive rows 1..N");
+        List<String> values = new ArrayList<>(positive.size());
+        for (int key = 1; key <= positive.size(); key++) {
+            String replacement = positive.get(key);
+            if (replacement == null) throw new IllegalStateException("HASH_LOOKUP positive keys must be contiguous from 1 with no gaps");
+            values.add(replacement);
+        }
+        return new HashLookupTable(List.copyOf(values), Map.copyOf(reserved));
+    }
+
+    private String lookupIdentity(String sourceSpec) {
+        String identity = sourceSpec == null ? "" : sourceSpec.trim();
+        if (identity.startsWith("@")) return "list:" + identity.substring(1).toLowerCase(Locale.ROOT);
+        byte[] digest = Determinism.hmac(secret, "lookup-definition", identity);
+        StringBuilder hex = new StringBuilder(16);
+        for (int i = 0; i < 8; i++) hex.append(String.format("%02x", digest[i] & 0xff));
+        return "inline:" + hex;
+    }
+
+    private record LookupPair(String key, String value) {}
+    private record HashLookupTable(List<String> values, Map<Integer, String> reserved) {}
+
+    private static String stripLookupWeight(String value) {
+        int colon = value.lastIndexOf(':');
+        return colon > 0 && value.substring(colon + 1).trim().matches("\\d+")
+                ? value.substring(0, colon).trim() : value;
+    }
+
+    /** Configurable fail-closed redaction, including the common keep-first/keep-last modes. */
+    private static String redact(String value, String maskSpec, String modeSpec) {
+        char mask = maskSpec == null || maskSpec.isEmpty() ? '*' : maskSpec.charAt(0);
+        String mode = modeSpec == null || modeSpec.isBlank() ? "FULL" : modeSpec.trim().toUpperCase(Locale.ROOT);
+        if (mode.startsWith("STANDARD:")) {
+            int length = parsePositiveSuffix(mode, 8);
+            return String.valueOf(mask).repeat(Math.min(length, 4096));
+        }
+        if ("FULL".equals(mode)) return String.valueOf(mask).repeat(value.length());
+
+        int keepFirst = mode.equals("KEEP_FIRST2") ? 2 : mode.equals("KEEP_FIRST2_LAST4") ? 2 :
+                mode.startsWith("KEEP_FIRST:") ? parsePositiveSuffix(mode, 0) : 0;
+        int keepLast = mode.equals("KEEP_LAST4") || mode.equals("KEEP_FIRST2_LAST4") ? 4 :
+                mode.startsWith("KEEP_LAST:") ? parsePositiveSuffix(mode, 0) : 0;
+        List<Integer> maskable = new java.util.ArrayList<>();
+        for (int i = 0; i < value.length(); i++) if (Character.isLetterOrDigit(value.charAt(i))) maskable.add(i);
+        Set<Integer> preserved = new java.util.HashSet<>();
+        for (int i = 0; i < Math.min(keepFirst, maskable.size()); i++) preserved.add(maskable.get(i));
+        for (int i = Math.max(0, maskable.size() - keepLast); i < maskable.size(); i++) preserved.add(maskable.get(i));
+        StringBuilder out = new StringBuilder(value);
+        for (int index : maskable) if (!preserved.contains(index)) out.setCharAt(index, mask);
+        return out.toString();
+    }
+
+    private static int parsePositiveSuffix(String value, int fallback) {
+        int colon = value.lastIndexOf(':');
+        if (colon < 0) return fallback;
+        try { return Math.max(0, Integer.parseInt(value.substring(colon + 1).trim())); }
+        catch (Exception ignored) { return fallback; }
+    }
+
+    /** Deterministic numeric perturbation with source scale and optional regulatory bounds preserved. */
+    private String numericNoise(String salt, String value, String noiseSpec, String clampSpec) {
+        BigDecimal original;
+        try {
+            original = new BigDecimal(value.trim());
+        } catch (NumberFormatException e) {
+            return characterMap(salt + "|numeric-fallback", value, null);
+        }
+        String spec = noiseSpec == null || noiseSpec.isBlank() ? "PERCENT:10" : noiseSpec.trim().toUpperCase(Locale.ROOT);
+        if (!spec.startsWith("PERCENT") && !spec.startsWith("ABS"))
+            throw new IllegalStateException("NUMERIC_NOISE param1 must be PERCENT:n or ABS:n");
+        int colon = spec.indexOf(':');
+        BigDecimal amount;
+        try { amount = new BigDecimal(colon >= 0 ? spec.substring(colon + 1).trim() : "10").abs(); }
+        catch (NumberFormatException e) { throw new IllegalStateException("NUMERIC_NOISE amount must be numeric", e); }
+        BigDecimal maximum = spec.startsWith("ABS") ? amount : original.abs().multiply(amount).movePointLeft(2);
+        Random random = Determinism.rng(secret, salt + "|numeric-noise", normalize(value));
+        BigDecimal signed = BigDecimal.valueOf(random.nextDouble() * 2.0 - 1.0);
+        BigDecimal result = original.add(maximum.multiply(signed));
+        BigDecimal[] bounds = decimalBounds(clampSpec);
+        if (bounds != null) result = result.max(bounds[0]).min(bounds[1]);
+        return result.setScale(Math.max(0, original.scale()), RoundingMode.HALF_UP).toPlainString();
+    }
+
+    /** Delphix-style min/max replacement for numeric values. */
+    private String minMax(String salt, String value, String minSpec, String maxSpec) {
+        try {
+            BigDecimal original = new BigDecimal(value.trim());
+            BigDecimal min = new BigDecimal(String.valueOf(minSpec).trim());
+            BigDecimal max = new BigDecimal(String.valueOf(maxSpec).trim());
+            if (min.compareTo(max) > 0) throw new IllegalStateException("MIN_MAX param1 must be <= param2");
+            Random random = Determinism.rng(secret, salt + "|min-max", normalize(value));
+            BigDecimal result = min.add(max.subtract(min).multiply(BigDecimal.valueOf(random.nextDouble())));
+            int scale = Math.max(0, original.scale());
+            return result.setScale(scale, RoundingMode.HALF_UP).max(min).min(max).toPlainString();
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException("MIN_MAX needs numeric value, param1 minimum, and param2 maximum", e);
+        }
+    }
+
+    private static BigDecimal[] decimalBounds(String spec) {
+        if (spec == null || spec.isBlank()) return null;
+        String[] parts = spec.split(":", -1);
+        if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank())
+            throw new IllegalStateException("Numeric clamp must be min:max");
+        BigDecimal min;
+        BigDecimal max;
+        try {
+            min = new BigDecimal(parts[0].trim());
+            max = new BigDecimal(parts[1].trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException("Numeric clamp bounds must be numbers", e);
+        }
+        if (min.compareTo(max) > 0) throw new IllegalStateException("Numeric clamp minimum must be <= maximum");
+        return new BigDecimal[]{min, max};
+    }
+
+    private String bankAccount(String salt, String value, String modeSpec) {
+        String mode = modeSpec == null || modeSpec.isBlank() ? "KEEP_LAST4" : modeSpec.trim().toUpperCase(Locale.ROOT);
+        if ("REDACT".equals(mode)) return redact(value, "*", "KEEP_FIRST:0");
+        if ("FORMAT_PRESERVE".equals(mode)) return formatPreserve(salt + "|account", value, false);
+        String digits = value.replaceAll("\\D", "");
+        if (digits.isEmpty()) return characterMap(salt + "|account", value, null);
+        int keep = Math.min(4, digits.length());
+        Random random = Determinism.rng(secret, salt + "|account", digits);
+        StringBuilder generated = new StringBuilder(digits.length());
+        for (int i = 0; i < digits.length() - keep; i++) generated.append((char) ('0' + random.nextInt(10)));
+        generated.append(digits.substring(digits.length() - keep));
+        return reinsertDigits(value, generated.toString());
+    }
+
+    private String iban(String salt, String value, String modeSpec, String formatSpec) {
+        String compact = value.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        if (compact.length() < 15 || compact.length() > 34 || !compact.substring(0, 2).matches("[A-Z]{2}"))
+            return characterMap(salt + "|iban-fallback", value, null);
+        String country = compact.substring(0, 2);
+        if ("RANDOM_COUNTRY".equalsIgnoreCase(modeSpec)) {
+            String[] safe = {"GB", "DE", "FR", "ES", "IT", "NL"};
+            country = safe[Determinism.pick(secret, salt + "|iban-country", compact, safe.length)];
+        }
+        Random random = Determinism.rng(secret, salt + "|iban", compact);
+        StringBuilder bban = new StringBuilder(compact.length() - 4);
+        for (int i = 4; i < compact.length(); i++) {
+            char original = compact.charAt(i);
+            bban.append(Character.isLetter(original) ? (char) ('A' + random.nextInt(26)) : (char) ('0' + random.nextInt(10)));
+        }
+        String checkBase = bban + country + "00";
+        int check = 98 - ibanMod97(checkBase);
+        String generated = country + String.format("%02d", check) + bban;
+        return "COMPACT".equalsIgnoreCase(formatSpec) ? generated : reinsertAlnum(value, generated);
+    }
+
+    private static int ibanMod97(String value) {
+        int remainder = 0;
+        for (char c : value.toCharArray()) {
+            String digits = Character.isLetter(c) ? String.valueOf(Character.toUpperCase(c) - 'A' + 10) : String.valueOf(c);
+            for (char d : digits.toCharArray()) remainder = (remainder * 10 + (d - '0')) % 97;
+        }
+        return remainder;
+    }
+
+    private String swiftBic(String salt, String value, String modeSpec) {
+        String compact = value.replaceAll("\\s", "").toUpperCase(Locale.ROOT);
+        if (!compact.matches("[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?"))
+            return characterMap(salt + "|bic-fallback", value, null);
+        Random random = Determinism.rng(secret, salt + "|bic", compact);
+        StringBuilder generated = new StringBuilder();
+        for (int i = 0; i < 4; i++) generated.append((char) ('A' + random.nextInt(26)));
+        if ("RANDOM_COUNTRY".equalsIgnoreCase(modeSpec)) {
+            String[] safe = {"US", "GB", "DE", "FR", "CA", "AU"};
+            generated.append(safe[random.nextInt(safe.length)]);
+        } else generated.append(compact, 4, 6);
+        while (generated.length() < compact.length()) generated.append(randomAlphaNumeric(random));
+        return generated.toString();
+    }
+
+    private String abaRouting(String salt, String value, String modeSpec) {
+        String digits = value.replaceAll("\\D", "");
+        if (digits.length() != 9) return formatPreserve(salt + "|aba-fallback", value, false);
+        Random random = Determinism.rng(secret, salt + "|aba", digits);
+        String prefix = digits.substring(0, 2);
+        if (!"PRESERVE_FED_DISTRICT".equalsIgnoreCase(modeSpec) || !validAbaPrefix(prefix)) {
+            String[] prefixes = {"01", "02", "03", "04", "05", "06", "07", "08", "09", "10", "11", "12",
+                    "21", "22", "23", "24", "25", "26", "27", "28", "29", "30", "31", "32"};
+            prefix = prefixes[random.nextInt(prefixes.length)];
+        }
+        StringBuilder body = new StringBuilder(prefix);
+        while (body.length() < 8) body.append((char) ('0' + random.nextInt(10)));
+        int[] weights = {3, 7, 1, 3, 7, 1, 3, 7};
+        int sum = 0;
+        for (int i = 0; i < 8; i++) sum += (body.charAt(i) - '0') * weights[i];
+        body.append((char) ('0' + ((10 - sum % 10) % 10)));
+        return reinsertDigits(value, body.toString());
+    }
+
+    private static boolean validAbaPrefix(String prefix) {
+        int value = Integer.parseInt(prefix);
+        return value <= 12 || (value >= 21 && value <= 32) || (value >= 61 && value <= 72) || value == 80;
+    }
+
+    private String nationalId(String salt, String value, String countrySpec, String formatSpec) {
+        String country = countrySpec == null || countrySpec.isBlank() ? "GENERIC" : countrySpec.trim().toUpperCase(Locale.ROOT);
+        if ("US".equals(country)) return ssn(salt + "|nid.us", value, "VALID_RANDOM_AREA", formatSpec);
+        String compact = value.replaceAll("[^A-Za-z0-9]", "").toUpperCase(Locale.ROOT);
+        Random random = Determinism.rng(secret, salt + "|nid." + country.toLowerCase(Locale.ROOT), compact);
+        if ("CA".equals(country) && compact.matches("\\d{9}")) {
+            StringBuilder body = new StringBuilder();
+            for (int i = 0; i < 8; i++) body.append((char) ('0' + random.nextInt(10)));
+            String generated = body.toString() + Luhn.checkDigit(body.toString());
+            return reinsertDigits(value, generated);
+        }
+        if ("UK".equals(country) && compact.matches("[A-Z]{2}\\d{6}[A-D]")) {
+            String first = "ABCEGHJKLMNPRSTWXYZ";
+            String second = "ABCEGHJKLMNPRSTWXYZ";
+            StringBuilder generated = new StringBuilder()
+                    .append(first.charAt(random.nextInt(first.length())))
+                    .append(second.charAt(random.nextInt(second.length())));
+            for (int i = 0; i < 6; i++) generated.append((char) ('0' + random.nextInt(10)));
+            generated.append("ABCD".charAt(random.nextInt(4)));
+            return reinsertAlnum(value, generated.toString());
+        }
+        return characterMap(salt + "|nid.generic", value, null);
+    }
+
+    private String ipAddress(String salt, String value, String modeSpec) {
+        String trimmed = value.trim();
+        Random random = Determinism.rng(secret, salt + "|ip", trimmed.toLowerCase(Locale.ROOT));
+        if (trimmed.contains(":")) {
+            if (!trimmed.matches("[0-9A-Fa-f:]+")) return characterMap(salt + "|ip-fallback", value, null);
+            return String.format("2001:db8:%x:%x:%x:%x:%x:%x", random.nextInt(65536), random.nextInt(65536),
+                    random.nextInt(65536), random.nextInt(65536), random.nextInt(65536), random.nextInt(65536));
+        }
+        String[] parts = trimmed.split("\\.", -1);
+        if (parts.length != 4 || !validIpv4(parts)) return characterMap(salt + "|ip-fallback", value, null);
+        int first = Integer.parseInt(parts[0]), second = Integer.parseInt(parts[1]);
+        boolean preservePrivate = !"SAFE_TEST_RANGE".equalsIgnoreCase(modeSpec) &&
+                (first == 10 || (first == 172 && second >= 16 && second <= 31) || (first == 192 && second == 168));
+        if (preservePrivate && first == 10)
+            return "10." + random.nextInt(256) + "." + random.nextInt(256) + "." + (1 + random.nextInt(254));
+        if (preservePrivate && first == 172)
+            return "172." + (16 + random.nextInt(16)) + "." + random.nextInt(256) + "." + (1 + random.nextInt(254));
+        if (preservePrivate)
+            return "192.168." + random.nextInt(256) + "." + (1 + random.nextInt(254));
+        String[] documentation = {"192.0.2", "198.51.100", "203.0.113"};
+        return documentation[random.nextInt(documentation.length)] + "." + (1 + random.nextInt(254));
+    }
+
+    private static boolean validIpv4(String[] parts) {
+        try {
+            for (String part : parts) {
+                if (part.isBlank() || Integer.parseInt(part) < 0 || Integer.parseInt(part) > 255) return false;
+            }
+            return true;
+        } catch (NumberFormatException e) { return false; }
+    }
+
+    private String macAddress(String salt, String value, String modeSpec) {
+        String compact = value.replaceAll("[:-]", "");
+        if (!compact.matches("(?i)[0-9a-f]{12}")) return characterMap(salt + "|mac-fallback", value, null);
+        Random random = Determinism.rng(secret, salt + "|mac", compact.toLowerCase(Locale.ROOT));
+        int[] bytes = new int[6];
+        for (int i = 0; i < bytes.length; i++) bytes[i] = random.nextInt(256);
+        if ("PRESERVE_OUI".equalsIgnoreCase(modeSpec)) {
+            for (int i = 0; i < 3; i++) bytes[i] = Integer.parseInt(compact.substring(i * 2, i * 2 + 2), 16);
+        } else bytes[0] = (bytes[0] | 0x02) & 0xfe; // locally administered, unicast
+        char separator = value.contains("-") ? '-' : ':';
+        boolean upper = value.equals(value.toUpperCase(Locale.ROOT));
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < bytes.length; i++) {
+            if (i > 0) out.append(separator);
+            out.append(String.format(upper ? "%02X" : "%02x", bytes[i]));
+        }
+        return out.toString();
+    }
+
+    private String uuid(String salt, String value) {
+        String compact = value.replaceAll("[{}-]", "");
+        if (!compact.matches("(?i)[0-9a-f]{32}")) return characterMap(salt + "|uuid-fallback", value, null);
+        byte[] bytes = java.util.Arrays.copyOf(Determinism.hmac(secret, salt + "|uuid", compact.toLowerCase(Locale.ROOT)), 16);
+        bytes[6] = (byte) ((bytes[6] & 0x0f) | 0x40);
+        bytes[8] = (byte) ((bytes[8] & 0x3f) | 0x80);
+        StringBuilder hex = new StringBuilder(32);
+        for (byte b : bytes) hex.append(String.format("%02x", b & 0xff));
+        String raw = hex.toString();
+        String formatted = raw.substring(0, 8) + "-" + raw.substring(8, 12) + "-" + raw.substring(12, 16) + "-" +
+                raw.substring(16, 20) + "-" + raw.substring(20);
+        if (value.equals(value.toUpperCase(Locale.ROOT))) formatted = formatted.toUpperCase(Locale.ROOT);
+        return value.startsWith("{") && value.endsWith("}") ? "{" + formatted + "}" : formatted;
+    }
+
+    private static char randomAlphaNumeric(Random random) {
+        int n = random.nextInt(36);
+        return n < 26 ? (char) ('A' + n) : (char) ('0' + n - 26);
+    }
+
+    private static String reinsertAlnum(String original, String generated) {
+        StringBuilder out = new StringBuilder(original.length());
+        int index = 0;
+        for (int i = 0; i < original.length(); i++) {
+            char source = original.charAt(i);
+            if (!Character.isLetterOrDigit(source)) out.append(source);
+            else if (index < generated.length()) {
+                char replacement = generated.charAt(index++);
+                out.append(Character.isLowerCase(source) ? Character.toLowerCase(replacement) : replacement);
+            }
+        }
+        return index == generated.length() ? out.toString() : generated;
+    }
+
     /** FPE-style: every digit -> digit, letter -> letter (case preserved); punctuation/length untouched.
      *  Phone mode (keepCountryCode) preserves a leading '+' AND its country-code digit group so
      *  routing/locale logic in the application under test keeps working. */
@@ -680,7 +1289,12 @@ public class MaskingEngine {
         return "*".repeat(Math.min(value.length() - 4, 12)) + last4;
     }
 
-    // ---------- user-defined Lua scripts (IBM-Optim-style exits) ----------
+    // ---------- governed lookup and user-defined Lua registries ----------
+
+    private volatile MaskLookupProvider lookupProvider;
+
+    /** Wired by the host application (DB-backed governed Value Lists). */
+    public void setLookupProvider(MaskLookupProvider provider) { this.lookupProvider = provider; }
 
     private volatile MaskScriptProvider scriptProvider;
 

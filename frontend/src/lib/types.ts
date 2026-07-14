@@ -5,6 +5,34 @@ export type DataSource = {
   role: 'SOURCE' | 'TARGET' | 'BOTH' | string;
   environment?: string | null;
   jdbcUrl?: string | null;
+  username?: string | null;
+  tags?: string | null;
+  createdAt?: string | null;
+};
+
+export type DataSourceSchema = {
+  schema?: string | null;
+  current?: boolean;
+  [key: string]: unknown;
+};
+
+export type NativeLoaderStatus = {
+  engine?: string | null;
+  database?: string | null;
+  strategy?: string | null;
+  label?: string | null;
+  enabled?: boolean;
+  available?: boolean;
+  ready?: boolean;
+  nativeAvailable?: boolean;
+  builtIn?: boolean;
+  binaryPath?: string | null;
+  path?: string | null;
+  enabledEnv?: string | null;
+  binaryEnv?: string | null;
+  hint?: string | null;
+  fallback?: string | null;
+  [key: string]: unknown;
 };
 
 export type MaskingPolicy = {
@@ -14,6 +42,7 @@ export type MaskingPolicy = {
   dataSourceId?: number | null;
   schemaName?: string | null;
   status?: string | null;
+  createdAt?: string | null;
 };
 
 export type DataSetDefinition = {
@@ -95,9 +124,34 @@ export type SavedDataScopeJob = {
   scheduleCron?: string | null;
   scheduleZone?: string | null;
   scheduleEnabled?: boolean;
+  selfServiceEnabled?: boolean;
+  selfServiceLabel?: string | null;
   nextRunAt?: string | null;
   updatedAt?: string | null;
   spec?: Record<string, unknown> | null;
+};
+
+export type ProvisionJob = {
+  id: number;
+  name: string;
+  jobType: string;
+  sourceId?: number | null;
+  targetId?: number | null;
+  policyId?: number | null;
+  datasetId?: number | null;
+  status: string;
+  rowsProcessed?: number;
+  message?: string | null;
+  specJson?: string | null;
+  tableStatesJson?: string | null;
+  conflictJson?: string | null;
+  createdAt?: string | null;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+  createdBy?: string | null;
+  approvalStatus?: string | null;
+  approvedBy?: string | null;
+  approvalNote?: string | null;
 };
 
 export type UserDefinedRelationship = {
@@ -203,4 +257,20 @@ export type MaskingRule = {
   param1?: string | null;
   param2?: string | null;
   deterministic?: boolean;
+};
+
+export type MaskingScript = {
+  id: number;
+  name: string;
+  description?: string | null;
+  luaSource?: string | null;
+  ownerUsername?: string | null;
+  visibility?: 'GLOBAL' | 'PRIVATE' | string;
+  createdAt?: string | null;
+  updatedAt?: string | null;
+};
+
+export type MaskPreview = {
+  original?: string | null;
+  masked?: string | null;
 };

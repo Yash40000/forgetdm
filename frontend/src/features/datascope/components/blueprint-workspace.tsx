@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Badge, Button, Card, Divider, Group, Modal, Paper, Select, SimpleGrid, Stack, Tabs, Text, TextInput, Textarea, Title } from '@mantine/core';
+import { Badge, Button, Card, Divider, Group, Modal, Paper, Select, SimpleGrid, Stack, Tabs, Text, Textarea, Title } from '@mantine/core';
+import { NameInput } from '@/components/name-input';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 
@@ -38,7 +39,8 @@ export function SelectedBlueprintWorkspace({
   savedJobs,
   isProfilesLoading,
   isGuardrailsLoading,
-  onDeleted
+  onDeleted,
+  onDraftDirtyChange
 }: {
   blueprint: DataSetDefinition | null;
   dataSources: DataSource[];
@@ -51,6 +53,7 @@ export function SelectedBlueprintWorkspace({
   isProfilesLoading: boolean;
   isGuardrailsLoading: boolean;
   onDeleted?: () => void;
+  onDraftDirtyChange?: (dirty: boolean) => void;
 }) {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
@@ -58,6 +61,10 @@ export function SelectedBlueprintWorkspace({
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editPolicyId, setEditPolicyId] = useState('');
+  const [activeTab, setActiveTab] = useState<string | null>('overview');
+  const [draftDirty, setDraftDirty] = useState(false);
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   if (!blueprint) {
     return (
@@ -78,6 +85,8 @@ export function SelectedBlueprintWorkspace({
   };
 
   const saveEdit = async () => {
+    if (savingEdit) return;
+    setSavingEdit(true);
     try {
       await apiPut<DataSetDefinition>(`/api/datasets/${blueprint.id}`, {
         ...blueprint,
@@ -92,10 +101,13 @@ export function SelectedBlueprintWorkspace({
       await queryClient.invalidateQueries({ queryKey: keys.datascope.blueprints });
     } catch (error) {
       notifications.show({ color: 'red', title: 'Could not update blueprint', message: (error as Error).message });
+    } finally {
+      setSavingEdit(false);
     }
   };
 
   const deleteBlueprint = async () => {
+    if (deleting) return;
     const ok = await confirm({
       title: 'Delete blueprint',
       danger: true,
@@ -103,6 +115,7 @@ export function SelectedBlueprintWorkspace({
       message: `Delete "${blueprint.name}" and its table profiles, column maps, custom relationships, traversal rules, and versions? Saved jobs that reference it will fail. This cannot be undone.`
     });
     if (!ok) return;
+    setDeleting(true);
     try {
       await apiFetch(`/api/datasets/${blueprint.id}`, { method: 'DELETE' });
       notifications.show({ color: 'green', title: 'Blueprint deleted', message: blueprint.name });
@@ -110,7 +123,29 @@ export function SelectedBlueprintWorkspace({
       onDeleted?.();
     } catch (error) {
       notifications.show({ color: 'red', title: 'Could not delete blueprint', message: (error as Error).message });
+    } finally {
+      setDeleting(false);
     }
+  };
+
+  const handleDraftDirty = (dirty: boolean) => {
+    setDraftDirty(dirty);
+    onDraftDirtyChange?.(dirty);
+  };
+
+  const changeTab = async (tab: string | null) => {
+    if (!tab || tab === activeTab) return;
+    if (draftDirty) {
+      const discard = await confirm({
+        title: 'Discard unsaved DataScope changes?',
+        message: 'Moving to another tab will discard the unsaved profile, map, or relationship edits.',
+        okText: 'Discard changes',
+        danger: true
+      });
+      if (!discard) return;
+    }
+    handleDraftDirty(false);
+    setActiveTab(tab);
   };
 
   return (
@@ -135,13 +170,13 @@ export function SelectedBlueprintWorkspace({
             <Button size="xs" variant="light" onClick={openEdit}>
               Edit
             </Button>
-            <Button size="xs" variant="subtle" color="red" onClick={() => void deleteBlueprint()}>
+            <Button size="xs" variant="subtle" color="red" loading={deleting} onClick={() => void deleteBlueprint()}>
               Delete
             </Button>
           </Group>
         </Group>
         <Divider />
-        <Tabs defaultValue="overview" keepMounted={false}>
+        <Tabs value={activeTab} onChange={(tab) => void changeTab(tab)} keepMounted={false}>
           <Tabs.List className="forge-tabs-list" px="lg">
             <Tabs.Tab value="overview">Overview</Tabs.Tab>
             <Tabs.Tab value="profiles">Table profiles</Tabs.Tab>
@@ -163,10 +198,11 @@ export function SelectedBlueprintWorkspace({
               dataSources={dataSources}
               policies={policies}
               loading={isProfilesLoading}
+              onDirtyChange={handleDraftDirty}
             />
           </Tabs.Panel>
           <Tabs.Panel value="relationships" p="lg">
-            <RelationshipsPanel key={blueprint.id} blueprint={blueprint} profiles={profiles} />
+            <RelationshipsPanel key={blueprint.id} blueprint={blueprint} profiles={profiles} onDirtyChange={handleDraftDirty} />
           </Tabs.Panel>
           <Tabs.Panel value="guardrails" p="lg">
             <GuardrailsPanel coverage={piiCoverage} drift={drift} loading={isGuardrailsLoading} />
@@ -190,7 +226,7 @@ export function SelectedBlueprintWorkspace({
 
       <Modal opened={editOpened} onClose={() => setEditOpened(false)} title="Edit blueprint">
         <Stack gap="sm">
-          <TextInput label="Name" value={editName} onChange={(e) => setEditName(e.currentTarget.value)} />
+          <NameInput label="Name" value={editName} onChange={(value) => setEditName(value)} />
           <Textarea label="Description" minRows={2} value={editDescription} onChange={(e) => setEditDescription(e.currentTarget.value)} />
           <Select
             label="Default masking policy"
@@ -204,7 +240,7 @@ export function SelectedBlueprintWorkspace({
             <Button variant="light" onClick={() => setEditOpened(false)}>
               Cancel
             </Button>
-            <Button disabled={!editName.trim()} onClick={() => void saveEdit()}>
+            <Button loading={savingEdit} disabled={!editName.trim()} onClick={() => void saveEdit()}>
               Save
             </Button>
           </Group>

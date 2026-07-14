@@ -34,10 +34,16 @@ public class AiAssistantService {
         List<Map<String, Object>> list = new ArrayList<>();
         for (Map.Entry<String, AiProperties.Provider> e : eff.entrySet()) {
             if (!e.getValue().configured()) continue;
+            LlmClient.ModelRuntime runtime = llm.runtime(e.getValue());
             Map<String, Object> p = new LinkedHashMap<>();
             p.put("id", e.getKey());
             p.put("label", e.getValue().getLabel());
-            p.put("model", e.getValue().getModel());
+            p.put("model", runtime.model());
+            p.put("configuredModel", runtime.configuredModel());
+            p.put("reachable", runtime.reachable());
+            p.put("autoSelected", runtime.autoSelected());
+            p.put("availableModels", runtime.availableModels());
+            p.put("detail", runtime.detail());
             p.put("local", e.getValue().isLocal());   // on-prem endpoint — UI can badge "no data leaves your network"
             list.add(p);
         }
@@ -74,8 +80,24 @@ public class AiAssistantService {
         return msg.path("content").asText("");
     }
 
+    public String completeStructured(String system, String user, String providerId, String model, JsonNode schema) {
+        AiProperties.Provider provider = resolveProvider(providerId);
+        if (provider == null) throw ApiException.bad("No private AI provider is configured. See AI_COPILOT_SETUP.txt.");
+        List<Object> messages = new ArrayList<>();
+        messages.add(Map.of("role", "system", "content", system));
+        messages.add(Map.of("role", "user", "content", user));
+        JsonNode msg = llm.chat(provider, model, messages, null, schema);
+        return msg.path("content").asText("");
+    }
+
     /** Whether any AI provider is configured (the agent needs one). */
     public boolean ready() { return !props.effectiveProviders().isEmpty() && resolveProvider(null) != null; }
+
+    /** Provider-aware readiness; private runtimes must also be reachable to avoid blocking compilation. */
+    public boolean ready(String providerId) {
+        AiProperties.Provider provider = resolveProvider(providerId);
+        return provider != null && (!provider.isLocal() || llm.runtime(provider).reachable());
+    }
 
     /** True if the given (or default) provider is a local/on-prem endpoint — callers can run leaner on slow CPU models. */
     public boolean isLocalProvider(String providerId) {

@@ -1,5 +1,6 @@
 package io.forgetdm.mainframe;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import java.time.Instant;
 
@@ -14,6 +15,7 @@ public class MainframeConnectionEntity {
     private Integer port;
     @Column(name = "base_path") private String basePath;      // z/OSMF base path (default /zosmf)
     private String username;
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
     @Column(name = "base_dir") private String baseDir;        // LOCAL landing-folder path
     @Column(name = "code_page", nullable = false) private String codePage = "Cp037";

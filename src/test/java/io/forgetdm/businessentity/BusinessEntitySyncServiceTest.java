@@ -11,6 +11,8 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -83,6 +85,13 @@ class BusinessEntitySyncServiceTest {
         List<Map<String, Object>> members = castList(result.get("members"));
         assertEquals("STALE", members.get(0).get("status"));
         assertTrue(String.valueOf(members.get(0).get("message")).contains("older than SLA"));
+    }
+
+    @Test
+    void parsesOracleTimestampTextReturnedByJdbcDriver() {
+        Instant parsed = BusinessEntitySyncService.toInstant("2026-07-13 13:55:00.038");
+        assertEquals(LocalDateTime.of(2026, 7, 13, 13, 55, 0, 38_000_000)
+                .atZone(ZoneId.systemDefault()).toInstant(), parsed);
     }
 
     private BusinessEntitySyncService.SyncPolicyRequest request(int lagSeconds) {

@@ -1336,12 +1336,14 @@ public class ProvisioningService {
 
         Map<String, MaskingRuleEntity> ruleByCol = new HashMap<>();
         if (tableRules != null) for (MaskingRuleEntity r : tableRules) ruleByCol.put(r.getColumnName().toLowerCase(Locale.ROOT), r);
+        SqlDialect sourceDialect = SqlDialect.fromConnection(in);
+        SqlDialect targetDialect = SqlDialect.fromConnection(out);
         List<String> keys = keyColumns(out, targetSchema, targetTable, writerCols, load, customPkMap);
-        int batch = load.batchSize();
+        int batch = safeJdbcBatchRows(targetDialect, Math.max(1, writerCols.size()), load.batchSize());
         long rows = 0;
 
-        SqlDialect targetDialect = SqlDialect.fromConnection(out);
-        List<List<String>> keyChunks = pkValues == null ? nullableChunk() : chunks(new ArrayList<>(pkValues), KEY_CHUNK_SIZE);
+        int keyChunkSize = safeJdbcBatchRows(sourceDialect, 1, KEY_CHUNK_SIZE);
+        List<List<String>> keyChunks = pkValues == null ? nullableChunk() : chunks(new ArrayList<>(pkValues), keyChunkSize);
         int[] writerSqlTypes = columnPlans.stream().mapToInt(ColumnPlan::sqlType).toArray();
         // Rolling buffer of the current uncommitted batch (masked row + its original source values), cleared on
         // each flush. On a constraint failure it lets us show the failed record original-vs-masked (and, for a
@@ -1892,6 +1894,7 @@ public class ProvisioningService {
         String updJoin = inPlaceUpdateSql(dialect, schema, table, stg, joinKeys, updateCols);
         String clearStg = (dialect == SqlDialect.GENERIC) ? "DELETE FROM " + q(schema, stg) : dialect.truncateSql(q(schema, stg));
         int chunkKeyPos = readCols.indexOf(chunkKey);
+        int stageBatchRows = safeJdbcBatchRows(dialect, Math.max(1, stageCols.size()), chunkRows);
 
         // Reuse filter/limit already resolved for the pushdown check above
         String rowFilter = pushFilter;
@@ -1967,14 +1970,19 @@ public class ProvisioningService {
 
                 try (Statement st = out.createStatement()) { st.executeUpdate(clearStg); }
                 try (PreparedStatement ps = out.prepareStatement(insStg)) {
+                    int pendingStageRows = 0;
                     for (Object[] row : staged) {
                         for (int i = 0; i < row.length; i++) {
                             if (row[i] == null) ps.setNull(i + 1, stageTypes[i]);
                             else ps.setObject(i + 1, row[i]);
                         }
                         ps.addBatch();
+                        if (++pendingStageRows >= stageBatchRows) {
+                            ps.executeBatch();
+                            pendingStageRows = 0;
+                        }
                     }
-                    ps.executeBatch();
+                    if (pendingStageRows > 0) ps.executeBatch();
                 }
                 try (Statement st = out.createStatement()) { st.executeUpdate(updJoin); }
                 out.commit();
@@ -2165,6 +2173,7 @@ public class ProvisioningService {
         String stg = "fdm_stg_" + sanitize(table) + "_" + job.getId();
         int batch = spec.path("inPlaceChunkRows").asInt(50_000);
         batch = batch <= 0 ? 50_000 : Math.min(batch, 500_000);
+        batch = safeJdbcBatchRows(dialect, Math.max(1, stageCols.size()), batch);
 
         String readList = String.join(",", readCols.stream().map(c -> alias + "." + q(c)).toList());
         StringBuilder selSb = new StringBuilder("SELECT ").append(readList);
@@ -2438,7 +2447,8 @@ public class ProvisioningService {
             try (PreparedStatement ins = out.prepareStatement(
                     "INSERT INTO " + q(schema, keepTbl) + " (" + q(pkCol) + ") VALUES (?)")) {
                 int n = 0;
-                for (String k : keep) { bindValue(ins, 1, k); ins.addBatch(); if (++n % 5_000 == 0) ins.executeBatch(); }
+                int batchRows = safeJdbcBatchRows(dialect, 1, 5_000);
+                for (String k : keep) { bindValue(ins, 1, k); ins.addBatch(); if (++n % batchRows == 0) ins.executeBatch(); }
                 ins.executeBatch();
             }
             try (Statement st = out.createStatement()) {
@@ -2524,6 +2534,7 @@ public class ProvisioningService {
             case SQLSERVER -> "SELECT " + colList + " INTO " + stgQ + " FROM " + src + " WHERE 1=0";
             case POSTGRES  -> "CREATE UNLOGGED TABLE " + stgQ + " AS SELECT " + colList + " FROM " + src + " WHERE 1=0";
             case DB2       -> "CREATE TABLE " + stgQ + " AS (SELECT " + colList + " FROM " + src + ") WITH NO DATA";
+            case TERADATA  -> "CREATE MULTISET TABLE " + stgQ + " AS (SELECT " + colList + " FROM " + src + ") WITH NO DATA";
             default        -> "CREATE TABLE " + stgQ + " AS SELECT " + colList + " FROM " + src + " WHERE 1=0";
         };
         try (Statement st = out.createStatement()) { st.executeUpdate(sql); }
@@ -2544,7 +2555,7 @@ public class ProvisioningService {
         try { if (!out.getAutoCommit()) out.rollback(); } catch (SQLException ignore) { }
         try (Statement st = out.createStatement()) {
             String sql = switch (dialect) {
-                case DB2, ORACLE -> "DROP TABLE " + q(schema, stg);
+                case DB2, ORACLE, TERADATA -> "DROP TABLE " + q(schema, stg);
                 default -> "DROP TABLE IF EXISTS " + q(schema, stg);
             };
             st.executeUpdate(sql);
@@ -2830,6 +2841,54 @@ public class ProvisioningService {
         int batch = spec.path("batchSize").asInt(props.getProvisioning().getBatchSize());
         batch = batch <= 0 ? props.getProvisioning().getBatchSize() : Math.min(batch, 50_000);
         return new LoadOptions(action, prep, keyColumns(spec), batch);
+    }
+
+    private static int safeJdbcBatchRows(SqlDialect dialect, int bindColumnsPerRow, int requestedRows) {
+        int requested = requestedRows <= 0 ? 1 : requestedRows;
+        int columns = Math.max(1, bindColumnsPerRow);
+        int limit = Math.max(1, dialect == null ? 32_767 : dialect.bindParamLimit());
+        int margin = dialect == SqlDialect.SQLSERVER ? 100 : 50;
+        int maxByParams = Math.max(1, (limit - margin) / columns);
+        int maxByDialect = dialect == SqlDialect.SQLSERVER ? Math.min(maxByParams, 1000) : maxByParams;
+        return Math.max(1, Math.min(requested, maxByDialect));
+    }
+
+    static boolean containsLobType(int[] sqlTypes) {
+        if (sqlTypes == null) return false;
+        for (int sqlType : sqlTypes)
+            if (sqlType == Types.BLOB || sqlType == Types.CLOB || sqlType == Types.NCLOB
+                    || sqlType == Types.LONGVARBINARY || sqlType == Types.LONGVARCHAR
+                    || sqlType == Types.LONGNVARCHAR || sqlType == Types.SQLXML) return true;
+        return false;
+    }
+
+    static boolean containsLobValue(Object[] values) {
+        if (values == null) return false;
+        for (Object value : values)
+            if (value instanceof Blob || value instanceof Clob || value instanceof SQLXML) return true;
+        return false;
+    }
+
+    /** Cross-driver bind that consumes source LOB locators as streams instead of passing vendor objects to a target driver. */
+    static void bindJdbcValue(PreparedStatement ps, int index, Object value, int sqlType) throws SQLException {
+        if (value == null) {
+            ps.setNull(index, sqlType);
+        } else if (value instanceof NClob nclob) {
+            ps.setNCharacterStream(index, nclob.getCharacterStream(), nclob.length());
+        } else if (value instanceof Clob clob) {
+            ps.setCharacterStream(index, clob.getCharacterStream(), clob.length());
+        } else if (value instanceof Blob blob) {
+            ps.setBinaryStream(index, blob.getBinaryStream(), blob.length());
+        } else if (value instanceof SQLXML xml) {
+            ps.setCharacterStream(index, xml.getCharacterStream());
+        } else if (value instanceof byte[] bytes) {
+            ps.setBinaryStream(index, new java.io.ByteArrayInputStream(bytes), bytes.length);
+        } else if (value instanceof String text && (sqlType == Types.CLOB || sqlType == Types.NCLOB
+                || sqlType == Types.LONGVARCHAR || sqlType == Types.LONGNVARCHAR || sqlType == Types.SQLXML)) {
+            ps.setCharacterStream(index, new java.io.StringReader(text), text.length());
+        } else {
+            ps.setObject(index, value);
+        }
     }
 
     private static String normalizeLoadAction(String action) {
@@ -3254,6 +3313,7 @@ public class ProvisioningService {
         /** UPDATE ... WHERE pk=? statement, used for UPDATE action only. */
         private final PreparedStatement update;
         private int[] sqlTypes;
+        private boolean lobColumns;
         private int pendingInserts;
         /**
          * True when the INSERT_UPDATE action uses a row-by-row MERGE (SQLSERVER, ORACLE, DB2).
@@ -3283,6 +3343,7 @@ public class ProvisioningService {
                     .filter(c -> !keys.contains(c.toLowerCase(Locale.ROOT)))
                     .toList();
             this.sqlTypes = sqlTypes;
+            this.lobColumns = containsLobType(sqlTypes);
 
             if ("INSERT_UPDATE".equals(action)) {
                 if (keyColumns.isEmpty()) throw ApiException.bad("Update-style load requires key columns for " + table);
@@ -3321,15 +3382,30 @@ public class ProvisioningService {
             int cap = Math.max(1, dialect.maxRowsPerInsert());
             int want = Math.max(1, load.batchSize());
             // Keep total bind parameters safely under the driver's limit.
-            int paramCeil = Math.max(1, (dialect.bindParamLimit() - 50) / Math.max(1, this.columns.size()));
-            this.multiRows = (plainInsert && multiRowDialect) ? Math.max(1, Math.min(Math.min(cap, want), paramCeil)) : 1;
+            int paramCeil = safeJdbcBatchRows(dialect, Math.max(1, this.columns.size()), want);
+            this.multiRows = (plainInsert && multiRowDialect && !lobColumns)
+                    ? Math.max(1, Math.min(Math.min(cap, want), paramCeil)) : 1;
         }
 
         void setSqlTypes(int[] sqlTypes) {
             this.sqlTypes = sqlTypes;
+            this.lobColumns = containsLobType(sqlTypes);
         }
 
         void write(Object[] values) throws SQLException {
+            // JDBC drivers may defer consuming stream binds until execute. Execute LOB rows immediately while the
+            // source ResultSet locator/stream is still valid, and never retain a BLOB/CLOB in a row buffer.
+            if (lobColumns || containsLobValue(values)) {
+                flush();
+                if ("UPDATE".equals(action)) {
+                    bindUpdate(values);
+                    update.executeUpdate();
+                } else {
+                    bindInsert(values);
+                    insert.executeUpdate();
+                }
+                return;
+            }
             if (plainInsert && multiRows > 1) {        // dialect-aware multi-row INSERT fast path
                 rowBuf.add(values);
                 if (rowBuf.size() >= multiRows) flushMulti();
@@ -3437,8 +3513,7 @@ public class ProvisioningService {
         }
 
         private static void bind(PreparedStatement ps, int index, Object value, int sqlType) throws SQLException {
-            if (value == null) ps.setNull(index, sqlType);
-            else ps.setObject(index, value);
+            bindJdbcValue(ps, index, value, sqlType);
         }
 
         /**
@@ -3739,6 +3814,15 @@ public class ProvisioningService {
             case "ADDRESS_US" -> "addr.us";
             case "COMPANY" -> "company";
             case "DOB_AGE_BAND" -> "dob";
+            case "BANK_ACCOUNT" -> "bank.account";
+            case "IBAN" -> "iban";
+            case "SWIFT_BIC" -> "swift.bic";
+            case "ABA_ROUTING" -> "routing.aba";
+            case "NATIONAL_ID" -> "national.id";
+            case "IP_ADDRESS" -> "network.ip";
+            case "MAC_ADDRESS" -> "network.mac";
+            case "DIRECT_LOOKUP" -> "lookup.direct";
+            case "HASH_LOOKUP" -> "lookup.hash";
             // Everything else is table.column-salted EXCEPT FK-related key columns, which share one salt so a
             // PK and the FKs referencing it mask to the same value (referential integrity preserved).
             default -> {

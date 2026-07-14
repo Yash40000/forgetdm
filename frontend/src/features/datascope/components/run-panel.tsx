@@ -21,6 +21,7 @@ import { IconAlertTriangle, IconPlayerPlay, IconTestPipe } from '@tabler/icons-r
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { useConfirm } from '@/components/confirm';
+import { NameInput } from '@/components/name-input';
 import { apiFetch, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type {
@@ -35,6 +36,7 @@ import type {
 } from '@/lib/types';
 import { duplicateTargets, equalsIgnoreCase, isProfileIncluded, numberOrNull, sourceName, technicalInputProps } from '../utils';
 import { SavedJobsPanel } from './saved-jobs-panel';
+import { ProvisionJobMonitor } from './job-monitor';
 
 export type ProvisionForm = {
   name: string;
@@ -95,6 +97,7 @@ export function RunPanel({
   const [saveOpened, setSaveOpened] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [saveDescription, setSaveDescription] = useState('');
+  const [busyAction, setBusyAction] = useState<'launch' | 'save' | null>(null);
 
   const previewPlan = useMutation({
     mutationFn: () =>
@@ -122,6 +125,7 @@ export function RunPanel({
         title: 'In-place needs one source',
         message: 'In-place masking requires all mapped tables to use the default source DB and schema.'
       });
+      await queryClient.invalidateQueries({ queryKey: keys.datascope.jobs });
       return null;
     }
     if (!inPlace && !blueprint.targetDataSourceId) {
@@ -273,20 +277,25 @@ export function RunPanel({
   };
 
   const launch = async () => {
-    const payload = await buildPayload();
-    if (!payload) return;
+    if (busyAction) return;
+    setBusyAction('launch');
     try {
+      const payload = await buildPayload();
+      if (!payload) return;
       const job = await apiPost<{ id?: number; status?: string }>('/api/jobs', payload);
       notifications.show({
         color: job.status === 'AWAITING_APPROVAL' ? 'yellow' : 'green',
         title: job.status === 'AWAITING_APPROVAL' ? 'Submitted for approval' : 'Provision launched',
         message:
           job.status === 'AWAITING_APPROVAL'
-            ? 'An approver must sign off before it runs (Job Monitor in the classic console).'
-            : `Job #${job.id ?? '?'} is running — track it in the Job Monitor.`
+            ? 'An approver must sign off before it runs. Track the request in the provision monitor below.'
+            : `Job #${job.id ?? '?'} is running. Track it in the provision monitor below.`
       });
+      await queryClient.invalidateQueries({ queryKey: keys.datascope.jobs });
     } catch (error) {
       notifications.show({ color: 'red', title: 'Could not launch provision', message: (error as Error).message });
+    } finally {
+      setBusyAction(null);
     }
   };
 
@@ -297,9 +306,11 @@ export function RunPanel({
   };
 
   const saveAsJob = async () => {
-    const payload = await buildPayload();
-    if (!payload) return;
+    if (busyAction) return;
+    setBusyAction('save');
     try {
+      const payload = await buildPayload();
+      if (!payload) return;
       await apiPost('/api/datascope/saved-jobs', {
         name: saveName.trim(),
         description: saveDescription.trim(),
@@ -310,6 +321,8 @@ export function RunPanel({
       await queryClient.invalidateQueries({ queryKey: keys.datascope.savedJobs });
     } catch (error) {
       notifications.show({ color: 'red', title: 'Could not save job', message: (error as Error).message });
+    } finally {
+      setBusyAction(null);
     }
   };
 
@@ -419,16 +432,16 @@ export function RunPanel({
               </Text>
             </div>
             <Group gap="xs">
-              <Button variant="light" onClick={openSaveModal}>
+              <Button variant="light" disabled={!!busyAction} onClick={openSaveModal}>
                 Save as job
               </Button>
-              <Button leftSection={<IconPlayerPlay size={16} />} onClick={() => void launch()}>
+              <Button leftSection={<IconPlayerPlay size={16} />} loading={busyAction === 'launch'} disabled={busyAction === 'save'} onClick={() => void launch()}>
                 Launch provision
               </Button>
             </Group>
           </Group>
           <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
-            <TextInput label="Run name" value={form.name} onChange={(e) => setForm({ ...form, name: e.currentTarget.value })} />
+            <NameInput label="Run name" value={form.name} onChange={(value) => setForm({ ...form, name: value })} />
             <Select
               label="Default masking policy"
               description="Per-table policies in the map override this."
@@ -540,6 +553,10 @@ export function RunPanel({
       </Paper>
 
       <Paper className="forge-card" p="md">
+        <ProvisionJobMonitor datasetId={blueprint.id} />
+      </Paper>
+
+      <Paper className="forge-card" p="md">
         <Stack gap="sm">
           <div>
             <Text fw={800}>Saved jobs</Text>
@@ -553,13 +570,13 @@ export function RunPanel({
 
       <Modal opened={saveOpened} onClose={() => setSaveOpened(false)} title="Save DataScope job">
         <Stack gap="sm">
-          <TextInput label="Saved job name" value={saveName} onChange={(e) => setSaveName(e.currentTarget.value)} />
+          <NameInput label="Saved job name" value={saveName} onChange={(value) => setSaveName(value)} />
           <TextInput label="Description" placeholder="optional" value={saveDescription} onChange={(e) => setSaveDescription(e.currentTarget.value)} />
           <Group justify="flex-end">
             <Button variant="light" onClick={() => setSaveOpened(false)}>
               Cancel
             </Button>
-            <Button disabled={!saveName.trim()} onClick={() => void saveAsJob()}>
+            <Button loading={busyAction === 'save'} disabled={!saveName.trim() || busyAction === 'launch'} onClick={() => void saveAsJob()}>
               Save
             </Button>
           </Group>

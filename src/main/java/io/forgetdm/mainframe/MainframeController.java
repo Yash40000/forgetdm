@@ -70,6 +70,35 @@ public class MainframeController {
         return connections.save(c);
     }
 
+    @PutMapping("/connections/{id}")
+    public MainframeConnectionEntity updateConnection(@PathVariable Long id,
+                                                       @RequestBody MainframeConnectionEntity update) {
+        MainframeConnectionEntity saved = conn(id);
+        String type = update.getType() == null ? saved.getType() : update.getType().trim().toUpperCase(Locale.ROOT);
+        if (!Set.of("LOCAL", "ZOWE").contains(type)) throw ApiException.bad("type must be LOCAL or ZOWE");
+        String name = update.getName() == null ? saved.getName() : update.getName().trim();
+        if (name.isBlank()) throw ApiException.bad("name required");
+        connections.findByName(name)
+                .filter(other -> !other.getId().equals(id))
+                .ifPresent(other -> { throw ApiException.bad("A connection named '" + name + "' already exists"); });
+        if (type.equals("LOCAL") && (update.getBaseDir() == null || update.getBaseDir().isBlank()))
+            throw ApiException.bad("LOCAL connection needs a base directory");
+        if (type.equals("ZOWE") && (update.getHost() == null || update.getHost().isBlank()))
+            throw ApiException.bad("ZOWE connection needs a host");
+
+        saved.setName(name);
+        saved.setType(type);
+        saved.setHost(blankToNull(update.getHost()));
+        saved.setPort(update.getPort());
+        saved.setBasePath(blankToNull(update.getBasePath()));
+        saved.setUsername(blankToNull(update.getUsername()));
+        if (update.getPassword() != null && !update.getPassword().isBlank()) saved.setPassword(update.getPassword());
+        saved.setBaseDir(blankToNull(update.getBaseDir()));
+        saved.setCodePage(update.getCodePage() == null || update.getCodePage().isBlank() ? "Cp037" : update.getCodePage().trim());
+        saved.setTrustAllCerts(update.isTrustAllCerts());
+        return connections.save(saved);
+    }
+
     @DeleteMapping("/connections/{id}")
     public Map<String, Object> deleteConnection(@PathVariable Long id) {
         connections.deleteById(id);

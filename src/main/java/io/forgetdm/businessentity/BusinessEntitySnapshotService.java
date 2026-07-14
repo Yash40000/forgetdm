@@ -95,6 +95,7 @@ public class BusinessEntitySnapshotService {
         List<BusinessEntitySnapshotMemberEntity> rows = new ArrayList<>();
         long totalRows = 0;
         int linked = 0;
+        int countFailures = 0;
         for (BusinessEntityMemberEntity member : detail.members()) {
             BusinessEntitySnapshotMemberEntity row = new BusinessEntitySnapshotMemberEntity();
             row.setSnapshotId(snapshot.getId());
@@ -110,27 +111,32 @@ public class BusinessEntitySnapshotService {
                 row.setVirtualSnapshotId(vSnap);
                 linked++;
             }
-            long count = safeCountRows(member, criteria);
-            row.setRowCount(count);
-            totalRows += count;
-            row.setStatus(vSnap == null && "PHYSICAL_SNAPSHOT".equals(mode) ? "EVIDENCE_ONLY" : "CAPTURED");
-            row.setEvidenceJson(writeJson(Map.of(
-                    "consistencyId", consistencyId,
-                    "captureMode", mode,
-                    "businessRole", String.valueOf(member.getLogicalRole()),
-                    "tableAlias", String.valueOf(member.getTableAlias()))));
+            CountEvidence count = countRows(member, criteria);
+            row.setRowCount(count.rowCount());
+            totalRows += count.rowCount();
+            if (!count.success()) countFailures++;
+            row.setStatus(!count.success() ? "COUNT_FAILED"
+                    : vSnap == null && "PHYSICAL_SNAPSHOT".equals(mode) ? "EVIDENCE_ONLY" : "CAPTURED");
+            Map<String, Object> evidence = new LinkedHashMap<>();
+            evidence.put("consistencyId", consistencyId);
+            evidence.put("captureMode", mode);
+            evidence.put("businessRole", String.valueOf(member.getLogicalRole()));
+            evidence.put("tableAlias", String.valueOf(member.getTableAlias()));
+            evidence.put("countVerified", count.success());
+            if (count.message() != null) evidence.put("countMessage", count.message());
+            row.setEvidenceJson(writeJson(evidence));
             rows.add(row);
         }
         rows = snapshotMembers.saveAll(rows);
         snapshot.setLinkedVirtualSnapshots(linked);
         snapshot.setTotalRows(totalRows);
         snapshot.setRollbackPlanJson(writeRollbackPlan(rows));
-        snapshot.setStatus("AVAILABLE");
+        snapshot.setStatus(countFailures == 0 ? "AVAILABLE" : "AVAILABLE_WITH_WARNINGS");
         snapshot.setCompletedAt(Instant.now());
         snapshot = snapshots.save(snapshot);
         audit.log("system", "BUSINESS_ENTITY_SNAPSHOT_CREATE",
                 "entity=" + detail.entity().getName() + " snapshot=" + snapshot.getId()
-                        + " mode=" + mode + " linked=" + linked);
+                        + " mode=" + mode + " linked=" + linked + " countFailures=" + countFailures);
         return new SnapshotDetail(snapshot, rows);
     }
 
@@ -229,22 +235,30 @@ public class BusinessEntitySnapshotService {
                 "members", rows.size()));
     }
 
-    private long safeCountRows(BusinessEntityMemberEntity member, String criteria) {
-        if (member.getDataSourceId() == null || member.getTableName() == null) return 0;
+    private CountEvidence countRows(BusinessEntityMemberEntity member, String criteria) {
+        if (member.getDataSourceId() == null || member.getTableName() == null) {
+            return new CountEvidence(0, false, "Member data source or table is not configured.");
+        }
         if (criteria != null) SubsetService.guardFilter(criteria);
         try {
             DataSourceEntity ds = dataSources.get(member.getDataSourceId());
             try (Connection c = connections.open(ds); Statement st = c.createStatement()) {
-                String sql = "SELECT COUNT(*) FROM " + qName(member.getSchemaName(), member.getTableName())
+                String sql = "SELECT COUNT(*) FROM " + BusinessEntitySql.name(ds, member.getSchemaName(), member.getTableName())
                         + (criteria == null || criteria.isBlank() ? "" : " WHERE " + criteria);
                 try (ResultSet rs = st.executeQuery(sql)) {
-                    return rs.next() ? rs.getLong(1) : 0;
+                    return rs.next()
+                            ? new CountEvidence(rs.getLong(1), true, null)
+                            : new CountEvidence(0, false, "Count query returned no row.");
                 }
             }
         } catch (Exception e) {
-            return 0;
+            String message = e.getMessage();
+            if (message == null || message.isBlank()) message = e.getClass().getSimpleName();
+            return new CountEvidence(0, false, message.length() > 500 ? message.substring(0, 500) : message);
         }
     }
+
+    private record CountEvidence(long rowCount, boolean success, String message) {}
 
     private String criteriaFor(BusinessEntityMemberEntity member, SnapshotRequest request) {
         if (request == null) return null;
@@ -279,16 +293,6 @@ public class BusinessEntitySnapshotService {
 
     private static String systemKey(Long dataSourceId, String schema) {
         return String.valueOf(dataSourceId) + "|" + String.valueOf(schema == null ? "" : schema);
-    }
-
-    private static String qName(String schema, String table) {
-        if (schema == null || schema.isBlank()) return q(table);
-        return q(schema) + "." + q(table);
-    }
-
-    private static String q(String ident) {
-        if (ident == null || !ident.matches("[A-Za-z0-9_]+")) throw ApiException.bad("Illegal identifier: " + ident);
-        return "\"" + ident + "\"";
     }
 
     private static String requiredName(String value, String fallback) {

@@ -9,9 +9,12 @@ demo/*.log
 demo/pgdemo-data/
 run-codex-*.log
 run-codex-*.err.log
+run-ai*.log
 run.log
 target/
 frontend/.next/
 frontend/node_modules/
 frontend/out/
 frontend/.env*.local
+frontend/next-dev*.log
+jdbc-drivers/*.jar

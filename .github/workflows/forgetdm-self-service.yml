@@ -1,0 +1,20 @@
+name: ForgeTDM self-service request
+on:
+  workflow_dispatch:
+    inputs:
+      template_id: { description: "Published ForgeTDM template id", required: true, type: string }
+      environment: { description: "Target environment", required: true, default: "QA", type: choice, options: [QA, UAT, PERFORMANCE] }
+
+jobs:
+  request:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Request governed test data
+        env:
+          FORGETDM_URL: ${{ secrets.FORGETDM_URL }}
+          FORGETDM_TOKEN: ${{ secrets.FORGETDM_TOKEN }}
+          FORGETDM_TEMPLATE_ID: ${{ inputs.template_id }}
+          FORGETDM_ENVIRONMENT: ${{ inputs.environment }}
+          FORGETDM_PURPOSE: GitHub Actions ${{ github.repository }} run ${{ github.run_id }}
+        run: sh scripts/forge-tdm-request.sh

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import {
   Accordion,
+  ActionIcon,
   Alert,
   Badge,
   Button,
@@ -14,6 +15,7 @@ import {
   Modal,
   NumberInput,
   Paper,
+  Progress,
   ScrollArea,
   Select,
   SimpleGrid,
@@ -21,14 +23,16 @@ import {
   Switch,
   Text,
   TextInput,
-  Textarea
+  Textarea,
+  Tooltip
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconDeviceFloppy, IconPlayerPlay, IconPlus, IconRefresh, IconTrash } from '@tabler/icons-react';
+import { IconDeviceFloppy, IconPlayerPlay, IconPlus, IconRefresh, IconSearch, IconTrash } from '@tabler/icons-react';
 
 import { apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { NameInput } from '@/components/name-input';
 import type { DataColumn, DataSource } from '@/lib/types';
 import type {
   GeneratorSpec,
@@ -53,7 +57,8 @@ import {
   emptySyntheticDraft,
   ensureTargetMappings,
   formatRows,
-  generatorOptions,
+  GENERATOR_FALLBACKS,
+  generatorName,
   makeColumn,
   normalizeName,
   optionHasValue,
@@ -75,6 +80,13 @@ type SyntheticDesignerProps = {
   onGenerated: (job: SyntheticJob, plan: SyntheticPlan) => void;
 };
 
+type ImportStatus = {
+  phase: string;
+  table: string;
+  done: number;
+  total: number;
+};
+
 export function SyntheticDesigner({ dataSources, generators, initialPlan, onGenerated }: SyntheticDesignerProps) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<SyntheticDraft>(() => (initialPlan ? draftFromPlan(initialPlan) : emptySyntheticDraft()));
@@ -84,13 +96,13 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
   const [saveOpened, setSaveOpened] = useState(false);
   const [saveName, setSaveName] = useState('');
   const [saveDescription, setSaveDescription] = useState('');
+  const [importStatus, setImportStatus] = useState<ImportStatus | null>(null);
 
   const sourceSchemas = useSchemas(draft.sourceDataSourceId);
   const sourceTables = useTables(draft.sourceDataSourceId, draft.sourceSchema);
   const targetSchemas = useSchemas(draft.targetDataSourceId);
   const plan = useMemo(() => collectSyntheticPlan(draft), [draft]);
   const fingerprint = useMemo(() => planFingerprint(plan), [plan]);
-  const genOptions = useMemo(() => generatorOptions(generators), [generators]);
 
   const previewPlan = useMutation({
     mutationFn: (nextPlan: SyntheticPlan) => apiPost<SyntheticPlanSummary>('/api/synthetic/plan-summary', nextPlan),
@@ -132,10 +144,13 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
       const requestedTables = parseNameList(tables);
       if (!requestedTables.length) throw new Error('Type or browse at least one source table.');
       const existing = new Set(draft.tables.map((table) => table.name.toLowerCase()));
+      const pending = requestedTables.filter((table) => !existing.has(table.toLowerCase()));
+      const total = pending.length;
       const added: SyntheticTable[] = [];
       const warnings: string[] = [];
-      for (const table of requestedTables) {
-        if (existing.has(table.toLowerCase())) continue;
+      let index = 0;
+      for (const table of pending) {
+        setImportStatus({ phase: 'Reading columns', table, done: index, total });
         const [columns, fks] = await Promise.all([
           fetchColumns(draft.sourceDataSourceId, draft.sourceSchema, table),
           fetchForeignKeys(draft.sourceDataSourceId, draft.sourceSchema, table)
@@ -143,6 +158,7 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
         if (!columns.length) throw new Error(`No columns found for ${draft.sourceSchema}.${table}. Check the source schema and table name.`);
         let imported = tableFromColumns(table, columns, fks);
         if (learn) {
+          setImportStatus({ phase: 'Sampling live data', table, done: index, total });
           const profile = await apiPost<ProfileResponse>('/api/synthetic/profile', {
             dataSourceId: draft.sourceDataSourceId,
             schema: draft.sourceSchema,
@@ -153,9 +169,12 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
         }
         added.push(imported);
         existing.add(table.toLowerCase());
+        index += 1;
+        setImportStatus({ phase: 'Added', table, done: index, total });
       }
       return { added, warnings };
     },
+    onSettled: () => setImportStatus(null),
     onSuccess: ({ added, warnings }) => {
       if (!added.length) {
         notifications.show({ color: 'yellow', title: 'No new tables added', message: 'Selected tables were already in the design.' });
@@ -227,9 +246,10 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
           onImport={(learn) => importTables.mutate({ tables: selectedSourceTables, learn })}
           onImportAll={(learn) => importTables.mutate({ tables: tableOptions(sourceTables.data).map((row) => row.value), learn })}
           busy={importTables.isPending}
+          importStatus={importStatus}
         />
 
-        <TableEditor draft={draft} setDraft={setDraft} generatorOptions={genOptions} />
+        <TableEditor draft={draft} setDraft={setDraft} generators={generators} />
 
         <OutputPanel
           draft={draft}
@@ -266,7 +286,7 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
 
       <Modal opened={saveOpened} onClose={() => setSaveOpened(false)} title="Save synthetic job" size="md">
         <Stack gap="sm">
-          <TextInput label="Job name" value={saveName} onChange={(event) => setSaveName(safeInputValue(event))} />
+          <NameInput label="Job name" value={saveName} onChange={(value) => setSaveName(value)} />
           <Textarea label="Description" value={saveDescription} onChange={(event) => setSaveDescription(safeInputValue(event))} />
           <Alert color="blue" variant="light">
             Saved jobs can be loaded, approved, exported as shell runners, and run without rebuilding the design.
@@ -348,7 +368,8 @@ function SourceImportPanel({
   setSourceTableText,
   onImport,
   onImportAll,
-  busy
+  busy,
+  importStatus
 }: {
   draft: SyntheticDraft;
   setDraft: (fn: (draft: SyntheticDraft) => SyntheticDraft) => void;
@@ -365,6 +386,7 @@ function SourceImportPanel({
   onImport: (learn: boolean) => void;
   onImportAll: (learn: boolean) => void;
   busy: boolean;
+  importStatus: ImportStatus | null;
 }) {
   const [sourceBrowseOpened, setSourceBrowseOpened] = useState(false);
   const [schemaBrowseOpened, setSchemaBrowseOpened] = useState(false);
@@ -447,6 +469,29 @@ function SourceImportPanel({
               </Badge>
             )}
           </Group>
+          {busy || importStatus ? (
+            <div className="syn-import-status">
+              <Group justify="space-between" gap="sm" mb={6} wrap="nowrap">
+                <Group gap={8} wrap="nowrap">
+                  <Loader size="xs" />
+                  <Text size="sm" fw={720}>
+                    {importStatus ? `${importStatus.phase}: ${importStatus.table}` : 'Preparing import…'}
+                  </Text>
+                </Group>
+                {importStatus && importStatus.total ? (
+                  <Text size="xs" c="dimmed" style={{ whiteSpace: 'nowrap' }}>
+                    {importStatus.done}/{importStatus.total} table(s)
+                  </Text>
+                ) : null}
+              </Group>
+              <Progress
+                size="sm"
+                striped
+                animated
+                value={importStatus && importStatus.total ? (importStatus.done / importStatus.total) * 100 : 100}
+              />
+            </div>
+          ) : null}
           <SimpleGrid cols={{ base: 1, md: 2 }}>
             <Group align="flex-end" wrap="nowrap">
               <TextInput
@@ -517,21 +562,45 @@ function SourceImportPanel({
                 <Button variant="light" disabled={!canUseSchema} loading={sourceTablesLoading} onClick={() => setTableBrowseOpened(true)}>
                   Browse tables
                 </Button>
-                <Button disabled={importDisabled} onClick={() => onImport(false)}>
-                  Add these tables
-                </Button>
-                <Button variant="light" disabled={importDisabled} onClick={() => onImport(true)}>
-                  Add + learn
-                </Button>
+                <Tooltip label="Imports the columns of these tables into the design below, with type-matched generators." withArrow>
+                  <Button leftSection={<IconPlus size={15} />} disabled={importDisabled} onClick={() => onImport(false)}>
+                    {selectedCount ? `Add ${selectedCount} table${selectedCount === 1 ? '' : 's'} to design` : 'Add to design'}
+                  </Button>
+                </Tooltip>
+                <Tooltip
+                  label="Same as Add, plus it samples LIVE rows to learn each column's real value mix (statuses, categories, ranges) so generated data keeps production's shape. Slower — it reads the source."
+                  withArrow
+                  multiline
+                  w={300}
+                >
+                  <Button variant="light" disabled={importDisabled} onClick={() => onImport(true)}>
+                    Add + learn from live data
+                  </Button>
+                </Tooltip>
               </div>
             </div>
+            <Text size="xs" c="dimmed">
+              {importDisabled && !busy
+                ? sourceInputError || schemaInputError || tableInputError
+                  ? 'Fix the highlighted field above, then the Add buttons unlock.'
+                  : !canUseSource
+                    ? 'Step 1: pick a Source DB — then a schema, then the tables.'
+                    : !canUseSchema
+                      ? 'Step 2: pick the source schema.'
+                      : 'Step 3: type table names above (or Browse) — the Add buttons unlock as soon as there is at least one.'
+                : `"Add to design" imports columns with matching generators. "Learn from live data" also copies each column's real value distribution.`}
+            </Text>
             <Group gap="xs">
-              <Button variant="subtle" disabled={!catalogCount || busy || Boolean(sourceInputError || schemaInputError)} onClick={() => onImportAll(false)}>
-                {catalogCount ? `Add all ${catalogCount} tables` : 'Add all tables'}
-              </Button>
-              <Button variant="subtle" disabled={!catalogCount || busy || Boolean(sourceInputError || schemaInputError)} onClick={() => onImportAll(true)}>
-                Add all + learn
-              </Button>
+              <Tooltip label="Adds every table in this schema's catalog — no need to type names." withArrow>
+                <Button variant="subtle" disabled={!catalogCount || busy || Boolean(sourceInputError || schemaInputError)} onClick={() => onImportAll(false)}>
+                  {catalogCount ? `Add all ${catalogCount} catalog tables` : 'Add all tables'}
+                </Button>
+              </Tooltip>
+              <Tooltip label="Adds every catalog table AND learns value distributions from live rows (slowest, most realistic)." withArrow>
+                <Button variant="subtle" disabled={!catalogCount || busy || Boolean(sourceInputError || schemaInputError)} onClick={() => onImportAll(true)}>
+                  Add all + learn
+                </Button>
+              </Tooltip>
               {selectedCount ? (
                 <Button variant="subtle" color="red" onClick={clearTables}>
                   Clear selection
@@ -824,12 +893,15 @@ function TableBrowseModal({
 function TableEditor({
   draft,
   setDraft,
-  generatorOptions
+  generators
 }: {
   draft: SyntheticDraft;
   setDraft: (fn: (draft: SyntheticDraft) => SyntheticDraft) => void;
-  generatorOptions: string[];
+  generators: GeneratorSpec[];
 }) {
+  const [browseTarget, setBrowseTarget] = useState<{ tableIndex: number; columnIndex: number } | null>(null);
+  const browseColumn =
+    browseTarget != null ? draft.tables[browseTarget.tableIndex]?.columns[browseTarget.columnIndex] : null;
   const updateTable = (index: number, patch: Partial<SyntheticTable>) => {
     setDraft((current) => ({
       ...current,
@@ -896,7 +968,12 @@ function TableEditor({
                 <Stack gap="sm">
                   <SimpleGrid cols={{ base: 1, md: 3 }}>
                     <TextInput label="Table name" value={table.name} onChange={(event) => updateTable(tableIndex, { name: safeInputValue(event) })} />
-                    <NumberInput label="Rows" min={0} value={table.rowCount} onChange={(value) => updateTable(tableIndex, { rowCount: value || 0 })} />
+                    <NumberInput
+                      label="Rows"
+                      min={0}
+                      value={table.rowCount}
+                      onChange={(value) => updateTable(tableIndex, { rowCount: value === '' || value === null ? '' : value })}
+                    />
                     <Group align="flex-end">
                       <Button
                         variant="light"
@@ -943,13 +1020,28 @@ function TableEditor({
                                   <TextInput value={column.name} onChange={(event) => updateColumn(tableIndex, columnIndex, { name: safeInputValue(event) })} />
                                 </td>
                                 <td>
-                                  <Select
-                                    data={generatorOptions}
-                                    searchable
-                                    value={column.generator || 'ALPHANUMERIC'}
-                                    disabled={Boolean(column.fkTable)}
-                                    onChange={(value) => updateColumn(tableIndex, columnIndex, { generator: value || 'ALPHANUMERIC' })}
-                                  />
+                                  <Group gap={4} wrap="nowrap" align="center">
+                                    <TextInput
+                                      readOnly
+                                      value={column.generator || 'ALPHANUMERIC'}
+                                      disabled={Boolean(column.fkTable)}
+                                      style={{ flex: 1, minWidth: 0 }}
+                                      styles={{ input: { cursor: column.fkTable ? 'not-allowed' : 'pointer' } }}
+                                      onClick={() => {
+                                        if (!column.fkTable) setBrowseTarget({ tableIndex, columnIndex });
+                                      }}
+                                    />
+                                    <Tooltip label="Browse generators" withArrow>
+                                      <ActionIcon
+                                        variant="light"
+                                        aria-label="Browse generators"
+                                        disabled={Boolean(column.fkTable)}
+                                        onClick={() => setBrowseTarget({ tableIndex, columnIndex })}
+                                      >
+                                        <IconSearch size={16} />
+                                      </ActionIcon>
+                                    </Tooltip>
+                                  </Group>
                                 </td>
                                 <td>
                                   <TextInput
@@ -997,15 +1089,19 @@ function TableEditor({
                                 <td>
                                   <NumberInput
                                     min={0}
-                                    value={column.fkMin || ''}
-                                    onChange={(value) => updateColumn(tableIndex, columnIndex, { fkMin: value || null })}
+                                    value={column.fkMin ?? ''}
+                                    onChange={(value) =>
+                                      updateColumn(tableIndex, columnIndex, { fkMin: value === '' || value === null ? null : value })
+                                    }
                                   />
                                 </td>
                                 <td>
                                   <NumberInput
                                     min={0}
-                                    value={column.fkMax || ''}
-                                    onChange={(value) => updateColumn(tableIndex, columnIndex, { fkMax: value || null })}
+                                    value={column.fkMax ?? ''}
+                                    onChange={(value) =>
+                                      updateColumn(tableIndex, columnIndex, { fkMax: value === '' || value === null ? null : value })
+                                    }
                                   />
                                 </td>
                                 <td>
@@ -1033,7 +1129,155 @@ function TableEditor({
           ))}
         </Accordion>
       </Stack>
+      <GeneratorBrowseModal
+        opened={browseTarget != null}
+        generators={generators}
+        current={browseColumn?.generator || ''}
+        onClose={() => setBrowseTarget(null)}
+        onSelect={(name) => {
+          if (browseTarget) updateColumn(browseTarget.tableIndex, browseTarget.columnIndex, { generator: name });
+          setBrowseTarget(null);
+        }}
+      />
     </Card>
+  );
+}
+
+type BrowseItem = {
+  name: string;
+  category: string;
+  description: string;
+  param1: string;
+  param2: string;
+};
+
+function buildBrowseItems(generators: GeneratorSpec[]): BrowseItem[] {
+  const byName = new Map<string, BrowseItem>();
+  for (const fallback of GENERATOR_FALLBACKS) {
+    const name = String(fallback).trim().toUpperCase();
+    if (!name) continue;
+    byName.set(name, { name, category: 'Other', description: '', param1: '', param2: '' });
+  }
+  for (const spec of generators || []) {
+    const name = generatorName(spec).toUpperCase();
+    if (!name) continue;
+    byName.set(name, {
+      name,
+      category: spec.category || 'Other',
+      description: spec.description || '',
+      param1: spec.param1 || '',
+      param2: spec.param2 || ''
+    });
+  }
+  return Array.from(byName.values()).sort(
+    (a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name)
+  );
+}
+
+function GeneratorBrowseModal({
+  opened,
+  generators,
+  current,
+  onClose,
+  onSelect
+}: {
+  opened: boolean;
+  generators: GeneratorSpec[];
+  current: string;
+  onClose: () => void;
+  onSelect: (name: string) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState<string | null>('ALL');
+  const items = useMemo(() => buildBrowseItems(generators), [generators]);
+  const categories = useMemo(
+    () => ['ALL'].concat(Array.from(new Set(items.map((item) => item.category))).sort()),
+    [items]
+  );
+  const filtered = useMemo(() => {
+    const clean = search.trim().toLowerCase();
+    return items.filter((item) => {
+      const categoryMatch = !category || category === 'ALL' || item.category === category;
+      const searchMatch =
+        !clean ||
+        [item.name, item.category, item.description, item.param1, item.param2].some((part) =>
+          part.toLowerCase().includes(clean)
+        );
+      return categoryMatch && searchMatch;
+    });
+  }, [items, category, search]);
+
+  return (
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title={`Choose a generator (${items.length} available)`}
+      size="xl"
+      scrollAreaComponent={ScrollArea.Autosize}
+    >
+      <Stack gap="sm">
+        <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+          <TextInput
+            {...technicalInputProps}
+            label="Search"
+            placeholder="name, category, parameter"
+            value={search}
+            onChange={(event) => setSearch(safeInputValue(event))}
+            data-autofocus
+          />
+          <Select
+            label="Category"
+            data={categories.map((value) => ({ value, label: value === 'ALL' ? 'All categories' : value }))}
+            value={category}
+            onChange={(value) => setCategory(value || 'ALL')}
+          />
+        </SimpleGrid>
+        {!filtered.length ? (
+          <Alert color="yellow" variant="light">
+            No generators match this filter.
+          </Alert>
+        ) : (
+          <div className="masking-function-grid syn-generator-grid is-studio">
+            {filtered.map((item) => (
+              <article
+                key={item.name}
+                role="button"
+                tabIndex={0}
+                className={`masking-function-card syn-generator-card ${current.toUpperCase() === item.name ? 'is-active' : ''}`}
+                onClick={() => onSelect(item.name)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    onSelect(item.name);
+                  }
+                }}
+              >
+                <Group justify="space-between" align="flex-start" wrap="nowrap">
+                  <div>
+                    <Text fw={850}>{item.name}</Text>
+                    {item.description ? (
+                      <Text size="xs" c="dimmed" className="syn-generator-description">
+                        {item.description}
+                      </Text>
+                    ) : null}
+                  </div>
+                  <Badge size="xs" variant="light">
+                    {item.category}
+                  </Badge>
+                </Group>
+                <div className="syn-generator-meta">
+                  <span>
+                    {[item.param1 && `p1: ${item.param1}`, item.param2 && `p2: ${item.param2}`]
+                      .filter(Boolean)
+                      .join(' | ') || 'No params'}
+                  </span>
+                </div>
+              </article>
+            ))}
+          </div>
+        )}
+      </Stack>
+    </Modal>
   );
 }
 
@@ -1192,12 +1436,17 @@ function OutputPanel({
                 value={draft.keyColumns}
                 onChange={(event) => update({ keyColumns: safeInputValue(event) })}
               />
-              <NumberInput label="Batch size" min={1} value={draft.batchSize} onChange={(value) => update({ batchSize: value || '' })} />
+              <NumberInput
+                label="Batch size"
+                min={1}
+                value={draft.batchSize}
+                onChange={(value) => update({ batchSize: value === '' || value === null ? '' : value })}
+              />
               <NumberInput
                 label="Commit every rows"
                 min={0}
                 value={draft.commitEveryRows}
-                onChange={(value) => update({ commitEveryRows: value || '' })}
+                onChange={(value) => update({ commitEveryRows: value === '' || value === null ? '' : value })}
               />
             </SimpleGrid>
             <Group gap="md">
@@ -1225,7 +1474,7 @@ function OutputPanel({
                 min={0}
                 value={draft.maxRejects}
                 disabled={!draft.continueOnError}
-                onChange={(value) => update({ maxRejects: value || '' })}
+                onChange={(value) => update({ maxRejects: value === '' || value === null ? '' : value })}
                 w={140}
               />
             </Group>
@@ -1253,14 +1502,14 @@ function OutputPanel({
                 max={32}
                 value={draft.partitionCount}
                 disabled={draft.executionMode === 'SINGLE'}
-                onChange={(value) => update({ partitionCount: value || '' })}
+                onChange={(value) => update({ partitionCount: value === '' || value === null ? '' : value })}
               />
               <NumberInput
                 label="Rows per partition"
                 min={1000}
                 value={draft.partitionSize}
                 disabled={draft.executionMode === 'SINGLE'}
-                onChange={(value) => update({ partitionSize: value || '' })}
+                onChange={(value) => update({ partitionSize: value === '' || value === null ? '' : value })}
               />
             </SimpleGrid>
             <Text size="xs" c="dimmed">
@@ -1422,7 +1671,7 @@ function EnterpriseTargetPanel({
                 <Accordion.Panel>
                   <Stack gap="sm">
                     <SimpleGrid cols={{ base: 1, md: 5 }}>
-                      <TextInput label="Target name" value={target.name || ''} onChange={(event) => updateTarget(targetIndex, { name: safeInputValue(event) })} />
+                      <NameInput label="Target name" value={target.name || ''} onChange={(value) => updateTarget(targetIndex, { name: value })} />
                       <Select
                         label="Data source"
                         data={sourceOptions(dataSources, 'target')}
