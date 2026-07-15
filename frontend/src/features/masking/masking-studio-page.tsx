@@ -1,18 +1,18 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Badge, Button, Group, Paper, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { ActionIcon, Badge, Button, Drawer, Group, Paper, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconDatabaseSearch, IconPlayerPlay } from '@tabler/icons-react';
+import { IconDatabaseSearch, IconPlayerPlay, IconSearch, IconShieldCheck, IconX } from '@tabler/icons-react';
 import { useMutation } from '@tanstack/react-query';
 
 import { apiPost } from '@/lib/api';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import type { MaskPreview } from '@/lib/types';
-import { EmptyPanel, FunctionCard, isLookupOptionsFunction, LookupOptionsBuilder, MaskingHeader, MaskingMetric, ParamControl, PreviewResult } from './components';
+import { EmptyPanel, FunctionCard, isLookupOptionsFunction, LookupOptionsBuilder, MaskingHeader, ParamControl, PreviewResult } from './components';
 import { useMaskingFunctions, useMaskingLookupReferences, useMaskingScripts, useMaskingValueLists } from './hooks';
 import type { StudioPreviewDraft } from './types';
-import { defaultMaskParamsForMap, functionSummary, safeInputValue, technicalInputProps } from './utils';
+import { defaultMaskParamsForMap, functionCategory, functionSummary, safeInputValue, technicalInputProps } from './utils';
 
 const sampleValues: Record<string, string> = {
   SSN: '123-45-6789',
@@ -56,6 +56,8 @@ export function MaskingStudioPage() {
   const valueLists = useMemo(() => valueListsQuery.data || [], [valueListsQuery.data]);
   const lookupReferences = useMemo(() => lookupReferencesQuery.data || [], [lookupReferencesQuery.data]);
   const [search, setSearch] = useState('');
+  const [category, setCategory] = useState<string | null>('ALL');
+  const [tryOpen, setTryOpen] = useState(false);
   const [draft, setDraft] = useState<StudioPreviewDraft>({
     functionName: 'SSN',
     value: sampleValues.SSN,
@@ -86,9 +88,17 @@ export function MaskingStudioPage() {
 
   const filteredFunctions = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return functions;
-    return functions.filter((fn) => `${fn} ${functionSummary(fn)}`.toLowerCase().includes(q));
-  }, [functions, search]);
+    return functions.filter((fn) => {
+      const categoryMatch = !category || category === 'ALL' || functionCategory(fn) === category;
+      const searchMatch = !q || `${fn} ${functionCategory(fn)} ${functionSummary(fn)}`.toLowerCase().includes(q);
+      return categoryMatch && searchMatch;
+    });
+  }, [category, functions, search]);
+
+  const categories = useMemo(
+    () => ['ALL', ...Array.from(new Set(functions.map(functionCategory))).sort()],
+    [functions]
+  );
 
   const chooseFunction = (fn: string) => {
     const defaults = defaultMaskParamsForMap(fn, null);
@@ -100,14 +110,21 @@ export function MaskingStudioPage() {
       param2: defaults.param2 || ''
     }));
     setResult(null);
+    setTryOpen(true);
   };
 
   return (
     <main className="forge-page masking-page">
       <MaskingHeader
-        eyebrow="Mask"
+        eyebrow="Safe transformation lab"
         title="Masking Studio"
-        description="Try a masking function against a sample value before it becomes a governed policy rule. Nothing here changes data; this is a fast, safe preview bench."
+        description="Browse every masking function and safely test its real output before using it in a policy."
+        action={
+          <Group gap="xs">
+            <Badge variant="light" leftSection={<IconShieldCheck size={13} />}>{functions.length} functions</Badge>
+            <Badge variant="light" color="gray">{scripts.length} scripts</Badge>
+          </Group>
+        }
       />
 
       <QueryErrorBanner
@@ -116,95 +133,107 @@ export function MaskingStudioPage() {
         title="Masking Studio could not load its catalog"
       />
 
-      <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
-        <MaskingMetric label="Functions" value={functions.length} detail="Built-in masking functions" />
-        <MaskingMetric label="Scripts" value={scripts.length} detail="Lua exits available to SCRIPT" />
-        <MaskingMetric label="Mode" value="Safe preview" detail="No target data is changed" />
-      </SimpleGrid>
-
-      <section className="masking-two-column">
-        <Paper className="forge-card masking-panel" p="md">
-          <Group justify="space-between" align="flex-start">
-            <div>
-              <Text fw={780}>Function preview</Text>
-              <Text size="sm" c="dimmed">
-                Pick a function, provide the value and optional params, then preview exactly what the engine returns.
-              </Text>
-            </div>
-            {selectedFunction ? <Badge variant="light">{selectedFunction}</Badge> : null}
-          </Group>
-
-          <Stack gap="sm" mt="md">
-            <Select
-              label="Function"
-              data={functions}
-              value={selectedFunction || null}
-              searchable
-              onChange={(value) => chooseFunction(value || '')}
-            />
-            <TextInput
-              label="Sample value"
-              value={draft.value}
-              placeholder="123-45-6789"
-              onChange={(event) => setDraft({ ...draft, value: safeInputValue(event) })}
-              {...technicalInputProps}
-            />
-            {isLookupOptionsFunction(selectedFunction) ? (
-              <LookupOptionsBuilder
-                functionName={selectedFunction}
-                param1={draft.param1}
-                param2={draft.param2}
-                onParam1Change={(value) => setDraft({ ...draft, param1: value })}
-                onParam2Change={(value) => setDraft({ ...draft, param2: value })}
-                lookupReferences={lookupReferences}
-              />
-            ) : (
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-                <ParamControl functionName={selectedFunction} index={1} value={draft.param1} scripts={scripts} valueLists={valueLists} lookupReferences={lookupReferences} onChange={(value) => setDraft({ ...draft, param1: value })} />
-                <ParamControl functionName={selectedFunction} index={2} value={draft.param2} scripts={scripts} valueLists={valueLists} lookupReferences={lookupReferences} onChange={(value) => setDraft({ ...draft, param2: value })} />
-              </SimpleGrid>
-            )}
-            <TextInput
-              label="Seed"
-              description="Same seed means reproducible masked values; blank uses the project default."
-              value={draft.seed}
-              placeholder="optional"
-              onChange={(event) => setDraft({ ...draft, seed: safeInputValue(event) })}
-              {...technicalInputProps}
-            />
-            <Button
-              fullWidth
-              leftSection={<IconPlayerPlay size={16} />}
-              loading={previewMutation.isPending}
-              onClick={() => previewMutation.mutate()}
-            >
-              Preview mask
-            </Button>
-            <PreviewResult original={result?.original} masked={result?.masked} />
-          </Stack>
-        </Paper>
-
-        <Paper className="forge-card masking-panel" p="md">
+      <section>
+        <Paper className="forge-card masking-panel masking-catalog-workspace" p="md">
           <Group justify="space-between">
             <div>
-              <Text fw={780}>Function catalog</Text>
+              <Text fw={780}>Browse masking functions</Text>
               <Text size="sm" c="dimmed">
-                Quiet, searchable reference. Click any function to load it into preview.
+                Search by data shape or behavior. Try opens a safe preview without changing source or target data.
               </Text>
             </div>
             <Button size="xs" variant="light" leftSection={<IconDatabaseSearch size={15} />} onClick={() => chooseFunction('HASH_LOOKUP')}>
               Sample hash lookup
             </Button>
           </Group>
-          <TextInput mt="md" placeholder="Search function or behavior..." value={search} onChange={(event) => setSearch(safeInputValue(event))} />
+          <Group mt="md" gap="sm" align="end" wrap="nowrap" className="masking-catalog-filters">
+            <TextInput
+              className="masking-catalog-search"
+              leftSection={<IconSearch size={16} />}
+              placeholder="Search name, category, or behavior..."
+              value={search}
+              onChange={(event) => setSearch(safeInputValue(event))}
+            />
+            <Select
+              className="masking-catalog-category"
+              data={categories.map((item) => ({ value: item, label: item === 'ALL' ? 'All categories' : item }))}
+              value={category}
+              onChange={setCategory}
+              allowDeselect={false}
+            />
+            <Badge variant="light">{filteredFunctions.length} shown</Badge>
+          </Group>
           <div className="masking-function-grid">
             {filteredFunctions.map((fn) => (
-              <FunctionCard key={fn} name={fn} active={fn === selectedFunction} onSelect={chooseFunction} />
+              <FunctionCard key={fn} name={fn} active={tryOpen && fn === selectedFunction} onSelect={chooseFunction} />
             ))}
             {!filteredFunctions.length ? <EmptyPanel title="No matching function" detail="Try SSN, EMAIL, ADDRESS, SCRIPT, HASH, or DATE." /> : null}
           </div>
         </Paper>
       </section>
+
+      <Drawer
+        opened={tryOpen}
+        onClose={() => setTryOpen(false)}
+        position="right"
+        size="lg"
+        withCloseButton={false}
+        classNames={{ body: 'masking-try-drawer-body' }}
+      >
+        <Stack gap="md">
+          <Group justify="space-between" align="flex-start" wrap="nowrap" className="masking-try-summary">
+            <div>
+              <Group gap="xs">
+                <Text fw={800} size="lg">{selectedFunction}</Text>
+                <Badge variant="light">{functionCategory(selectedFunction)}</Badge>
+              </Group>
+              <Text size="sm" c="dimmed">{functionSummary(selectedFunction)}</Text>
+            </div>
+            <ActionIcon variant="subtle" color="gray" aria-label="Close function preview" onClick={() => setTryOpen(false)}>
+              <IconX size={18} />
+            </ActionIcon>
+          </Group>
+          <TextInput
+            label="Sample value"
+            value={draft.value}
+            placeholder="Value to mask"
+            onChange={(event) => setDraft({ ...draft, value: safeInputValue(event) })}
+            {...technicalInputProps}
+          />
+          {isLookupOptionsFunction(selectedFunction) ? (
+            <LookupOptionsBuilder
+              functionName={selectedFunction}
+              param1={draft.param1}
+              param2={draft.param2}
+              onParam1Change={(value) => setDraft({ ...draft, param1: value })}
+              onParam2Change={(value) => setDraft({ ...draft, param2: value })}
+              lookupReferences={lookupReferences}
+            />
+          ) : (
+            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+              <ParamControl functionName={selectedFunction} index={1} value={draft.param1} scripts={scripts} valueLists={valueLists} lookupReferences={lookupReferences} onChange={(value) => setDraft({ ...draft, param1: value })} />
+              <ParamControl functionName={selectedFunction} index={2} value={draft.param2} scripts={scripts} valueLists={valueLists} lookupReferences={lookupReferences} onChange={(value) => setDraft({ ...draft, param2: value })} />
+            </SimpleGrid>
+          )}
+          <TextInput
+            label="Seed"
+            description="Use the same seed for reproducible output."
+            value={draft.seed}
+            placeholder="Project default"
+            onChange={(event) => setDraft({ ...draft, seed: safeInputValue(event) })}
+            {...technicalInputProps}
+          />
+          <Button
+            leftSection={<IconPlayerPlay size={16} />}
+            loading={previewMutation.isPending}
+            disabled={!selectedFunction || !draft.value}
+            onClick={() => previewMutation.mutate()}
+          >
+            Preview mask
+          </Button>
+          <PreviewResult original={result?.original} masked={result?.masked} />
+        </Stack>
+      </Drawer>
     </main>
   );
 }

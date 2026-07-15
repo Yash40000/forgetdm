@@ -1,11 +1,13 @@
 'use client';
 
 import { Fragment, useEffect, useMemo, useState } from 'react';
+import Image from 'next/image';
 import {
   ActionIcon,
   Badge,
   Button,
   Divider,
+  Drawer,
   Group,
   Loader,
   Modal,
@@ -30,6 +32,7 @@ import {
   IconCircleCheck,
   IconDatabase,
   IconDatabaseCog,
+  IconEdit,
   IconFolderOpen,
   IconLoader2,
   IconPlugConnected,
@@ -39,7 +42,9 @@ import {
   IconTrash,
   IconX
 } from '@tabler/icons-react';
-import { FaAws, FaDatabase, FaMicrosoft } from 'react-icons/fa6';
+import { DiMsqlServer } from 'react-icons/di';
+import { FaAws, FaDatabase } from 'react-icons/fa6';
+import { GrOracle } from 'react-icons/gr';
 import {
   SiGooglebigquery,
   SiMariadb,
@@ -174,6 +179,8 @@ export function DataSourcesPage() {
   const [diagnosticState, setDiagnosticState] = useState<'idle' | 'loading' | 'error'>('idle');
   const [diagnosticError, setDiagnosticError] = useState('');
   const [draftDirty, setDraftDirty] = useState(false);
+  const [connectionDrawerOpened, setConnectionDrawerOpened] = useState(false);
+  const [nativeLoaderOpened, setNativeLoaderOpened] = useState(false);
   const [enginePickerOpened, setEnginePickerOpened] = useState(false);
   const [enginePickerSearch, setEnginePickerSearch] = useState('');
 
@@ -231,8 +238,10 @@ export function DataSourcesPage() {
         title: editingId ? 'Connection updated' : 'Connection created',
         message: `${saved.name} is ready in the data source inventory.`
       });
-      setEditingId(saved.id);
-      setDraft(draftFromDataSource(saved));
+      setConnectionDrawerOpened(false);
+      setEditingId(null);
+      setDraft(EMPTY_DRAFT);
+      setDraftTest({ status: 'idle' });
       setDraftDirty(false);
       void queryClient.invalidateQueries({ queryKey: keys.dataSources.all });
     },
@@ -285,16 +294,24 @@ export function DataSourcesPage() {
   };
 
   const startEdit = async (source: DataSource) => {
-    if (source.id === editingId) return;
+    if (source.id === editingId && connectionDrawerOpened) return;
     if (!(await confirmDraftDiscard())) return;
     setEditingId(source.id);
     setDraft(draftFromDataSource(source));
     setDraftTest({ status: 'idle' });
     setDraftDirty(false);
+    setConnectionDrawerOpened(true);
   };
 
   const startNew = async () => {
     if (!(await confirmDraftDiscard())) return;
+    resetDraft();
+    setConnectionDrawerOpened(true);
+  };
+
+  const closeConnectionEditor = async () => {
+    if (!(await confirmDraftDiscard())) return;
+    setConnectionDrawerOpened(false);
     resetDraft();
   };
 
@@ -367,16 +384,31 @@ export function DataSourcesPage() {
         {confirmElement}
         <Stack gap="lg">
           <Group justify="space-between" align="flex-start">
-            <div>
-              <Text className="dsx-kicker">Connection catalog</Text>
-              <Title order={1}>Data Sources</Title>
-              <Text c="dimmed" maw={780}>
-                Manage the source and target databases used by discovery, DataScope, business entities, and synthetic
-                loading. Test before saving, browse schemas from the row, and keep loader readiness visible.
-              </Text>
-            </div>
+            <Group className="dsx-page-heading" gap="md" align="center" wrap="nowrap">
+              <ThemeIcon className="dsx-page-mark" size={48} radius={8} variant="light">
+                <IconDatabaseCog size={25} />
+              </ThemeIcon>
+              <div>
+                <Group gap="sm" align="center">
+                  <Title order={1}>Data Sources</Title>
+                  <Badge className="dsx-live-badge" variant="light" color="teal" leftSection={<span className="dsx-live-dot" />}>
+                    {dataSources.length} connected
+                  </Badge>
+                </Group>
+                <Text c="dimmed" className="dsx-page-description">
+                  Connect, test, and govern every source and delivery target.
+                </Text>
+              </div>
+            </Group>
             <Group gap="sm">
               {dataSourcesQuery.isFetching || nativeLoadersQuery.isFetching ? <Loader size="sm" /> : null}
+              <Button
+                leftSection={<IconServer size={16} />}
+                variant="subtle"
+                onClick={() => setNativeLoaderOpened(true)}
+              >
+                Native loaders {nativeReadyCount}/{nativeLoaders.length || 0}
+              </Button>
               <Button
                 leftSection={<IconRefresh size={16} />}
                 variant="default"
@@ -388,7 +420,7 @@ export function DataSourcesPage() {
                 Refresh
               </Button>
               <Button leftSection={<IconPlugConnected size={16} />} onClick={() => void startNew()}>
-                New connection
+                Add connection
               </Button>
             </Group>
           </Group>
@@ -399,25 +431,21 @@ export function DataSourcesPage() {
             title="Data source inventory could not be loaded"
           />
 
-          <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
-            <MetricCard label="Connections" value={dataSources.length} detail="Saved JDBC definitions" />
-            <MetricCard label="Source capable" value={sourceCount} detail="Available for discovery and extraction" />
-            <MetricCard label="Target capable" value={targetCount} detail="Available for provision and load" />
-            <MetricCard label="Native loaders" value={`${nativeReadyCount}/${nativeLoaders.length || 0}`} detail="Vendor bulk paths ready" />
-          </SimpleGrid>
-
           <section className="dsx-workspace">
             <Paper className="dsx-panel dsx-inventory-panel" p={0}>
               <div className="dsx-panel-head">
                 <div>
-                  <Text fw={750}>Inventory</Text>
+                  <Text fw={750}>Connection inventory</Text>
                   <Text size="sm" c="dimmed">
-                    Clear density: one row per connection, with actions next to the thing they affect.
+                    One row per connection, with health and actions beside the system they affect.
                   </Text>
                 </div>
-                <Badge variant="light" color="gray">
-                  {filteredSources.length} shown
-                </Badge>
+                <div className="dsx-inventory-summary" aria-label="Connection inventory summary">
+                  <span><b>{sourceCount}</b><small>Sources</small></span>
+                  <span><b>{targetCount}</b><small>Targets</small></span>
+                  <span className={nativeReadyCount === nativeLoaders.length && nativeLoaders.length ? 'is-ready' : 'is-warning'}><b>{nativeReadyCount}/{nativeLoaders.length || 0}</b><small>Native ready</small></span>
+                  <span><b>{filteredSources.length}</b><small>Shown</small></span>
+                </div>
               </div>
               <div className="dsx-filters">
                 <TextInput
@@ -443,7 +471,7 @@ export function DataSourcesPage() {
                 />
               </div>
               <div className="dsx-table-wrap">
-                <Table verticalSpacing="sm" horizontalSpacing="md" striped={false} highlightOnHover>
+                <Table verticalSpacing="xs" horizontalSpacing="md" striped={false} highlightOnHover>
                   <Table.Thead>
                     <Table.Tr>
                       <Table.Th>Connection</Table.Th>
@@ -451,7 +479,7 @@ export function DataSourcesPage() {
                       <Table.Th>Role</Table.Th>
                       <Table.Th>Environment</Table.Th>
                       <Table.Th>Last test</Table.Th>
-                      <Table.Th>Actions</Table.Th>
+                      <Table.Th ta="right">Tools</Table.Th>
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
@@ -459,56 +487,70 @@ export function DataSourcesPage() {
                       filteredSources.map((source) => {
                         const test = testStates[source.id] || { status: 'idle' as const };
                         const schemaState = schemaStates[source.id];
+                        const tags = connectionTags(source.tags);
                         return (
                           <Fragment key={source.id}>
-                            <Table.Tr className={editingId === source.id ? 'is-editing' : undefined}>
+                            <Table.Tr className={`dsx-connection-row ${editingId === source.id ? 'is-editing' : ''}`}>
                               <Table.Td>
                                 <div className="dsx-source-name-cell">
-                                  <Text fw={750}>{source.name}</Text>
+                                  <Group gap={7} wrap="nowrap">
+                                    <span className="dsx-connection-status" aria-hidden="true" />
+                                    <Text fw={780}>{source.name}</Text>
+                                  </Group>
                                   <Text size="xs" c="dimmed" className="dsx-mono-line">
                                     {jdbcDisplay(source.jdbcUrl)}
                                   </Text>
-                                  {source.tags ? <Text size="xs" c="dimmed">{source.tags}</Text> : null}
+                                  {tags.length ? <Group gap={4} className="dsx-tag-list">{tags.slice(0, 3).map((tag) => <Badge key={tag} size="xs" variant="light" color="gray">{tag}</Badge>)}{tags.length > 3 ? <Text size="xs" c="dimmed">+{tags.length - 3}</Text> : null}</Group> : null}
                                 </div>
                               </Table.Td>
                               <Table.Td>
-                                <Badge variant="outline" color="dark">
-                                  {source.kind || 'GENERIC'}
-                                </Badge>
+                                <div className="dsx-engine-cell">
+                                  <span className="dsx-engine-cell-logo"><EngineLogo engine={source.kind || 'GENERIC'} size={21} /></span>
+                                  <span><b>{engineLabel(source.kind || 'GENERIC')}</b><small>{source.kind || 'GENERIC'}</small></span>
+                                </div>
                               </Table.Td>
                               <Table.Td>
                                 <RoleBadge role={source.role} />
                               </Table.Td>
-                              <Table.Td>{source.environment || <Text c="dimmed">Not set</Text>}</Table.Td>
+                              <Table.Td><EnvironmentBadge environment={source.environment} /></Table.Td>
                               <Table.Td>
                                 <ProbeBadge state={test} />
                                 {test.message ? <Text size="xs" c="dimmed" mt={4}>{test.message}</Text> : null}
                               </Table.Td>
                               <Table.Td>
-                                <Group gap={6} wrap="nowrap">
-                                  <Button size="xs" variant="light" loading={test.status === 'testing'} onClick={() => void testSavedConnection(source)}>
-                                    Test
-                                  </Button>
-                                  <Button size="xs" variant="subtle" loading={schemaState?.status === 'loading'} onClick={() => void browseSchemas(source)}>
-                                    Schemas
-                                  </Button>
-                                  <Button
-                                    size="xs"
-                                    variant="subtle"
-                                    onClick={() => {
-                                      setDiagnosticSchema('');
-                                      setDiagnosticReport(null);
-                                      void inspectConnection(source, '');
-                                    }}
-                                  >
-                                    Diagnose
-                                  </Button>
-                                  <Button size="xs" variant="default" onClick={() => void startEdit(source)}>
-                                    Edit
-                                  </Button>
+                                <Group gap={4} wrap="nowrap" justify="flex-end" className="dsx-row-tools">
+                                  <Tooltip label="Test connection">
+                                    <ActionIcon size="lg" variant="light" loading={test.status === 'testing'} aria-label={`Test ${source.name}`} onClick={() => void testSavedConnection(source)}>
+                                      <IconPlugConnected size={16} />
+                                    </ActionIcon>
+                                  </Tooltip>
+                                  <Tooltip label="Browse schemas">
+                                    <ActionIcon size="lg" variant="subtle" loading={schemaState?.status === 'loading'} aria-label={`Browse schemas for ${source.name}`} onClick={() => void browseSchemas(source)}>
+                                      <IconFolderOpen size={16} />
+                                    </ActionIcon>
+                                  </Tooltip>
+                                  <Tooltip label="Run diagnostics">
+                                    <ActionIcon
+                                      size="lg"
+                                      variant="subtle"
+                                      aria-label={`Diagnose ${source.name}`}
+                                      onClick={() => {
+                                        setDiagnosticSchema('');
+                                        setDiagnosticReport(null);
+                                        void inspectConnection(source, '');
+                                      }}
+                                    >
+                                      <IconDatabaseCog size={16} />
+                                    </ActionIcon>
+                                  </Tooltip>
+                                  <Tooltip label="Edit connection">
+                                    <ActionIcon size="lg" variant="default" aria-label={`Edit ${source.name}`} onClick={() => void startEdit(source)}>
+                                      <IconEdit size={16} />
+                                    </ActionIcon>
+                                  </Tooltip>
                                   <Tooltip label="Delete connection">
                                     <ActionIcon
-                                      size="sm"
+                                      size="lg"
                                       variant="subtle"
                                       color="red"
                                       aria-label={`Delete ${source.name}`}
@@ -540,7 +582,7 @@ export function DataSourcesPage() {
                             <div>
                               <Text fw={700}>No matching connections</Text>
                               <Text size="sm" c="dimmed">
-                                Clear filters or create a new connection from the editor.
+                                Clear filters or use Add connection above.
                               </Text>
                             </div>
                           </div>
@@ -552,20 +594,25 @@ export function DataSourcesPage() {
               </div>
             </Paper>
 
-            <Paper className="dsx-panel dsx-editor-panel" p="md">
-              <Group justify="space-between" align="flex-start" mb="sm">
-                <div>
-                  <Text fw={750}>{editingId ? 'Edit connection' : 'Add connection'}</Text>
-                  <Text size="sm" c="dimmed">
-                    Test first, then save. Blank password on edit keeps the existing secret.
-                  </Text>
-                </div>
-                <Group gap="xs">
+            <Drawer
+              opened={connectionDrawerOpened}
+              onClose={() => void closeConnectionEditor()}
+              position="right"
+              size={560}
+              zIndex={300}
+              title={editingId ? 'Edit connection' : 'Add connection'}
+              overlayProps={{ backgroundOpacity: 0.32, blur: 2 }}
+              classNames={{ body: 'dsx-connection-drawer-body' }}
+            >
+              <Group justify="space-between" align="center" mb="md">
+                <Text size="sm" c="dimmed">
+                  Test before saving. A blank password keeps the saved secret when editing.
+                </Text>
+                <Group gap={6} wrap="nowrap">
                   {draftDirty ? <Badge color="yellow" variant="light">Unsaved</Badge> : null}
                   {editingId ? <Badge variant="light">ID {editingId}</Badge> : <Badge color="blue">Draft</Badge>}
                 </Group>
               </Group>
-
               <Stack gap="sm">
                 <NameInput
                   label="Name"
@@ -658,7 +705,7 @@ export function DataSourcesPage() {
 
                 <ConnectionProbeCard state={draftTest} />
 
-                <Group justify="space-between" mt="xs">
+                <Group justify="space-between" mt="xs" className="dsx-drawer-actions">
                   <Button variant="default" leftSection={<IconPlugConnected size={16} />} loading={draftTest.status === 'testing'} onClick={testDraftConnection}>
                     Test draft
                   </Button>
@@ -674,45 +721,69 @@ export function DataSourcesPage() {
                   </Group>
                 </Group>
               </Stack>
-            </Paper>
+            </Drawer>
           </section>
 
-          <Paper className="dsx-panel dsx-loader-panel" p="md">
-            <Group justify="space-between" align="flex-start" mb="md">
+        </Stack>
+
+        <Modal
+          opened={nativeLoaderOpened}
+          onClose={() => setNativeLoaderOpened(false)}
+          fullScreen
+          zIndex={450}
+          title="Native loader workspace"
+          classNames={{ body: 'dsx-native-loader-modal-body' }}
+        >
+          <div className="dsx-native-loader-workspace">
+            <Group justify="space-between" align="flex-start" className="dsx-native-loader-head">
               <div>
-                <Text fw={750}>Native loader readiness</Text>
-                <Text size="sm" c="dimmed">
-                  Shows whether vendor bulk-load clients are configured. JDBC remains the portable fallback.
+                <Text className="dsx-kicker">Bulk delivery</Text>
+                <Title order={2}>Native loader readiness</Title>
+                <Text c="dimmed" maw={820}>
+                  Validate vendor bulk clients and binary paths before high-volume delivery. JDBC remains the portable
+                  fallback whenever a native client is unavailable.
                 </Text>
               </div>
-              <Badge color={nativeReadyCount === nativeLoaders.length && nativeLoaders.length ? 'green' : 'yellow'} variant="light">
-                {nativeReadyCount} ready
-              </Badge>
+              <Group gap="sm">
+                <Badge color={nativeReadyCount === nativeLoaders.length && nativeLoaders.length ? 'green' : 'yellow'} variant="light" size="lg">
+                  {nativeReadyCount}/{nativeLoaders.length || 0} ready
+                </Badge>
+                <Button
+                  variant="default"
+                  leftSection={<IconRefresh size={16} />}
+                  loading={nativeLoadersQuery.isFetching}
+                  onClick={() => void queryClient.invalidateQueries({ queryKey: keys.dataSources.nativeLoaders })}
+                >
+                  Refresh readiness
+                </Button>
+              </Group>
             </Group>
             {nativeLoaders.length ? (
-              <div className="dsx-loader-grid">
+              <div className="dsx-loader-grid dsx-loader-grid-fullscreen">
                 {nativeLoaders.map((loader, index) => (
                   <NativeLoaderCard key={`${loaderName(loader)}-${index}`} loader={loader} />
                 ))}
               </div>
             ) : (
-              <div className="dsx-empty dsx-empty-compact">
-                <ThemeIcon variant="light" color="gray" size={32}>
-                  <IconServer size={17} />
+              <div className="dsx-empty dsx-native-loader-empty">
+                <ThemeIcon variant="light" color="gray" size={38}>
+                  <IconServer size={20} />
                 </ThemeIcon>
-                <Text size="sm" c="dimmed">
-                  Loader status is not available from the backend yet.
-                </Text>
+                <div>
+                  <Text fw={700}>No loader readiness response</Text>
+                  <Text size="sm" c="dimmed">The backend has not reported vendor loader status yet.</Text>
+                </div>
               </div>
             )}
-          </Paper>
-        </Stack>
+          </div>
+        </Modal>
 
         <Modal
           opened={enginePickerOpened}
           onClose={() => setEnginePickerOpened(false)}
           title="Choose a database engine"
           size="xl"
+          zIndex={520}
           centered
         >
           <Stack gap="md">
@@ -906,11 +977,11 @@ function EngineLogo({ engine, size = 20 }: { engine: string; size?: number }) {
     case 'POSTGRES': return <SiPostgresql {...props} color="#4169e1" />;
     case 'MYSQL': return <SiMysql {...props} color="#4479a1" />;
     case 'MARIADB': return <SiMariadb {...props} color="#003545" />;
-    case 'ORACLE': return <FaDatabase {...props} color="#f80000" />;
-    case 'SQLSERVER': return <FaMicrosoft {...props} color="#00a4ef" />;
+    case 'ORACLE': return <GrOracle {...props} color="#f80000" />;
+    case 'SQLSERVER': return <DiMsqlServer {...props} color="#cc2927" />;
     case 'DB2':
     case 'DB2UDB':
-    case 'DB2ZOS': return <span className="dsx-db2-mark" style={{ fontSize: Math.max(10, size * 0.47) }}>IBM DB2</span>;
+    case 'DB2ZOS': return <Image src="/brands/ibm-db2.svg" width={size} height={size} alt="" aria-hidden />;
     case 'SNOWFLAKE': return <SiSnowflake {...props} color="#29b5e8" />;
     case 'REDSHIFT': return <FaAws {...props} color="#8c4fff" />;
     case 'BIGQUERY': return <SiGooglebigquery {...props} color="#4285f4" />;
@@ -919,20 +990,6 @@ function EngineLogo({ engine, size = 20 }: { engine: string; size?: number }) {
     case 'SYBASE': return <SiSap {...props} color="#0faaff" />;
     default: return <FaDatabase {...props} color="#64748b" />;
   }
-}
-
-function MetricCard({ label, value, detail }: { label: string; value: string | number; detail: string }) {
-  return (
-    <Paper className="dsx-metric-card" p="md">
-      <Text size="xs" tt="uppercase" fw={800} c="dimmed">
-        {label}
-      </Text>
-      <Text className="dsx-metric-value">{value}</Text>
-      <Text size="sm" c="dimmed">
-        {detail}
-      </Text>
-    </Paper>
-  );
 }
 
 function RoleBadge({ role }: { role?: string | null }) {
@@ -945,32 +1002,35 @@ function RoleBadge({ role }: { role?: string | null }) {
   );
 }
 
+function EnvironmentBadge({ environment }: { environment?: string | null }) {
+  const value = String(environment || '').trim().toUpperCase();
+  if (!value) return <Text size="sm" c="dimmed">Not set</Text>;
+  const color = value === 'PROD' || value === 'PRODUCTION' ? 'red'
+    : value === 'UAT' ? 'violet'
+      : value === 'QA' || value === 'TEST' ? 'blue'
+        : value === 'STAGE' || value === 'STAGING' ? 'yellow'
+          : 'gray';
+  return <Badge color={color} variant="light">{value}</Badge>;
+}
+
 function ProbeBadge({ state }: { state: ProbeState }) {
   if (state.status === 'testing') {
     return (
-      <Badge color="blue" variant="light" leftSection={<IconLoader2 size={11} className="dsx-spin" />}>
-        Testing
-      </Badge>
+      <span className="dsx-health is-testing"><IconLoader2 size={13} className="dsx-spin" />Testing</span>
     );
   }
   if (state.status === 'ok') {
     return (
-      <Badge color="green" variant="light" leftSection={<IconCircleCheck size={11} />}>
-        Online
-      </Badge>
+      <span className="dsx-health is-online"><IconCircleCheck size={13} />Online</span>
     );
   }
   if (state.status === 'error') {
     return (
-      <Badge color="red" variant="light" leftSection={<IconAlertTriangle size={11} />}>
-        Failed
-      </Badge>
+      <span className="dsx-health is-failed"><IconAlertTriangle size={13} />Failed</span>
     );
   }
   return (
-    <Badge color="gray" variant="light">
-      Not tested
-    </Badge>
+    <span className="dsx-health is-idle"><i aria-hidden="true" />Not tested</span>
   );
 }
 
@@ -1124,6 +1184,10 @@ function allowsRole(role: string | null | undefined, desired: string) {
 function jdbcDisplay(value?: string | null) {
   if (!value) return 'No JDBC URL';
   return value.length > 82 ? `${value.slice(0, 79)}...` : value;
+}
+
+function connectionTags(value?: string | null) {
+  return String(value || '').split(',').map((tag) => tag.trim()).filter(Boolean);
 }
 
 function probeSummary(result: Record<string, unknown>) {

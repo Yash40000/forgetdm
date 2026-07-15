@@ -26,7 +26,40 @@ export const PII_DEFAULT_FUNCTIONS: Record<string, string> = {
   USERNAME: 'TOKENIZE',
   PASSWORD: 'NULLIFY',
   MAC_ADDRESS: 'MAC_ADDRESS',
-  GENDER: 'SECURE_LOOKUP'
+  GENDER: 'SECURE_LOOKUP',
+  MEDICAL_RECORD_NUMBER: 'TOKENIZE',
+  HEALTH_PLAN_ID: 'TOKENIZE',
+  DIAGNOSIS_CODE: 'CHARACTER_MAP',
+  PRESCRIPTION_ID: 'TOKENIZE',
+  BIOMETRIC_ID: 'TOKENIZE',
+  GENETIC_DATA: 'TOKENIZE',
+  CVV: 'NULLIFY',
+  CARD_EXPIRY: 'CHARACTER_MAP',
+  DEVICE_ID: 'TOKENIZE',
+  COOKIE_ID: 'TOKENIZE',
+  GEOLOCATION: 'REDACT',
+  RACE_ETHNICITY: 'REDACT',
+  RELIGION: 'REDACT',
+  FAX: 'PHONE',
+  AGE: 'NUMERIC_NOISE',
+  HEALTH_DATE: 'DATE_SHIFT',
+  HEALTH_DATA: 'REDACT',
+  PERSON_ID: 'TOKENIZE',
+  CERTIFICATE_LICENSE: 'CHARACTER_MAP',
+  VEHICLE_ID: 'TOKENIZE',
+  URL: 'TOKENIZE',
+  PHOTO_IMAGE: 'NULLIFY',
+  SIGNATURE: 'NULLIFY',
+  CARD_SERVICE_CODE: 'CHARACTER_MAP',
+  FULL_TRACK_DATA: 'NULLIFY',
+  PIN_BLOCK: 'NULLIFY',
+  ACCOUNT_CREDENTIAL: 'NULLIFY',
+  POLITICAL_OPINION: 'REDACT',
+  UNION_MEMBERSHIP: 'REDACT',
+  SEXUAL_ORIENTATION: 'REDACT',
+  CRIMINAL_RECORD: 'REDACT',
+  EDUCATION_RECORD: 'REDACT',
+  EMPLOYMENT_DATA: 'REDACT'
 };
 
 export const FALLBACK_PII_TYPES = [
@@ -56,8 +89,76 @@ export const FALLBACK_PII_TYPES = [
   'DRIVER_LICENSE',
   'GENDER',
   'TAX_ID',
+  'MEDICAL_RECORD_NUMBER',
+  'HEALTH_PLAN_ID',
+  'DIAGNOSIS_CODE',
+  'PRESCRIPTION_ID',
+  'BIOMETRIC_ID',
+  'GENETIC_DATA',
+  'CVV',
+  'CARD_EXPIRY',
+  'DEVICE_ID',
+  'COOKIE_ID',
+  'GEOLOCATION',
+  'RACE_ETHNICITY',
+  'RELIGION',
+  'FAX',
+  'AGE',
+  'HEALTH_DATE',
+  'HEALTH_DATA',
+  'PERSON_ID',
+  'CERTIFICATE_LICENSE',
+  'VEHICLE_ID',
+  'URL',
+  'PHOTO_IMAGE',
+  'SIGNATURE',
+  'CARD_SERVICE_CODE',
+  'FULL_TRACK_DATA',
+  'PIN_BLOCK',
+  'ACCOUNT_CREDENTIAL',
+  'POLITICAL_OPINION',
+  'UNION_MEMBERSHIP',
+  'SEXUAL_ORIENTATION',
+  'CRIMINAL_RECORD',
+  'EDUCATION_RECORD',
+  'EMPLOYMENT_DATA',
   'MANUAL_PII'
 ];
+
+export const DISCOVERY_SCAN_PROFILES = [
+  { value: 'GENERIC', label: 'Generic sensitive data', detail: 'All built-in and custom detection types', types: [] },
+  {
+    value: 'HIPAA',
+    label: 'HIPAA / PHI',
+    detail: 'PHI and HIPAA Safe Harbor identifier classes',
+    types: ['FULL_NAME', 'FIRST_NAME', 'LAST_NAME', 'DOB', 'AGE', 'HEALTH_DATE', 'SSN', 'PHONE', 'FAX', 'EMAIL', 'FULL_ADDRESS', 'ADDRESS', 'CITY', 'ZIP', 'MEDICAL_RECORD_NUMBER', 'HEALTH_PLAN_ID', 'BANK_ACCOUNT', 'CERTIFICATE_LICENSE', 'VEHICLE_ID', 'DEVICE_ID', 'URL', 'IP_ADDRESS', 'BIOMETRIC_ID', 'PHOTO_IMAGE', 'SIGNATURE', 'PERSON_ID', 'DIAGNOSIS_CODE', 'PRESCRIPTION_ID', 'HEALTH_DATA', 'GENETIC_DATA']
+  },
+  {
+    value: 'PCI_DSS',
+    label: 'PCI DSS',
+    detail: 'Cardholder data and sensitive authentication data',
+    types: ['CREDIT_CARD', 'FULL_NAME', 'CARD_EXPIRY', 'CARD_SERVICE_CODE', 'FULL_TRACK_DATA', 'CVV', 'PIN_BLOCK']
+  },
+  {
+    value: 'GLBA',
+    label: 'GLBA / NPI',
+    detail: 'Nonpublic personal and financial information',
+    types: ['FULL_NAME', 'FIRST_NAME', 'LAST_NAME', 'DOB', 'SSN', 'TAX_ID', 'EMAIL', 'PHONE', 'FULL_ADDRESS', 'BANK_ACCOUNT', 'IBAN', 'ROUTING', 'SWIFT_BIC', 'CREDIT_CARD', 'ACCOUNT_CREDENTIAL', 'EMPLOYMENT_DATA']
+  },
+  {
+    value: 'GDPR',
+    label: 'GDPR personal data',
+    detail: 'Direct, online, location, and Article 9 data classes',
+    types: ['FULL_NAME', 'FIRST_NAME', 'LAST_NAME', 'PERSON_ID', 'DOB', 'EMAIL', 'PHONE', 'FULL_ADDRESS', 'BANK_ACCOUNT', 'IP_ADDRESS', 'MAC_ADDRESS', 'DEVICE_ID', 'COOKIE_ID', 'URL', 'GEOLOCATION', 'BIOMETRIC_ID', 'GENETIC_DATA', 'HEALTH_DATA', 'RACE_ETHNICITY', 'RELIGION', 'POLITICAL_OPINION', 'UNION_MEMBERSHIP', 'SEXUAL_ORIENTATION', 'GENDER', 'CRIMINAL_RECORD']
+  },
+  {
+    value: 'CCPA',
+    label: 'CCPA / CPRA',
+    detail: 'California personal and sensitive information classes',
+    types: ['FULL_NAME', 'PERSON_ID', 'SSN', 'TAX_ID', 'DRIVER_LICENSE', 'PASSPORT', 'EMAIL', 'PHONE', 'FULL_ADDRESS', 'BANK_ACCOUNT', 'CREDIT_CARD', 'ACCOUNT_CREDENTIAL', 'IP_ADDRESS', 'DEVICE_ID', 'COOKIE_ID', 'URL', 'GEOLOCATION', 'BIOMETRIC_ID', 'GENETIC_DATA', 'HEALTH_DATA', 'RACE_ETHNICITY', 'RELIGION', 'UNION_MEMBERSHIP', 'SEXUAL_ORIENTATION', 'EMPLOYMENT_DATA', 'EDUCATION_RECORD']
+  },
+  { value: 'CUSTOM', label: 'Custom scope', detail: 'Choose individual PII types', types: null }
+] as const;
 
 export const PII_TYPE_GROUPS = [
   {
@@ -66,23 +167,31 @@ export const PII_TYPE_GROUPS = [
   },
   {
     label: 'Contact',
-    types: ['EMAIL', 'PHONE', 'PHONE_US']
+    types: ['EMAIL', 'PHONE', 'PHONE_US', 'FAX']
   },
   {
     label: 'Address & Location',
-    types: ['FULL_ADDRESS', 'ADDRESS', 'ADDRESS_STREET', 'ADDRESS_US', 'CITY', 'STATE', 'ZIP', 'CITY_STATE_ZIP', 'COUNTRY']
+    types: ['FULL_ADDRESS', 'ADDRESS', 'ADDRESS_STREET', 'ADDRESS_US', 'CITY', 'STATE', 'ZIP', 'CITY_STATE_ZIP', 'COUNTRY', 'GEOLOCATION']
   },
   {
     label: 'Identity & Demographics',
-    types: ['SSN', 'TAX_ID', 'DOB', 'AGE', 'GENDER', 'PASSPORT', 'DRIVER_LICENSE']
+    types: ['PERSON_ID', 'SSN', 'TAX_ID', 'DOB', 'AGE', 'GENDER', 'PASSPORT', 'DRIVER_LICENSE', 'CERTIFICATE_LICENSE', 'VEHICLE_ID', 'BIOMETRIC_ID', 'GENETIC_DATA', 'PHOTO_IMAGE', 'SIGNATURE', 'RACE_ETHNICITY', 'RELIGION', 'POLITICAL_OPINION', 'UNION_MEMBERSHIP', 'SEXUAL_ORIENTATION', 'CRIMINAL_RECORD']
   },
   {
     label: 'Financial',
-    types: ['CREDIT_CARD', 'BANK_ACCOUNT', 'IBAN', 'IBAN_LIKE', 'ROUTING', 'SWIFT_BIC', 'CURRENCY_USD']
+    types: ['CREDIT_CARD', 'CVV', 'CARD_EXPIRY', 'CARD_SERVICE_CODE', 'FULL_TRACK_DATA', 'PIN_BLOCK', 'BANK_ACCOUNT', 'IBAN', 'IBAN_LIKE', 'ROUTING', 'SWIFT_BIC', 'CURRENCY_USD']
   },
   {
     label: 'Accounts & Technical',
-    types: ['USERNAME', 'PASSWORD', 'IP_ADDRESS', 'MAC_ADDRESS', 'DEVICE_ID']
+    types: ['USERNAME', 'PASSWORD', 'ACCOUNT_CREDENTIAL', 'IP_ADDRESS', 'MAC_ADDRESS', 'DEVICE_ID', 'COOKIE_ID', 'URL']
+  },
+  {
+    label: 'Health',
+    types: ['MEDICAL_RECORD_NUMBER', 'HEALTH_PLAN_ID', 'HEALTH_DATE', 'HEALTH_DATA', 'DIAGNOSIS_CODE', 'PRESCRIPTION_ID']
+  },
+  {
+    label: 'Employment & Education',
+    types: ['EMPLOYMENT_DATA', 'EDUCATION_RECORD']
   },
   {
     label: 'Organization',
@@ -197,11 +306,20 @@ export function normalizeTypeKey(types: string[]) {
 }
 
 export function orderPiiTypes(types: string[]) {
-  return [...new Set(types.map((type) => type.trim()).filter(Boolean))].sort((a, b) => {
+  return [...new Set(types.map((type) => type.trim().toUpperCase()).filter(Boolean))].sort((a, b) => {
     const ar = piiTypeRank(a);
     const br = piiTypeRank(b);
     return ar.group - br.group || ar.type - br.type || a.localeCompare(b);
   });
+}
+
+/** Custom is the complete built-in catalogue plus every backend/custom detection type. */
+export function completePiiTypeCatalog(backendTypes: string[] = []) {
+  return orderPiiTypes([
+    ...FALLBACK_PII_TYPES,
+    ...Object.keys(PII_DEFAULT_FUNCTIONS),
+    ...backendTypes
+  ]);
 }
 
 export function groupPiiTypes(types: string[], search = '') {

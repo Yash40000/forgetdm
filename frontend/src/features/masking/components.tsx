@@ -419,6 +419,7 @@ export function FunctionCard({
         {maskParamLabel(name, 1) ? <Badge variant="light">param1</Badge> : null}
         {maskParamLabel(name, 2) ? <Badge variant="light">param2</Badge> : null}
         {!maskParamLabel(name, 1) && !maskParamLabel(name, 2) ? <Badge variant="light" color="gray">no params</Badge> : null}
+        <span className="masking-function-try">Try</span>
       </Group>
     </button>
   );

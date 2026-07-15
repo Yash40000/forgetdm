@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import {
   ActionIcon,
   Badge,
@@ -22,7 +22,6 @@ import {
   IconAlertTriangle,
   IconCircleCheck,
   IconDatabase,
-  IconFocusCentered,
   IconLoader2,
   IconRegex,
   IconSearch,
@@ -43,6 +42,7 @@ import type {
   ManualDraft,
   PiiPattern
 } from './types';
+import type { MaskingPolicy, MaskingRule } from '@/lib/types';
 import {
   compatibleFunctions,
   defaultFunctionForPii,
@@ -79,7 +79,7 @@ export function MetricCard({
   );
 }
 
-export function LiveScanPanel({ job, history }: { job: DiscoveryJob | null; history: DiscoveryJob[] }) {
+export function LiveScanPanel({ job, actions }: { job: DiscoveryJob | null; actions?: ReactNode }) {
   if (!job) {
     return (
       <Paper className="pii-live-empty" p="xl">
@@ -92,6 +92,7 @@ export function LiveScanPanel({ job, history }: { job: DiscoveryJob | null; hist
             Select a data source and schema, then start a scan to watch table-by-table progress here.
           </Text>
         </div>
+        {actions ? <Group gap={6} wrap="wrap" className="pii-live-board-actions">{actions}</Group> : null}
       </Paper>
     );
   }
@@ -102,9 +103,8 @@ export function LiveScanPanel({ job, history }: { job: DiscoveryJob | null; hist
   const running = discoveryJobLive(status);
 
   return (
-    <section className="pii-live-grid">
-      <Paper className="pii-live-board" p="md">
-        <Group justify="space-between" align="flex-start">
+    <Paper className="pii-live-board" p="md">
+        <div className="pii-live-board-head">
           <div>
             <Group gap="xs">
               <StatusBadge status={status} />
@@ -114,8 +114,11 @@ export function LiveScanPanel({ job, history }: { job: DiscoveryJob | null; hist
               {job.message || 'Discovery job is queued.'}
             </Text>
           </div>
-          <Text className="pii-live-percent">{percent}%</Text>
-        </Group>
+          <div className="pii-live-board-controls">
+            {actions ? <Group gap={6} wrap="wrap" justify="flex-end" className="pii-live-board-actions">{actions}</Group> : null}
+            <Text className="pii-live-percent">{percent}%</Text>
+          </div>
+        </div>
         <Progress value={percent} mt="md" radius="xl" size="lg" />
         <Group grow mt="md" gap="sm">
           <LiveStat label="Tables" value={`${job.completedTables || 0}/${job.totalTables || tables.length || 0}`} />
@@ -154,42 +157,51 @@ export function LiveScanPanel({ job, history }: { job: DiscoveryJob | null; hist
             <div className="pii-live-preparing">Preparing table list...</div>
           )}
         </div>
-      </Paper>
-      <Paper className="pii-panel pii-history-panel" p={0}>
-        <div className="pii-panel-head">
-          <div>
-            <Text fw={760}>Recent scans</Text>
-            <Text size="sm" c="dimmed">
-              User-visible evidence for the last discovery runs.
-            </Text>
-          </div>
-        </div>
-        <div className="pii-history-list">
-          {history.slice(0, 8).map((item) => (
-            <div key={item.jobId} className="pii-history-row">
-              <Group justify="space-between" gap="sm" wrap="nowrap">
-                <div>
-                  <Text fw={720} size="sm">
-                    {item.jobId}
-                  </Text>
-                  <Text size="xs" c="dimmed">
-                    {dateTime(item.startedAt)} - {item.selectedTypes?.length ? `${item.selectedTypes.length} selected types` : 'all PII types'} -{' '}
-                    {item.selectedTables?.length ? `${item.selectedTables.length} focused tables` : 'all tables'}
-                  </Text>
-                </div>
-                <StatusBadge status={item.status} />
-              </Group>
-              <Progress value={clamp(item.percent || 0)} size="xs" mt={8} />
-              <Text size="xs" c="dimmed" mt={5}>
-                {item.findings || 0} finding{item.findings === 1 ? '' : 's'} - {item.completedTables || 0}/{item.totalTables || 0} tables
-              </Text>
-            </div>
-          ))}
-          {!history.length ? <div className="pii-empty-small">No scan history for this context.</div> : null}
-        </div>
-      </Paper>
-    </section>
+    </Paper>
   );
+}
+
+export function ScanHistoryPanel({ history }: { history: DiscoveryJob[] }) {
+  return <Paper className="pii-panel pii-history-panel" p={0}>
+    <div className="pii-panel-head">
+      <div><Text fw={760}>Discovery run history</Text><Text size="sm" c="dimmed">Completed and attempted scans for this source context.</Text></div>
+      <Badge variant="light">{history.length} run{history.length === 1 ? '' : 's'}</Badge>
+    </div>
+    <div className="pii-history-list pii-history-workspace-list">
+      {history.map((item) => (
+        <div key={item.jobId} className="pii-history-row">
+          <div className="pii-history-run-copy">
+            <Text fw={720} size="sm" className="pii-mono-line">{item.jobId}</Text>
+            <Text size="xs" c="dimmed">{dateTime(item.startedAt)}</Text>
+          </div>
+          <Text size="sm">{item.selectedTypes?.length ? `${item.selectedTypes.length} selected types` : 'All PII types'}</Text>
+          <Text size="sm">{item.selectedTables?.length ? `${item.selectedTables.length} focused tables` : 'All tables'}</Text>
+          <div><StatusBadge status={item.status} /><Progress value={clamp(item.percent || 0)} size="xs" mt={6} /></div>
+          <Text size="sm" fw={700}>{item.findings || 0} findings</Text>
+          <Text size="sm" c="dimmed">{item.completedTables || 0}/{item.totalTables || 0} tables</Text>
+        </div>
+      ))}
+      {!history.length ? <div className="pii-empty-small">No scan history for this context.</div> : null}
+    </div>
+  </Paper>;
+}
+
+export function PolicyRulesWorkspace({ policy, rules, loading }: { policy: MaskingPolicy; rules: MaskingRule[]; loading: boolean }) {
+  return <Paper className="pii-panel" p={0}>
+    <div className="pii-panel-head">
+      <div><Group gap="xs"><Text fw={780}>{policy.name}</Text><Badge variant="light">Existing policy</Badge></Group><Text size="sm" c="dimmed">Read-only policy evidence. Edit the rule set in Masking Policies.</Text></div>
+      <Badge variant="light">{rules.length} rule{rules.length === 1 ? '' : 's'}</Badge>
+    </div>
+    {loading ? <div className="pii-empty-state"><Loader size="sm" /><Text>Loading policy rules...</Text></div> : rules.length ? <div className="pii-policy-rule-list">
+      <div className="pii-policy-rule-head"><span>Table</span><span>Column</span><span>Mask function</span><span>Parameters</span></div>
+      {rules.map((rule) => <div className="pii-policy-rule-row" key={rule.id}>
+        <Text size="sm" fw={700} className="pii-mono-line">{rule.tableName}</Text>
+        <Text size="sm" fw={760} className="pii-mono-line">{rule.columnName}</Text>
+        <Badge variant="light">{rule.function}</Badge>
+        <Text size="xs" c="dimmed" className="pii-mono-line">{[rule.param1, rule.param2].filter(Boolean).join(' / ') || 'No parameters'}</Text>
+      </div>)}
+    </div> : <div className="pii-empty-state"><ThemeIcon variant="light" color="gray" size={40}><IconShieldSearch size={22} /></ThemeIcon><div><Text fw={760}>Policy has no rules</Text><Text size="sm" c="dimmed">Add rules in Masking Policies or select another policy.</Text></div></div>}
+  </Paper>;
 }
 
 export function FindingsTable({
@@ -514,6 +526,228 @@ export function ColumnReviewPanel({
   );
 }
 
+export function FindingsWorkspaceTable({
+  rows,
+  functions,
+  updating,
+  onUpdate
+}: {
+  rows: DiscoveryFinding[];
+  functions: string[];
+  updating: boolean;
+  onUpdate: (id: number, body: Record<string, string | null>) => void;
+}) {
+  const [tableFilter, setTableFilter] = useState<string | null>(null);
+  const [editing, setEditing] = useState<{
+    row: DiscoveryFinding;
+    fn: string;
+    param1: string;
+    param2: string;
+  } | null>(null);
+  const tableOptions = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.tableName).filter(Boolean)))
+      .sort((left, right) => left.localeCompare(right))
+      .map((table) => ({ value: table, label: table })),
+    [rows]
+  );
+  const visibleRows = useMemo(
+    () => tableFilter ? rows.filter((row) => row.tableName === tableFilter) : rows,
+    [rows, tableFilter]
+  );
+
+  if (!rows.length) {
+    return <div className="pii-empty-state"><ThemeIcon variant="light" color="gray" size={40}><IconSearch size={22} /></ThemeIcon><div><Text fw={760}>No findings match this view</Text><Text c="dimmed" size="sm">Run a scan or loosen the current table, type, status, or search filters.</Text></div></div>;
+  }
+
+  const openEditor = (row: DiscoveryFinding) => {
+    setEditing({
+      row,
+      fn: row.suggestedFunction || defaultFunctionForPii(row.piiType),
+      param1: row.suggestedParam1 || '',
+      param2: row.suggestedParam2 || ''
+    });
+  };
+
+  return <>
+    <div className="pii-review-toolbar">
+      <div>
+        <Text fw={760}>Discovered fields</Text>
+        <Text size="xs" c="dimmed">{visibleRows.length} of {rows.length} findings shown</Text>
+      </div>
+      <Select
+        aria-label="Filter findings by table"
+        placeholder="All tables"
+        leftSection={<IconDatabase size={15} />}
+        data={tableOptions}
+        value={tableFilter}
+        onChange={setTableFilter}
+        searchable
+        clearable
+        nothingFoundMessage="No matching table"
+        className="pii-table-filter"
+      />
+    </div>
+    <div className="pii-review-list pii-findings-list">
+      <div className="pii-review-list-head"><span>Table</span><span>Column</span><span>Classification</span><span>Masking</span><span>Status</span><span>Decision</span></div>
+      {visibleRows.map((row) => (
+        <div className="pii-review-list-row" key={row.id}>
+          <Text size="sm" fw={700} className="pii-review-table" title={row.tableName}>{row.tableName}</Text>
+          <div className="pii-review-primary">
+            <Text size="sm" fw={760} className="pii-review-column" title={row.columnName}>{row.columnName}</Text>
+            <Text size="xs" c="dimmed" className="pii-review-sample">{row.dataType || 'type unknown'}{row.sampleValue ? ` - sample ${row.sampleValue}` : ''}</Text>
+          </div>
+          <div><Badge color="blue" variant="light">{row.piiType}</Badge><Confidence value={row.confidence} /></div>
+          <div className="pii-review-mask"><Text size="sm" fw={700}>{row.suggestedFunction || 'Not configured'}</Text><Text size="xs" c="dimmed" truncate="end">{[row.suggestedParam1, row.suggestedParam2].filter(Boolean).join(' / ') || 'No parameters'}</Text><Button size="compact-xs" variant="subtle" onClick={() => openEditor(row)}>Configure</Button></div>
+          <StatusIcon status={row.status} />
+          <Group gap={5} wrap="nowrap" justify="flex-end">
+            <Tooltip label="Approve as PII"><ActionIcon aria-label={`Approve ${row.tableName}.${row.columnName} as PII`} variant="light" color="green" disabled={updating} onClick={() => onUpdate(row.id, { status: 'APPROVED' })}><IconCircleCheck size={17} /></ActionIcon></Tooltip>
+            <Tooltip label="Mark as not PII"><ActionIcon aria-label={`Mark ${row.tableName}.${row.columnName} as not PII`} variant="subtle" color="red" disabled={updating} onClick={() => onUpdate(row.id, { status: 'REJECTED' })}><IconX size={17} /></ActionIcon></Tooltip>
+          </Group>
+        </div>
+      ))}
+      {!visibleRows.length ? <div className="pii-empty-small">No findings match the selected table.</div> : null}
+    </div>
+
+    <Modal opened={Boolean(editing)} onClose={() => setEditing(null)} title={editing ? `Configure ${editing.row.tableName}.${editing.row.columnName}` : 'Configure masking'} size="md" centered>
+      {editing ? <Stack gap="sm">
+        <Select
+          label="Masking function"
+          data={compatibleFunctions(functions, editing.row.dataType, editing.fn)}
+          value={editing.fn}
+          searchable
+          onChange={(value) => {
+            if (!value) return;
+            const params = defaultMaskParamsForMap(value, editing.row.piiType);
+            setEditing((current) => current ? { ...current, fn: value, param1: params.param1 || '', param2: params.param2 || '' } : current);
+          }}
+        />
+        <ParamEditors
+          fn={editing.fn}
+          param1={editing.param1}
+          param2={editing.param2}
+          onParam={(n, value) => setEditing((current) => current ? { ...current, [n === 1 ? 'param1' : 'param2']: value } : current)}
+        />
+        <Group justify="flex-end"><Button variant="default" onClick={() => setEditing(null)}>Discard</Button><Button loading={updating} onClick={() => { onUpdate(editing.row.id, { suggestedFunction: editing.fn, suggestedParam1: editing.param1 || null, suggestedParam2: editing.param2 || null }); setEditing(null); }}>Apply recommendation</Button></Group>
+      </Stack> : null}
+    </Modal>
+  </>;
+}
+
+export function ColumnReviewWorkspace({
+  selectedTable,
+  tableOptions,
+  onTableChange,
+  rows,
+  loading,
+  piiTypes,
+  functions,
+  manualDrafts,
+  setManualDrafts,
+  onUpdate,
+  onManual,
+  manualPending
+}: {
+  selectedTable: string | null;
+  tableOptions: Array<{ value: string; label: string }>;
+  onTableChange: (value: string | null) => void;
+  rows: DiscoveryColumnReviewRow[];
+  loading: boolean;
+  piiTypes: string[];
+  functions: string[];
+  manualDrafts: Record<string, ManualDraft>;
+  setManualDrafts: (updater: (current: Record<string, ManualDraft>) => Record<string, ManualDraft>) => void;
+  onUpdate: (id: number, body: Record<string, string | null>) => void;
+  onManual: (row: DiscoveryColumnReviewRow, draft: ManualDraft) => void;
+  manualPending: boolean;
+}) {
+  const [editing, setEditing] = useState<{ key: string; row: DiscoveryColumnReviewRow; draft: ManualDraft; hasFinding: boolean } | null>(null);
+  const piiOptions = piiTypes.map((type) => ({ value: type, label: type }));
+
+  const openEditor = (row: DiscoveryColumnReviewRow, index: number) => {
+    const key = reviewKey(row, index);
+    const hasFinding = Boolean(row.classificationId);
+    const piiType = row.piiType || 'MANUAL_PII';
+    const fn = row.suggestedFunction || defaultFunctionForPii(piiType);
+    const params = defaultMaskParamsForMap(fn, piiType);
+    setEditing({
+      key,
+      row,
+      hasFinding,
+      draft: manualDrafts[key] || {
+        piiType,
+        suggestedFunction: fn,
+        suggestedParam1: row.suggestedParam1 ?? params.param1 ?? '',
+        suggestedParam2: row.suggestedParam2 ?? params.param2 ?? ''
+      }
+    });
+  };
+
+  return <Paper className="pii-panel" p={0}>
+    <div className="pii-panel-head">
+      <div><Text fw={760}>Full column review</Text><Text size="sm" c="dimmed">Review every column in one table. Detailed PII and masking parameters open only when needed.</Text></div>
+      <Select placeholder="Pick one table" data={tableOptions} value={selectedTable} onChange={onTableChange} searchable clearable w={280} />
+    </div>
+    {!selectedTable ? <div className="pii-empty-state"><ThemeIcon variant="light" color="gray" size={40}><IconDatabase size={22} /></ThemeIcon><div><Text fw={760}>Pick a table</Text><Text c="dimmed" size="sm">Choose one table to review all columns and add precise manual classifications.</Text></div></div>
+      : loading ? <div className="pii-empty-state"><Loader size="sm" /><Text>Loading columns...</Text></div>
+        : <div className="pii-review-list pii-column-review-list">
+          <div className="pii-review-list-head"><span>Column</span><span>Classification</span><span>Masking</span><span>Status</span><span>Action</span></div>
+          {rows.map((row, index) => {
+            const hasFinding = Boolean(row.classificationId);
+            return <div className="pii-review-list-row" key={reviewKey(row, index)}>
+              <div className="pii-review-primary"><Text size="sm" fw={760}>{row.columnName}</Text><Text size="xs" c="dimmed" className="pii-review-sample">{row.dataType || 'type unknown'}{row.nullable ? ' - nullable' : ''}{row.sampleValue ? ` - sample ${row.sampleValue}` : ''}</Text></div>
+              <div>{hasFinding ? <Badge color="blue" variant="light">{row.piiType}</Badge> : <Text size="sm" c="dimmed">Not classified</Text>}</div>
+              <div className="pii-review-mask"><Text size="sm" fw={700}>{row.suggestedFunction || (hasFinding ? 'Not configured' : 'Configure to classify')}</Text><Button size="compact-xs" variant="subtle" onClick={() => openEditor(row, index)}>Configure</Button></div>
+              <StatusBadge status={row.status || (hasFinding ? 'SUGGESTED' : 'NOT_PII')} />
+              <Group gap={5} wrap="nowrap" justify="flex-end">{hasFinding && row.classificationId ? <><Button size="compact-xs" variant="light" onClick={() => onUpdate(row.classificationId as number, { status: 'APPROVED' })}>Approve</Button><Button size="compact-xs" variant="subtle" color="red" onClick={() => onUpdate(row.classificationId as number, { status: 'REJECTED' })}>Not PII</Button></> : <Button size="compact-xs" onClick={() => openEditor(row, index)}>Mark PII</Button>}</Group>
+            </div>;
+          })}
+        </div>}
+
+    <Modal opened={Boolean(editing)} onClose={() => setEditing(null)} title={editing ? `Configure ${editing.row.columnName}` : 'Configure column'} size="md" centered>
+      {editing ? <Stack gap="sm">
+        <Select
+          label="PII type"
+          data={piiOptions}
+          value={editing.draft.piiType}
+          searchable
+          disabled={editing.hasFinding}
+          onChange={(value) => {
+            const piiType = value || 'MANUAL_PII';
+            const suggestedFunction = defaultFunctionForPii(piiType);
+            const params = defaultMaskParamsForMap(suggestedFunction, piiType);
+            setEditing((current) => current ? { ...current, draft: { ...current.draft, piiType, suggestedFunction, suggestedParam1: params.param1 || '', suggestedParam2: params.param2 || '' } } : current);
+          }}
+        />
+        <Select
+          label="Masking function"
+          data={compatibleFunctions(functions, editing.row.dataType, editing.draft.suggestedFunction)}
+          value={editing.draft.suggestedFunction}
+          searchable
+          onChange={(value) => {
+            if (!value) return;
+            const params = defaultMaskParamsForMap(value, editing.draft.piiType);
+            setEditing((current) => current ? { ...current, draft: { ...current.draft, suggestedFunction: value, suggestedParam1: params.param1 || '', suggestedParam2: params.param2 || '' } } : current);
+          }}
+        />
+        <ParamEditors
+          fn={editing.draft.suggestedFunction}
+          param1={editing.draft.suggestedParam1}
+          param2={editing.draft.suggestedParam2}
+          onParam={(n, value) => setEditing((current) => current ? { ...current, draft: { ...current.draft, [n === 1 ? 'suggestedParam1' : 'suggestedParam2']: value } } : current)}
+        />
+        <Group justify="flex-end"><Button variant="default" onClick={() => setEditing(null)}>Discard</Button><Button loading={manualPending} onClick={() => {
+          if (editing.hasFinding && editing.row.classificationId) onUpdate(editing.row.classificationId, { suggestedFunction: editing.draft.suggestedFunction, suggestedParam1: editing.draft.suggestedParam1 || null, suggestedParam2: editing.draft.suggestedParam2 || null });
+          else {
+            setManualDrafts((current) => ({ ...current, [editing.key]: editing.draft }));
+            onManual(editing.row, editing.draft);
+          }
+          setEditing(null);
+        }}>{editing.hasFinding ? 'Apply configuration' : 'Mark as PII'}</Button></Group>
+      </Stack> : null}
+    </Modal>
+  </Paper>;
+}
+
 export function ImpactMapPanel({
   graph,
   loading
@@ -749,11 +983,6 @@ export function ImpactDiagramPanel({ graph, loading }: { graph: DiscoveryGraph; 
           <Tooltip label="Zoom out" withArrow>
             <ActionIcon variant="default" onClick={() => setZoom((z) => Math.max(0.5, Math.round((z - 0.1) * 10) / 10))}>
               <IconZoomOut size={16} />
-            </ActionIcon>
-          </Tooltip>
-          <Tooltip label="Reset zoom" withArrow>
-            <ActionIcon variant="default" onClick={() => setZoom(1)}>
-              <IconFocusCentered size={16} />
             </ActionIcon>
           </Tooltip>
           <Tooltip label="Zoom in" withArrow>
@@ -1136,6 +1365,17 @@ function StatusBadge({ status }: { status?: string | null }) {
       {clean}
     </Badge>
   );
+}
+
+function StatusIcon({ status }: { status?: string | null }) {
+  const clean = String(status || 'UNKNOWN').toUpperCase();
+  const icon =
+    clean === 'FAILED' || clean === 'REJECTED' ? <IconX size={15} />
+      : clean === 'RUNNING' ? <IconLoader2 size={15} className="pii-spin" />
+        : clean === 'COMPLETED' || clean === 'APPROVED' ? <IconCircleCheck size={15} />
+          : clean === 'SUGGESTED' ? <IconAlertTriangle size={15} />
+            : <IconShieldSearch size={15} />;
+  return <Tooltip label={clean.replaceAll('_', ' ')}><ThemeIcon aria-label={`Status ${clean}`} color={statusTone(clean)} variant="light" size={28}>{icon}</ThemeIcon></Tooltip>;
 }
 
 function reviewKey(row: DiscoveryColumnReviewRow, index: number) {

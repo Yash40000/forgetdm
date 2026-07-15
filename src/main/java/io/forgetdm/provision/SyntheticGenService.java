@@ -70,6 +70,7 @@ public class SyntheticGenService {
     private static final int MAX_STREAMING_FK_POOL_VALUES = 200_000;
     private static final int API_GENERATOR_MAX_CONCURRENCY = 8;
     private static final int API_GENERATOR_RETRIES = 2;
+    private static final int MIN_SAVED_JOB_NAME_LENGTH = 8;
     private static final Duration TARGET_LEASE_STALE_AFTER = Duration.ofSeconds(90);
     private final Semaphore apiGeneratorThrottle = new Semaphore(API_GENERATOR_MAX_CONCURRENCY);
     private final ExecutorService syntheticExecutor;
@@ -757,8 +758,10 @@ public class SyntheticGenService {
 
     public Map<String, Object> updateSavedJob(String id, SavedSyntheticJobRequest request) {
         Map<String, Object> existing = querySavedJob(id, false);
-        String name = request == null || request.name() == null || request.name().isBlank()
-                ? String.valueOf(existing.get("name")) : cleanSavedJobName(request.name());
+        String existingName = String.valueOf(existing.get("name"));
+        String requestedName = request == null || request.name() == null ? "" : request.name().trim();
+        String name = requestedName.isBlank() || requestedName.equals(existingName)
+                ? existingName : cleanSavedJobName(requestedName);
         GenPlan plan = request == null || request.plan() == null ? readSavedPlan(id) : request.plan();
         validateSavedPlan(plan);
         try {
@@ -1710,9 +1713,12 @@ public class SyntheticGenService {
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Login required"));
     }
 
-    private String cleanSavedJobName(String name) {
+    static String cleanSavedJobName(String name) {
         if (name == null || name.isBlank()) throw ApiException.bad("Saved job name is required");
         String clean = name.trim();
+        if (clean.length() < MIN_SAVED_JOB_NAME_LENGTH) {
+            throw ApiException.bad("Saved job name must be at least " + MIN_SAVED_JOB_NAME_LENGTH + " characters");
+        }
         if (clean.length() > 200) throw ApiException.bad("Saved job name must be 200 characters or fewer");
         return clean;
     }
@@ -3030,6 +3036,10 @@ public class SyntheticGenService {
             // never to brand-new tables created in this run.
             Set<String> existing = new HashSet<>();
             for (GenTable t : ordered) if (!columnTypes(out, schema, t.name()).isEmpty()) existing.add(t.name().toLowerCase(Locale.ROOT));
+            if (!drop) {
+                validateTargetGeneratorCompatibility(out, schema, ordered,
+                        table -> Optional.ofNullable(data.get(table.name().toLowerCase(Locale.ROOT))).map(List::size).orElse(0));
+            }
 
             List<GenTable> childFirst = new ArrayList<>(ordered);
             Collections.reverse(childFirst);   // children before parents (FK-safe for drop/delete)
@@ -3055,6 +3065,10 @@ public class SyntheticGenService {
             if (create) for (GenTable t : ordered) {
                 execQuiet(out, createDdl(t.name(), schema, safe(t.columns())));
                 progress.update(percent(50, 64, ++prepDone[0], prepTotal), "Prepare target", "Created or verified " + t.name());
+            }
+            if (drop) {
+                validateTargetGeneratorCompatibility(out, schema, ordered,
+                        table -> Optional.ofNullable(data.get(table.name().toLowerCase(Locale.ROOT))).map(List::size).orElse(0));
             }
 
             if (!drop && load.clearsTarget()) {
@@ -3168,7 +3182,7 @@ public class SyntheticGenService {
         try (Connection coordinator = connections.openForBulk(ds)) {
             schema = DataSourceService.normalizeSchema(coordinator, plan.targetSchema());
             coordinator.setAutoCommit(false);
-            preparePartitionTarget(coordinator, schema, ordered, plan, requestedLoad, progress);
+            preparePartitionTarget(coordinator, schema, ordered, plan, requestedLoad, maxRows, progress);
             coordinator.commit();
         } catch (Exception e) {
             throw ApiException.bad("Partition target preparation failed: " + sqlDetail(e));
@@ -3264,7 +3278,7 @@ public class SyntheticGenService {
     }
 
     private void preparePartitionTarget(Connection out, String schema, List<GenTable> ordered, GenPlan plan,
-                                        LoadPlan load, ProgressSink progress) throws SQLException {
+                                        LoadPlan load, long maxRows, ProgressSink progress) throws SQLException {
         SqlDialect dialect = SqlDialect.fromConnection(out);
         String prep = plan.prepMode() == null ? "" : plan.prepMode().trim().toUpperCase(Locale.ROOT);
         boolean drop = "DROP_RECREATE".equals(prep) || Boolean.TRUE.equals(plan.dropTable());
@@ -3272,6 +3286,9 @@ public class SyntheticGenService {
         Set<String> existing = new HashSet<>();
         for (GenTable table : ordered) {
             if (!columnTypes(out, schema, table.name()).isEmpty()) existing.add(table.name().toLowerCase(Locale.ROOT));
+        }
+        if (!drop) {
+            validateTargetGeneratorCompatibility(out, schema, ordered, table -> rowCount(table, maxRows));
         }
         List<GenTable> childFirst = new ArrayList<>(ordered);
         Collections.reverse(childFirst);
@@ -3283,6 +3300,9 @@ public class SyntheticGenService {
         }
         if (create) {
             for (GenTable table : ordered) execQuiet(out, createDdl(table.name(), schema, safe(table.columns())));
+        }
+        if (drop) {
+            validateTargetGeneratorCompatibility(out, schema, ordered, table -> rowCount(table, maxRows));
         }
         if (!drop && load.clearsTarget()) {
             String clearPrep = "TRUNCATE".equals(load.targetPrep()) ? "TRUNCATE_CASCADE" : "DELETE";
@@ -3300,6 +3320,20 @@ public class SyntheticGenService {
             }
         }
         progress.update(18, "Prepare target", "Target prepared once; partition workers will only write rows");
+    }
+
+    private void validateTargetGeneratorCompatibility(Connection out, String schema, List<GenTable> tables,
+                                                        java.util.function.ToLongFunction<GenTable> rows) throws SQLException {
+        for (GenTable table : tables) {
+            Map<String, Integer> types = columnTypes(out, schema, table.name());
+            if (types.isEmpty()) continue;
+            Map<String, Integer> sizes = columnSizes(out, schema, table.name());
+            Map<String, Integer> scales = columnScales(out, schema, table.name());
+            for (SyntheticRangeChecks.RangeIssue issue : SyntheticRangeChecks.check(
+                    table, Math.max(0, rows.applyAsLong(table)), types, sizes, scales)) {
+                if (issue.fatal()) throw ApiException.bad("Target compatibility check failed before target preparation: " + issue.message());
+            }
+        }
     }
 
     private void runLocalPartitionWave(List<PartitionRecord> records, GenPlan plan, List<GenTable> ordered, long seed,
@@ -3403,7 +3437,7 @@ public class SyntheticGenService {
                         load, partitionProgress, 22, 96, 0, rows);
                 default -> {
                     if (load.fastLoad() && isPostgres(out)) {
-                        copyInsertRows(out, schema, table, rows, partitionRng, ctx, types, sizes, load,
+                        copyInsertRows(out, schema, table, rows, partitionRng, ctx, types, sizes, scales, load,
                                 partitionProgress, 22, 96, 0, rows);
                     } else if (load.fastLoad() && dialect.supportsMultiRowInsert()) {
                         multiRowInsertRows(out, schema, table, rows, partitionRng, ctx, types, sizes, scales, dialect,
@@ -3963,6 +3997,9 @@ public class SyntheticGenService {
 
             Set<String> existing = new HashSet<>();
             for (GenTable t : ordered) if (!columnTypes(out, schema, t.name()).isEmpty()) existing.add(t.name().toLowerCase(Locale.ROOT));
+            if (!drop) {
+                validateTargetGeneratorCompatibility(out, schema, ordered, table -> rowCount(table, maxRows));
+            }
 
             List<GenTable> childFirst = new ArrayList<>(ordered);
             Collections.reverse(childFirst);
@@ -3988,6 +4025,9 @@ public class SyntheticGenService {
             if (create) for (GenTable t : ordered) {
                 execQuiet(out, createDdl(t.name(), schema, safe(t.columns())));
                 progress.update(percent(8, 20, ++prepDone[0], prepTotal), "Prepare target", "Created or verified " + t.name());
+            }
+            if (drop) {
+                validateTargetGeneratorCompatibility(out, schema, ordered, table -> rowCount(table, maxRows));
             }
 
             if (!drop && load.clearsTarget()) {
@@ -4058,7 +4098,7 @@ public class SyntheticGenService {
                     case "INSERT_UPDATE" -> streamInsertUpdateRows(out, schema, t, rows, rng, ctx, types, sizes, scales, load, progress, from, to, streamedBefore, totalRows);
                     default -> {
                         if (load.fastLoad() && isPostgres(out))   // fastest path: Postgres COPY (no per-row reject capture)
-                            copyInsertRows(out, schema, t, rows, rng, ctx, types, sizes, load, progress, from, to, streamedBefore, totalRows);
+                            copyInsertRows(out, schema, t, rows, rng, ctx, types, sizes, scales, load, progress, from, to, streamedBefore, totalRows);
                         else if (load.fastLoad() && nativeExternalLoaderAvailable(ds, dialect, load)) {
                             NativeLoadResult nativeResult = nativeFileInsertRows(out, ds, schema, t, rows, rng, ctx,
                                     types, sizes, load, progress, from, to, streamedBefore, totalRows);
@@ -4985,7 +5025,8 @@ public class SyntheticGenService {
      */
     private void copyInsertRows(Connection out, String schema, GenTable t, long rows, Random rng,
                                 StreamCtx ctx,
-                                Map<String, Integer> types, Map<String, Integer> sizes, LoadPlan load,
+                                Map<String, Integer> types, Map<String, Integer> sizes,
+                                Map<String, Integer> scales, LoadPlan load,
                                 ProgressSink progress, int startPct, int endPct,
                                 long rowsDoneBeforeTable, long rowsTotal) throws Exception {
         if (rows <= 0) return;
@@ -4999,6 +5040,7 @@ public class SyntheticGenService {
             throw ApiException.bad("None of the generated columns match target table " + t.name() + ".");
         int[] jdbc = cols.stream().mapToInt(c -> types.getOrDefault(c.name().toLowerCase(Locale.ROOT), Types.VARCHAR)).toArray();
         int[] len = cols.stream().mapToInt(c -> sizes.getOrDefault(c.name().toLowerCase(Locale.ROOT), 0)).toArray();
+        int[] scale = cols.stream().mapToInt(c -> scales.getOrDefault(c.name().toLowerCase(Locale.ROOT), 0)).toArray();
         String copySql = "COPY " + q(schema, t.name()) + " (" + join(cols, c -> q(c.name())) + ") FROM STDIN WITH (FORMAT csv, NULL '\\N')";
         int batch = Math.max(1000, load.batchSize());
         int commitEvery = load.commitEveryRows();
@@ -5012,7 +5054,7 @@ public class SyntheticGenService {
             LinkedHashMap<String, String> row = streamRow(t, allCols, gens, i, rng, ctx);
             for (int c = 0; c < cols.size(); c++) {
                 if (c > 0) sb.append(',');
-                String v = fit(row.get(cols.get(c).name()), jdbc[c], len[c]);
+                String v = fitForCopy(row.get(cols.get(c).name()), jdbc[c], cols.get(c).name(), len[c], scale[c]);
                 sb.append(v == null ? "\\N" : csvCopy(v));
             }
             sb.append('\n');
@@ -5039,6 +5081,33 @@ public class SyntheticGenService {
         boolean quote = v.isEmpty() || v.equals("\\N")
                 || v.indexOf(',') >= 0 || v.indexOf('"') >= 0 || v.indexOf('\n') >= 0 || v.indexOf('\r') >= 0;
         return quote ? "\"" + v.replace("\"", "\"\"") + "\"" : v;
+    }
+
+    private static String fitForCopy(String value, int jdbcType, String column, int precision, int scale) {
+        if (value == null) return null;
+        try {
+            return switch (jdbcType) {
+                case Types.TINYINT, Types.SMALLINT, Types.INTEGER, Types.BIGINT,
+                        Types.DECIMAL, Types.NUMERIC, Types.FLOAT, Types.REAL, Types.DOUBLE -> {
+                    BigDecimal number = asNumber(value);
+                    if (number == null) {
+                        throw ApiException.bad("Column '" + column + "' is numeric, but the generated value '"
+                                + clipVal(value) + "' contains non-numeric characters. Choose a numeric generator.");
+                    }
+                    yield fitNumber(number, jdbcType, precision, scale).toPlainString();
+                }
+                case Types.BOOLEAN, Types.BIT -> Boolean.toString(parseBool(value));
+                case Types.DATE -> java.sql.Date.valueOf(datePart(value)).toString();
+                case Types.TIME -> Time.valueOf(value.substring(0, Math.min(8, value.length()))).toString();
+                case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> Timestamp.valueOf(normalizeTs(value)).toString();
+                default -> fit(value, jdbcType, precision);
+            };
+        } catch (ApiException e) {
+            throw e;
+        } catch (IllegalArgumentException badValue) {
+            throw ApiException.bad("Column '" + column + "' could not accept the generated value '" + clipVal(value)
+                    + "' for its data type. Adjust this field's generator or its parameters.");
+        }
     }
 
     private static boolean isPostgres(Connection c) {

@@ -10,6 +10,7 @@ import {
   Card,
   Checkbox,
   Divider,
+  Drawer,
   Group,
   Loader,
   Modal,
@@ -28,7 +29,19 @@ import {
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { IconDeviceFloppy, IconPlayerPlay, IconPlus, IconRefresh, IconSearch, IconTrash } from '@tabler/icons-react';
+import {
+  IconAdjustments,
+  IconDatabaseImport,
+  IconDeviceFloppy,
+  IconEdit,
+  IconLock,
+  IconPlayerPlay,
+  IconPlus,
+  IconRefresh,
+  IconSearch,
+  IconServer2,
+  IconTrash
+} from '@tabler/icons-react';
 
 import { apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
@@ -67,6 +80,7 @@ import {
   resolveDataSourceInput,
   safeInputChecked,
   safeInputValue,
+  SYNTHETIC_JOB_NAME_MIN_LENGTH,
   tableFromColumns,
   technicalInputProps,
   unknownNameList
@@ -97,16 +111,32 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
   const [saveName, setSaveName] = useState('');
   const [saveDescription, setSaveDescription] = useState('');
   const [importStatus, setImportStatus] = useState<ImportStatus | null>(null);
+  const [sourceSetupOpened, setSourceSetupOpened] = useState(false);
+  const [outputSetupOpened, setOutputSetupOpened] = useState(false);
+  const [targetSetupOpened, setTargetSetupOpened] = useState(false);
+  const [previewOpened, setPreviewOpened] = useState(false);
+  const [sourceImportOpened, setSourceImportOpened] = useState(false);
+  const [sourceDraftSnapshot, setSourceDraftSnapshot] = useState<SyntheticDraft | null>(null);
+  const [outputDraftSnapshot, setOutputDraftSnapshot] = useState<SyntheticDraft | null>(null);
+  const [sourceSetupSaved, setSourceSetupSaved] = useState(Boolean(initialPlan?.tables?.length));
+  const [outputSetupSaved, setOutputSetupSaved] = useState(Boolean(initialPlan));
 
   const sourceSchemas = useSchemas(draft.sourceDataSourceId);
   const sourceTables = useTables(draft.sourceDataSourceId, draft.sourceSchema);
   const targetSchemas = useSchemas(draft.targetDataSourceId);
   const plan = useMemo(() => collectSyntheticPlan(draft), [draft]);
   const fingerprint = useMemo(() => planFingerprint(plan), [plan]);
+  const setupLaunchReady = sourceSetupSaved && outputSetupSaved &&
+    (draft.receiver !== 'DB' || Boolean(draft.targetDataSourceId || draft.targetSystems.length));
+  const saveNameLength = saveName.trim().length;
+  const saveNameTooShort = saveNameLength > 0 && saveNameLength < SYNTHETIC_JOB_NAME_MIN_LENGTH;
 
   const previewPlan = useMutation({
     mutationFn: (nextPlan: SyntheticPlan) => apiPost<SyntheticPlanSummary>('/api/synthetic/plan-summary', nextPlan),
-    onSuccess: (result) => setSummary(result),
+    onSuccess: (result) => {
+      setSummary(result);
+      setPreviewOpened(true);
+    },
     onError: (error) =>
       notifications.show({ color: 'red', title: 'Plan preview failed', message: error instanceof Error ? error.message : 'Could not preview plan' })
   });
@@ -227,9 +257,148 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
 
   return (
     <>
-      <Stack gap="md">
+      <Stack className="syn-designer-stack" gap="md">
         <DesignerHeader draft={draft} plan={plan} summary={summary} setDraft={setDraft} />
 
+        <BuildSetupBar
+          draft={draft}
+          dataSources={dataSources}
+          sourceSaved={sourceSetupSaved}
+          outputSaved={outputSetupSaved}
+          onOpenSource={() => {
+            setSourceDraftSnapshot(draft);
+            setSourceSetupOpened(true);
+          }}
+          onOpenOutput={() => {
+            if (!sourceSetupSaved) return;
+            setOutputDraftSnapshot(draft);
+            setOutputSetupOpened(true);
+          }}
+          onOpenTargets={() => {
+            if (!outputSetupSaved) return;
+            setTargetSetupOpened(true);
+          }}
+        />
+
+        <Group className="syn-build-action-bar" justify="space-between" align="flex-start" wrap="wrap">
+          <div>
+            <Text fw={850}>Review and launch</Text>
+            <Text size="xs" c="dimmed">
+              {summary ? 'Plan evidence is ready. Preview again after changing the design.' : 'Preview validates constraints, partitions, and banking readiness.'}
+            </Text>
+          </div>
+          <Group className="syn-launch-actions" gap="xs">
+            <Button variant="light" disabled={!setupLaunchReady} leftSection={<IconRefresh size={16} />} loading={previewPlan.isPending} onClick={() => previewPlan.mutate(plan)}>
+              Preview plan
+            </Button>
+            <Button variant="light" disabled={!setupLaunchReady} leftSection={<IconDeviceFloppy size={16} />} onClick={openSave}>
+              Save job
+            </Button>
+            <Button disabled={!setupLaunchReady} leftSection={<IconPlayerPlay size={16} />} loading={startRun.isPending} onClick={launch}>
+              Generate
+            </Button>
+          </Group>
+        </Group>
+
+      </Stack>
+
+      <Modal
+        opened={previewOpened && Boolean(summary && fingerprint)}
+        onClose={() => setPreviewOpened(false)}
+        title="Synthetic plan preview"
+        size="92vw"
+        centered
+        scrollAreaComponent={ScrollArea.Autosize}
+      >
+        {summary && fingerprint ? (
+          <Stack gap="md">
+            <PlanSummaryCard plan={plan} summary={summary} />
+            <Group justify="flex-end">
+              <Button variant="light" onClick={() => setPreviewOpened(false)}>Back to design</Button>
+              <Button leftSection={<IconPlayerPlay size={16} />} loading={startRun.isPending} onClick={launch}>Generate</Button>
+            </Group>
+          </Stack>
+        ) : null}
+      </Modal>
+
+      <Modal
+        opened={sourceSetupOpened}
+        onClose={() => {
+          if (importTables.isPending) return;
+          setSourceImportOpened(false);
+          setSourceSetupOpened(false);
+        }}
+        title="Source table workspace"
+        fullScreen
+        withCloseButton={false}
+        closeOnClickOutside={false}
+        closeOnEscape={false}
+      >
+        <Stack className="syn-source-workspace" gap="md">
+          <Group justify="space-between" align="flex-start" wrap="wrap">
+            <div>
+              <Group gap={7}>
+                <Text fw={850} size="lg">Synthetic source tables</Text>
+                <Badge variant="light">{draft.tables.length} table{draft.tables.length === 1 ? '' : 's'}</Badge>
+              </Group>
+              <Text size="sm" c="dimmed">Import live metadata, then configure rows, generators, keys, and table relationships.</Text>
+            </div>
+            <Button leftSection={<IconDatabaseImport size={16} />} onClick={() => setSourceImportOpened(true)}>
+              Add / import tables
+            </Button>
+          </Group>
+
+          <TableEditor draft={draft} setDraft={setDraft} generators={generators} allowBlankTable={false} />
+
+          <Group className="syn-source-workspace-footer" justify="space-between" align="center">
+            <Text size="xs" c="dimmed">Save keeps these table and generator changes in the current synthetic design.</Text>
+            <Group gap="xs">
+              <Button
+                variant="subtle"
+                color="red"
+                disabled={importTables.isPending}
+                onClick={() => {
+                  if (sourceDraftSnapshot) setDraft(() => sourceDraftSnapshot);
+                  setSourceImportOpened(false);
+                  setSourceSetupOpened(false);
+                }}
+              >
+                Discard changes
+              </Button>
+              <Button
+                disabled={importTables.isPending}
+                onClick={() => {
+                  if (!draft.tables.length || draft.tables.some((table) => !table.name.trim() || !table.columns.length)) {
+                    notifications.show({ color: 'red', title: 'Source setup is incomplete', message: 'Every source table needs a name and at least one field.' });
+                    return;
+                  }
+                  const sourceChanged = sourceDraftSnapshot
+                    ? JSON.stringify({ source: sourceDraftSnapshot.sourceDataSourceId, schema: sourceDraftSnapshot.sourceSchema, tables: sourceDraftSnapshot.tables }) !==
+                      JSON.stringify({ source: draft.sourceDataSourceId, schema: draft.sourceSchema, tables: draft.tables })
+                    : true;
+                  setSourceSetupSaved(true);
+                  if (sourceChanged) setOutputSetupSaved(false);
+                  setSourceDraftSnapshot(null);
+                  setSourceImportOpened(false);
+                  setSourceSetupOpened(false);
+                }}
+              >
+                Save &amp; close
+              </Button>
+            </Group>
+          </Group>
+        </Stack>
+      </Modal>
+
+      <Drawer
+        opened={sourceSetupOpened && sourceImportOpened}
+        onClose={() => !importTables.isPending && setSourceImportOpened(false)}
+        title="Add or import source tables"
+        position="right"
+        size="xl"
+        closeOnClickOutside={!importTables.isPending}
+        closeOnEscape={!importTables.isPending}
+      >
         <SourceImportPanel
           draft={draft}
           setDraft={setDraft}
@@ -248,45 +417,77 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
           busy={importTables.isPending}
           importStatus={importStatus}
         />
+      </Drawer>
 
-        <TableEditor draft={draft} setDraft={setDraft} generators={generators} />
-
-        <OutputPanel
-          draft={draft}
-          setDraft={setDraft}
-          dataSources={dataSources}
-          targetSchemaOptions={schemaOptions(targetSchemas.data)}
-          targetSchemasLoading={targetSchemas.isFetching}
-        />
-
-        <EnterpriseTargetPanel draft={draft} setDraft={setDraft} dataSources={dataSources} />
-
-        <Group justify="space-between" align="flex-start">
-          <div>
-            <Text fw={850}>Preview and launch</Text>
-            <Text size="sm" c="dimmed">
-              Preview captures constraints, streaming mode, partition count, and banking readiness before launch.
-            </Text>
-          </div>
-          <Group gap="xs">
-            <Button variant="light" leftSection={<IconRefresh size={16} />} loading={previewPlan.isPending} onClick={() => previewPlan.mutate(plan)}>
-              Preview plan
-            </Button>
-            <Button variant="light" leftSection={<IconDeviceFloppy size={16} />} onClick={openSave}>
-              Save job
-            </Button>
-            <Button leftSection={<IconPlayerPlay size={16} />} loading={startRun.isPending} onClick={launch}>
-              Generate
-            </Button>
+      <Modal
+        opened={outputSetupOpened}
+        onClose={() => {
+          if (outputDraftSnapshot) setDraft(() => outputDraftSnapshot);
+          setOutputDraftSnapshot(null);
+          setOutputSetupOpened(false);
+        }}
+        title="Output, load, and partition execution"
+        size="92vw"
+        centered
+        withCloseButton={false}
+        closeOnClickOutside={false}
+        closeOnEscape={false}
+      >
+        <Stack gap="md">
+          <OutputPanel
+            draft={draft}
+            setDraft={setDraft}
+            dataSources={dataSources}
+            targetSchemaOptions={schemaOptions(targetSchemas.data)}
+            targetSchemasLoading={targetSchemas.isFetching}
+          />
+          <Group className="syn-output-modal-footer" justify="space-between" align="center">
+            <Text size="xs" c="dimmed">Save this step to unlock enterprise targets and plan review.</Text>
+            <Group gap="xs">
+              <Button
+                variant="subtle"
+                color="red"
+                onClick={() => {
+                  if (outputDraftSnapshot) setDraft(() => outputDraftSnapshot);
+                  setOutputDraftSnapshot(null);
+                  setOutputSetupOpened(false);
+                }}
+              >
+                Discard changes
+              </Button>
+              <Button
+                leftSection={<IconDeviceFloppy size={16} />}
+                onClick={() => {
+                  setOutputSetupSaved(true);
+                  setOutputDraftSnapshot(null);
+                  setOutputSetupOpened(false);
+                }}
+              >
+                Save &amp; close
+              </Button>
+            </Group>
           </Group>
-        </Group>
+        </Stack>
+      </Modal>
 
-        {summary && fingerprint ? <PlanSummaryCard plan={plan} summary={summary} /> : null}
-      </Stack>
+      <Modal
+        opened={targetSetupOpened}
+        onClose={() => setTargetSetupOpened(false)}
+        title="Enterprise target systems"
+        fullScreen
+      >
+        <EnterpriseTargetPanel draft={draft} setDraft={setDraft} dataSources={dataSources} />
+      </Modal>
 
       <Modal opened={saveOpened} onClose={() => setSaveOpened(false)} title="Save synthetic job" size="md">
         <Stack gap="sm">
-          <NameInput label="Job name" value={saveName} onChange={(value) => setSaveName(value)} />
+          <NameInput
+            label="Job name"
+            description={`At least ${SYNTHETIC_JOB_NAME_MIN_LENGTH} characters`}
+            error={saveNameTooShort ? `Enter at least ${SYNTHETIC_JOB_NAME_MIN_LENGTH} characters` : undefined}
+            value={saveName}
+            onChange={(value) => setSaveName(value)}
+          />
           <Textarea label="Description" value={saveDescription} onChange={(event) => setSaveDescription(safeInputValue(event))} />
           <Alert color="blue" variant="light">
             Saved jobs can be loaded, approved, exported as shell runners, and run without rebuilding the design.
@@ -295,7 +496,7 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
             <Button variant="light" onClick={() => setSaveOpened(false)}>
               Cancel
             </Button>
-            <Button loading={saveJob.isPending} disabled={!saveName.trim()} onClick={() => saveJob.mutate()}>
+            <Button loading={saveJob.isPending} disabled={saveNameLength < SYNTHETIC_JOB_NAME_MIN_LENGTH} onClick={() => saveJob.mutate()}>
               Save
             </Button>
           </Group>
@@ -350,6 +551,109 @@ function DesignerHeader({
         </div>
       </SimpleGrid>
     </Paper>
+  );
+}
+
+function BuildSetupBar({
+  draft,
+  dataSources,
+  sourceSaved,
+  outputSaved,
+  onOpenSource,
+  onOpenOutput,
+  onOpenTargets
+}: {
+  draft: SyntheticDraft;
+  dataSources: DataSource[];
+  sourceSaved: boolean;
+  outputSaved: boolean;
+  onOpenSource: () => void;
+  onOpenOutput: () => void;
+  onOpenTargets: () => void;
+}) {
+  const sourceName = dataSourceName(draft.sourceDataSourceId, dataSources) || draft.sourceDataSourceInput || 'Not selected';
+  const targetName = dataSourceName(draft.targetDataSourceId, dataSources) || draft.targetDataSourceInput || 'Not selected';
+  const sourceReady = sourceSaved && Boolean(draft.tables.length);
+  const outputReady = outputSaved;
+  const destinationReady = draft.receiver !== 'DB' || Boolean(draft.targetDataSourceId || draft.targetSystems.length);
+  const coreReady = sourceReady && outputReady && destinationReady;
+  const totalRows = draft.tables.reduce((sum, table) => sum + (Number(table.rowCount) || 0), 0);
+  const totalColumns = draft.tables.reduce((sum, table) => sum + table.columns.length, 0);
+  const relationshipCount = draft.tables.reduce((sum, table) => sum + table.columns.filter((column) => column.fkTable).length, 0);
+
+  return (
+    <section className="syn-build-setup" aria-labelledby="syn-build-setup-title">
+      <Group justify="space-between" align="center" mb="xs">
+        <div>
+          <Text id="syn-build-setup-title" fw={850} size="sm">Design setup</Text>
+          <Text size="xs" c="dimmed">Open only the part of the plan you need to configure.</Text>
+        </div>
+        <Group gap={6}>
+          <Badge className="syn-build-editable-badge" variant="light" color="blue">Editable setup</Badge>
+          <Badge variant="light" color={coreReady ? 'green' : 'yellow'}>
+            {coreReady ? 'Core setup ready' : 'Setup incomplete'}
+          </Badge>
+        </Group>
+      </Group>
+      <div className="syn-build-setup-grid">
+        <button type="button" className="syn-build-setup-action" onClick={onOpenSource}>
+          <span className="syn-build-setup-icon" data-step="1"><IconDatabaseImport size={18} /></span>
+          <span className="syn-build-setup-copy">
+            <strong>Source tables</strong>
+            <small>{sourceName}{draft.sourceSchema ? ` / ${draft.sourceSchema}` : ''}</small>
+          </span>
+          <Badge size="xs" variant="light" color={sourceReady ? 'green' : 'yellow'}>{sourceReady ? 'Saved' : 'Save source'}</Badge>
+          <span className="syn-build-edit-affordance"><IconEdit size={13} /> Edit</span>
+        </button>
+        <button type="button" className="syn-build-setup-action" onClick={onOpenOutput} disabled={!sourceReady} title={!sourceReady ? 'Save Source tables first' : undefined}>
+          <span className="syn-build-setup-icon" data-step="2"><IconAdjustments size={18} /></span>
+          <span className="syn-build-setup-copy">
+            <strong>Output &amp; execution</strong>
+            <small>{draft.receiver === 'DB' ? `${targetName} · ${draft.loadAction} · ${draft.executionMode}` : `${draft.receiver} output · ${draft.executionMode}`}</small>
+          </span>
+          <Badge size="xs" variant="light" color={outputReady ? 'green' : 'yellow'}>{outputReady ? 'Saved' : sourceReady ? 'Configure' : 'Locked'}</Badge>
+          <span className="syn-build-edit-affordance">
+            {sourceReady ? <IconEdit size={13} /> : <IconLock size={13} />}
+            {sourceReady ? 'Edit' : 'Locked'}
+          </span>
+        </button>
+        <button
+          type="button"
+          className="syn-build-setup-action"
+          onClick={onOpenTargets}
+          disabled={draft.receiver !== 'DB' || !outputReady}
+          title={!outputReady ? 'Save Output & execution first' : draft.receiver !== 'DB' ? 'Enterprise targets require database output' : undefined}
+        >
+          <span className="syn-build-setup-icon" data-step="3"><IconServer2 size={18} /></span>
+          <span className="syn-build-setup-copy">
+            <strong>Enterprise targets</strong>
+            <small>{draft.receiver === 'DB' ? `${draft.targetSystems.length} application target${draft.targetSystems.length === 1 ? '' : 's'}` : 'Available for database output'}</small>
+          </span>
+          <Badge size="xs" variant="light" color="blue">{draft.targetSystems.length ? `${draft.targetSystems.length} mapped` : 'Optional'}</Badge>
+          <span className="syn-build-edit-affordance">
+            {outputReady ? <IconEdit size={13} /> : <IconLock size={13} />}
+            {outputReady ? 'Edit' : 'Locked'}
+          </span>
+        </button>
+      </div>
+      {sourceReady ? <div className="syn-build-setup-summary" aria-label="Current synthetic design summary">
+        <div className="syn-build-summary-item">
+          <span>Data model</span>
+          <strong>{draft.tables.length} table{draft.tables.length === 1 ? '' : 's'} · {formatRows(totalRows)} rows</strong>
+          <small>{totalColumns} fields · {relationshipCount} FK relationship{relationshipCount === 1 ? '' : 's'}</small>
+        </div>
+        <div className="syn-build-summary-item">
+          <span>Load plan</span>
+          <strong>{outputReady ? (draft.receiver === 'DB' ? `${draft.loadAction} · ${draft.targetPrep}` : `${draft.receiver} output`) : 'Not saved'}</strong>
+          <small>{outputReady ? `${draft.executionMode} · ${draft.executionMode === 'SINGLE' ? '1 worker' : `${draft.partitionCount || 'Auto'} workers`}` : 'Complete Output & execution next'}</small>
+        </div>
+        <div className="syn-build-summary-item">
+          <span>Destination</span>
+          <strong>{destinationReady ? (draft.receiver === 'DB' ? targetName : `${draft.receiver} files`) : 'Target pending'}</strong>
+          <small>{outputReady ? (draft.receiver === 'DB' ? `${draft.targetSchema || 'Schema not selected'} · ${draft.targetSystems.length} additional target${draft.targetSystems.length === 1 ? '' : 's'}` : 'Generated as a file package') : 'Available after Output is saved'}</small>
+        </div>
+      </div> : null}
+    </section>
   );
 }
 
@@ -504,9 +808,11 @@ function SourceImportPanel({
                 onChange={(event) => updateSourceInput(safeInputValue(event))}
                 style={{ flex: 1 }}
               />
-              <Button variant="light" onClick={() => setSourceBrowseOpened(true)}>
-                Browse
-              </Button>
+              <Tooltip label="Browse source databases" withArrow>
+                <ActionIcon size="lg" variant="light" aria-label="Browse source databases" onClick={() => setSourceBrowseOpened(true)}>
+                  <IconSearch size={17} />
+                </ActionIcon>
+              </Tooltip>
             </Group>
             <Group align="flex-end" wrap="nowrap">
               <TextInput
@@ -520,9 +826,11 @@ function SourceImportPanel({
                 onChange={(event) => updateSourceSchema(safeInputValue(event))}
                 style={{ flex: 1 }}
               />
-              <Button variant="light" disabled={!canUseSource} loading={sourceSchemasLoading} onClick={() => setSchemaBrowseOpened(true)}>
-                Browse
-              </Button>
+              <Tooltip label="Browse source schemas" withArrow>
+                <ActionIcon size="lg" variant="light" aria-label="Browse source schemas" disabled={!canUseSource} loading={sourceSchemasLoading} onClick={() => setSchemaBrowseOpened(true)}>
+                  <IconSearch size={17} />
+                </ActionIcon>
+              </Tooltip>
             </Group>
           </SimpleGrid>
 
@@ -559,9 +867,11 @@ function SourceImportPanel({
                 className="syn-table-import-input"
               />
               <div className="syn-table-import-actions">
-                <Button variant="light" disabled={!canUseSchema} loading={sourceTablesLoading} onClick={() => setTableBrowseOpened(true)}>
-                  Browse tables
-                </Button>
+                <Tooltip label="Browse source tables" withArrow>
+                  <ActionIcon size="lg" variant="light" aria-label="Browse source tables" disabled={!canUseSchema} loading={sourceTablesLoading} onClick={() => setTableBrowseOpened(true)}>
+                    <IconSearch size={17} />
+                  </ActionIcon>
+                </Tooltip>
                 <Tooltip label="Imports the columns of these tables into the design below, with type-matched generators." withArrow>
                   <Button leftSection={<IconPlus size={15} />} disabled={importDisabled} onClick={() => onImport(false)}>
                     {selectedCount ? `Add ${selectedCount} table${selectedCount === 1 ? '' : 's'} to design` : 'Add to design'}
@@ -893,253 +1203,237 @@ function TableBrowseModal({
 function TableEditor({
   draft,
   setDraft,
-  generators
+  generators,
+  allowBlankTable = true
 }: {
   draft: SyntheticDraft;
   setDraft: (fn: (draft: SyntheticDraft) => SyntheticDraft) => void;
   generators: GeneratorSpec[];
+  allowBlankTable?: boolean;
 }) {
-  const [browseTarget, setBrowseTarget] = useState<{ tableIndex: number; columnIndex: number } | null>(null);
-  const browseColumn =
-    browseTarget != null ? draft.tables[browseTarget.tableIndex]?.columns[browseTarget.columnIndex] : null;
-  const updateTable = (index: number, patch: Partial<SyntheticTable>) => {
-    setDraft((current) => ({
-      ...current,
-      tables: current.tables.map((table, idx) => (idx === index ? { ...table, ...patch } : table))
-    }));
+  const [browseTarget, setBrowseTarget] = useState<{ columnIndex: number } | null>(null);
+  const [editingTableIndex, setEditingTableIndex] = useState<number | null>(null);
+  const [editingTable, setEditingTable] = useState<SyntheticTable | null>(null);
+  const browseColumn = browseTarget != null ? editingTable?.columns[browseTarget.columnIndex] : null;
+  const cloneTable = (table: SyntheticTable): SyntheticTable => ({
+    ...table,
+    columns: table.columns.map((column) => ({ ...column }))
+  });
+  const openTableEditor = (index: number) => {
+    const table = draft.tables[index];
+    if (!table) return;
+    setBrowseTarget(null);
+    setEditingTableIndex(index);
+    setEditingTable(cloneTable(table));
   };
-  const updateColumn = (tableIndex: number, columnIndex: number, patch: Partial<SyntheticColumn>) => {
-    setDraft((current) => ({
-      ...current,
-      tables: current.tables.map((table, idx) =>
-        idx === tableIndex
-          ? {
-              ...table,
-              columns: table.columns.map((column, colIdx) => (colIdx === columnIndex ? { ...column, ...patch } : column))
-            }
-          : table
-      )
-    }));
+  const updateEditingTable = (patch: Partial<SyntheticTable>) => {
+    setEditingTable((current) => (current ? { ...current, ...patch } : current));
   };
-  const addTable = () =>
+  const updateEditingColumn = (columnIndex: number, patch: Partial<SyntheticColumn>) => {
+    setEditingTable((current) =>
+      current
+        ? {
+            ...current,
+            columns: current.columns.map((column, index) => (index === columnIndex ? { ...column, ...patch } : column))
+          }
+        : current
+    );
+  };
+  const closeTableEditor = () => {
+    setBrowseTarget(null);
+    setEditingTableIndex(null);
+    setEditingTable(null);
+  };
+  const saveTableEditor = (close: boolean) => {
+    if (editingTableIndex === null || !editingTable) return;
+    const tableName = editingTable.name.trim();
+    const fieldNames = editingTable.columns.map((column) => column.name.trim());
+    if (!tableName) {
+      notifications.show({ color: 'red', title: 'Table name required', message: 'Enter a table name before saving.' });
+      return;
+    }
+    if (!editingTable.columns.length) {
+      notifications.show({ color: 'red', title: 'Add at least one field', message: 'A synthetic table cannot be saved without fields.' });
+      return;
+    }
+    if (fieldNames.some((name) => !name)) {
+      notifications.show({ color: 'red', title: 'Field name required', message: 'Every field needs a name before this table can be saved.' });
+      return;
+    }
+    const normalizedNames = fieldNames.map((name) => name.toLowerCase());
+    if (new Set(normalizedNames).size !== normalizedNames.length) {
+      notifications.show({ color: 'red', title: 'Duplicate field names', message: 'Field names must be unique within a table.' });
+      return;
+    }
+    const savedTable = cloneTable({ ...editingTable, name: tableName });
     setDraft((current) => ({
       ...current,
-      tables: current.tables.concat({
-        name: `table${current.tables.length + 1}`,
-        rowCount: 100,
-        columns: [makeColumn('id', 'SEQUENCE', '', '', true)]
-      })
+      tables: current.tables.map((table, index) => (index === editingTableIndex ? savedTable : table))
     }));
+    setEditingTable(savedTable);
+    notifications.show({ color: 'green', title: 'Table saved', message: `${tableName} is updated in the current design.` });
+    if (close) closeTableEditor();
+  };
+  const addTable = () => {
+    const nextIndex = draft.tables.length;
+    const nextTable: SyntheticTable = {
+      name: `table${draft.tables.length + 1}`,
+      rowCount: 100,
+      columns: [makeColumn('id', 'SEQUENCE', '', '', true)]
+    };
+    setDraft((current) => ({
+      ...current,
+      tables: current.tables.concat(nextTable)
+    }));
+    setEditingTableIndex(nextIndex);
+    setEditingTable(cloneTable(nextTable));
+  };
+  const removeTable = (index: number) => {
+    setDraft((current) => ({ ...current, tables: current.tables.filter((_, idx) => idx !== index) }));
+    setEditingTableIndex((current) => {
+      if (current === null || current === index) return null;
+      return current > index ? current - 1 : current;
+    });
+    setEditingTable(null);
+    setBrowseTarget(null);
+  };
 
   return (
-    <Card className="forge-card" p="md">
-      <Stack gap="sm">
-        <Group justify="space-between">
-          <div>
-            <Text fw={850}>Tables and generators</Text>
-            <Text size="sm" c="dimmed">
-              FK-linked fields are generated from parent keys. Literal generators expose Param 1 as the literal value.
-            </Text>
-          </div>
-          <Button variant="light" leftSection={<IconPlus size={16} />} onClick={addTable}>
-            Blank table
-          </Button>
-        </Group>
-        {!draft.tables.length ? (
-          <Alert color="yellow" variant="light">
-            No tables are in this design yet. Add a blank table, or import source tables above.
-          </Alert>
-        ) : null}
-        <Accordion multiple defaultValue={draft.tables.slice(0, 2).map((table) => table.name)}>
-          {draft.tables.map((table, tableIndex) => (
-            <Accordion.Item key={`${table.name}-${tableIndex}`} value={`${table.name}-${tableIndex}`}>
-              <Accordion.Control>
-                <Group justify="space-between" wrap="nowrap">
-                  <div>
-                    <Text fw={800}>{table.name || `Table ${tableIndex + 1}`}</Text>
-                    <Text size="xs" c="dimmed">
-                      {table.columns.length} column(s), {formatRows(table.rowCount)} rows
-                    </Text>
-                  </div>
-                  <Badge variant="light">{table.columns.filter((column) => column.fkTable).length} FK</Badge>
-                </Group>
-              </Accordion.Control>
-              <Accordion.Panel>
-                <Stack gap="sm">
-                  <SimpleGrid cols={{ base: 1, md: 3 }}>
-                    <TextInput label="Table name" value={table.name} onChange={(event) => updateTable(tableIndex, { name: safeInputValue(event) })} />
-                    <NumberInput
-                      label="Rows"
-                      min={0}
-                      value={table.rowCount}
-                      onChange={(value) => updateTable(tableIndex, { rowCount: value === '' || value === null ? '' : value })}
-                    />
-                    <Group align="flex-end">
-                      <Button
-                        variant="light"
-                        leftSection={<IconPlus size={16} />}
-                        onClick={() => updateTable(tableIndex, { columns: table.columns.concat(makeColumn(`field${table.columns.length + 1}`)) })}
-                      >
-                        Field
-                      </Button>
-                      <Button
-                        variant="subtle"
-                        color="red"
-                        leftSection={<IconTrash size={16} />}
-                        onClick={() =>
-                          setDraft((current) => ({ ...current, tables: current.tables.filter((_, idx) => idx !== tableIndex) }))
-                        }
-                      >
-                        Remove table
-                      </Button>
+    <>
+      <Card className="forge-card" p="md">
+        <Stack gap="sm">
+          <Group justify="space-between" align="flex-start">
+            <div>
+              <Text fw={850}>Tables and generators</Text>
+              <Text size="sm" c="dimmed">One row per table. Open a table to configure columns, generators, keys, and relationships.</Text>
+            </div>
+            {allowBlankTable ? <Button variant="light" leftSection={<IconPlus size={16} />} onClick={addTable}>Blank table</Button> : null}
+          </Group>
+          {!draft.tables.length ? (
+            <Alert color="yellow" variant="light">
+              {allowBlankTable ? 'No tables are in this design yet. Add a blank table or import source tables.' : 'No tables are in this design yet. Use Add / import tables above.'}
+            </Alert>
+          ) : (
+            <div className="syn-build-table-inventory">
+              <div className="syn-build-table-head" aria-hidden>
+                <span>Table</span><span>Rows</span><span>Columns</span><span>Relationships</span><span />
+              </div>
+              {draft.tables.map((table, tableIndex) => {
+                const fkCount = table.columns.filter((column) => column.fkTable).length;
+                const pkCount = table.columns.filter((column) => column.primaryKey).length;
+                return (
+                  <div className="syn-build-table-row" key={`${table.name}-${tableIndex}`}>
+                    <div className="syn-build-table-name">
+                      <Text fw={750} size="sm" truncate="end">{table.name || `Table ${tableIndex + 1}`}</Text>
+                      <Text size="xs" c="dimmed">{pkCount ? `${pkCount} primary key field${pkCount === 1 ? '' : 's'}` : 'No primary key selected'}</Text>
+                    </div>
+                    <Text size="sm" ff="monospace">{formatRows(table.rowCount)}</Text>
+                    <Badge size="sm" variant="light" color="gray">{table.columns.length}</Badge>
+                    <Group gap={5} wrap="wrap">
+                      <Badge size="xs" variant="light" color={fkCount ? 'blue' : 'gray'}>{fkCount} FK</Badge>
                     </Group>
-                  </SimpleGrid>
-                  <div className="forge-grid-panel">
-                    <ScrollArea type="always">
-                      <table className="forge-table syn-column-table">
-                        <thead>
-                          <tr>
-                            <th>Column</th>
-                            <th>Generator</th>
-                            <th>Param 1 / literal</th>
-                            <th>Param 2</th>
-                            <th>SQL type</th>
-                            <th>PK</th>
-                            <th>FK table.column</th>
-                            <th>Children min</th>
-                            <th>max</th>
-                            <th></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {table.columns.map((column, columnIndex) => {
-                            const fkValue = column.fkTable && column.fkColumn ? `${column.fkTable}.${column.fkColumn}` : '';
-                            return (
-                              <tr key={`${column.name}-${columnIndex}`}>
-                                <td>
-                                  <TextInput value={column.name} onChange={(event) => updateColumn(tableIndex, columnIndex, { name: safeInputValue(event) })} />
-                                </td>
-                                <td>
-                                  <Group gap={4} wrap="nowrap" align="center">
-                                    <TextInput
-                                      readOnly
-                                      value={column.generator || 'ALPHANUMERIC'}
-                                      disabled={Boolean(column.fkTable)}
-                                      style={{ flex: 1, minWidth: 0 }}
-                                      styles={{ input: { cursor: column.fkTable ? 'not-allowed' : 'pointer' } }}
-                                      onClick={() => {
-                                        if (!column.fkTable) setBrowseTarget({ tableIndex, columnIndex });
-                                      }}
-                                    />
-                                    <Tooltip label="Browse generators" withArrow>
-                                      <ActionIcon
-                                        variant="light"
-                                        aria-label="Browse generators"
-                                        disabled={Boolean(column.fkTable)}
-                                        onClick={() => setBrowseTarget({ tableIndex, columnIndex })}
-                                      >
-                                        <IconSearch size={16} />
-                                      </ActionIcon>
-                                    </Tooltip>
-                                  </Group>
-                                </td>
-                                <td>
-                                  <TextInput
-                                    value={column.param1 || ''}
-                                    placeholder={column.generator === 'LITERAL' ? 'literal value' : 'optional'}
-                                    disabled={Boolean(column.fkTable)}
-                                    onChange={(event) => updateColumn(tableIndex, columnIndex, { param1: safeInputValue(event) })}
-                                  />
-                                </td>
-                                <td>
-                                  <TextInput
-                                    value={column.param2 || ''}
-                                    placeholder="optional"
-                                    disabled={Boolean(column.fkTable)}
-                                    onChange={(event) => updateColumn(tableIndex, columnIndex, { param2: safeInputValue(event) })}
-                                  />
-                                </td>
-                                <td>
-                                  <TextInput
-                                    value={column.sqlType || ''}
-                                    onChange={(event) => updateColumn(tableIndex, columnIndex, { sqlType: safeInputValue(event) })}
-                                  />
-                                </td>
-                                <td>
-                                  <Checkbox
-                                    checked={Boolean(column.primaryKey)}
-                                    onChange={(event) => updateColumn(tableIndex, columnIndex, { primaryKey: safeInputChecked(event) })}
-                                  />
-                                </td>
-                                <td>
-                                  <TextInput
-                                    value={fkValue}
-                                    placeholder="customers.customer_id"
-                                    onChange={(event) => {
-                                      const value = safeInputValue(event);
-                                      if (value.includes('.')) {
-                                        const idx = value.indexOf('.');
-                                        updateColumn(tableIndex, columnIndex, { fkTable: value.slice(0, idx), fkColumn: value.slice(idx + 1) });
-                                      } else {
-                                        updateColumn(tableIndex, columnIndex, { fkTable: null, fkColumn: null });
-                                      }
-                                    }}
-                                  />
-                                </td>
-                                <td>
-                                  <NumberInput
-                                    min={0}
-                                    value={column.fkMin ?? ''}
-                                    onChange={(value) =>
-                                      updateColumn(tableIndex, columnIndex, { fkMin: value === '' || value === null ? null : value })
-                                    }
-                                  />
-                                </td>
-                                <td>
-                                  <NumberInput
-                                    min={0}
-                                    value={column.fkMax ?? ''}
-                                    onChange={(value) =>
-                                      updateColumn(tableIndex, columnIndex, { fkMax: value === '' || value === null ? null : value })
-                                    }
-                                  />
-                                </td>
-                                <td>
-                                  <Button
-                                    size="xs"
-                                    variant="subtle"
-                                    color="red"
-                                    onClick={() =>
-                                      updateTable(tableIndex, { columns: table.columns.filter((_, idx) => idx !== columnIndex) })
-                                    }
-                                  >
-                                    Remove
-                                  </Button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </ScrollArea>
+                    <Group gap={3} justify="flex-end" wrap="nowrap">
+                      <Button size="compact-xs" variant="subtle" leftSection={<IconEdit size={13} />} onClick={() => openTableEditor(tableIndex)}>Edit</Button>
+                      <Tooltip label="Remove table">
+                        <ActionIcon color="red" variant="subtle" size="sm" aria-label={`Remove ${table.name || `table ${tableIndex + 1}`}`} onClick={() => removeTable(tableIndex)}>
+                          <IconTrash size={14} />
+                        </ActionIcon>
+                      </Tooltip>
+                    </Group>
                   </div>
-                </Stack>
-              </Accordion.Panel>
-            </Accordion.Item>
-          ))}
-        </Accordion>
-      </Stack>
+                );
+              })}
+            </div>
+          )}
+        </Stack>
+      </Card>
+
+      <Modal
+        opened={editingTableIndex !== null && Boolean(editingTable)}
+        onClose={closeTableEditor}
+        title={editingTable ? `Configure ${editingTable.name || `table ${Number(editingTableIndex) + 1}`}` : 'Configure table'}
+        fullScreen
+        withCloseButton={false}
+        closeOnClickOutside={false}
+        closeOnEscape={false}
+        classNames={{ content: 'syn-table-editor-modal', body: 'syn-table-editor-modal-body' }}
+      >
+        {editingTable && editingTableIndex !== null ? (
+          <div className="syn-table-editor-shell">
+            <div className="syn-table-editor-toolbar">
+              <SimpleGrid cols={{ base: 1, sm: 2, lg: 3 }}>
+                <TextInput label="Table name" value={editingTable.name} onChange={(event) => updateEditingTable({ name: safeInputValue(event) })} />
+                <NumberInput label="Rows" min={0} value={editingTable.rowCount} onChange={(value) => updateEditingTable({ rowCount: value === '' || value === null ? '' : value })} />
+                <Group align="flex-end" justify="flex-end">
+                  <Button variant="light" leftSection={<IconPlus size={16} />} onClick={() => updateEditingTable({ columns: editingTable.columns.concat(makeColumn(`field${editingTable.columns.length + 1}`)) })}>Add field</Button>
+                  <Button variant="subtle" color="red" leftSection={<IconTrash size={16} />} onClick={() => removeTable(editingTableIndex)}>Remove table</Button>
+                </Group>
+              </SimpleGrid>
+              <Group gap="xs" justify="space-between" wrap="wrap">
+                <Text size="xs" c="dimmed">FK-linked fields inherit parent keys. LITERAL uses Param 1 as its fixed value.</Text>
+                <Badge variant="light">{editingTable.columns.length} field{editingTable.columns.length === 1 ? '' : 's'}</Badge>
+              </Group>
+            </div>
+            <div className="forge-grid-panel syn-table-editor-grid">
+              <div className="syn-table-editor-scroll">
+                <table className="forge-table syn-column-table">
+                  <thead>
+                    <tr>
+                      <th>Column</th><th>Generator</th><th>Param 1 / literal</th><th>Param 2</th><th>SQL type</th><th>PK</th><th>FK table.column</th><th>Children min</th><th>Max</th><th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {editingTable.columns.map((column, columnIndex) => {
+                      const fkValue = column.fkTable && column.fkColumn ? `${column.fkTable}.${column.fkColumn}` : '';
+                      return (
+                        <tr key={`${column.name}-${columnIndex}`}>
+                          <td><TextInput value={column.name} onChange={(event) => updateEditingColumn(columnIndex, { name: safeInputValue(event) })} /></td>
+                          <td>
+                            <Group gap={4} wrap="nowrap" align="center">
+                              <TextInput readOnly value={column.generator || 'ALPHANUMERIC'} disabled={Boolean(column.fkTable)} style={{ flex: 1, minWidth: 0 }} styles={{ input: { cursor: column.fkTable ? 'not-allowed' : 'pointer' } }} onClick={() => { if (!column.fkTable) setBrowseTarget({ columnIndex }); }} />
+                              <Tooltip label="Browse generators" withArrow>
+                                <ActionIcon variant="light" aria-label="Browse generators" disabled={Boolean(column.fkTable)} onClick={() => setBrowseTarget({ columnIndex })}><IconSearch size={16} /></ActionIcon>
+                              </Tooltip>
+                            </Group>
+                          </td>
+                          <td><TextInput value={column.param1 || ''} placeholder={column.generator === 'LITERAL' ? 'literal value' : 'optional'} disabled={Boolean(column.fkTable)} onChange={(event) => updateEditingColumn(columnIndex, { param1: safeInputValue(event) })} /></td>
+                          <td><TextInput value={column.param2 || ''} placeholder="optional" disabled={Boolean(column.fkTable)} onChange={(event) => updateEditingColumn(columnIndex, { param2: safeInputValue(event) })} /></td>
+                          <td><TextInput value={column.sqlType || ''} onChange={(event) => updateEditingColumn(columnIndex, { sqlType: safeInputValue(event) })} /></td>
+                          <td><Checkbox checked={Boolean(column.primaryKey)} onChange={(event) => updateEditingColumn(columnIndex, { primaryKey: safeInputChecked(event) })} /></td>
+                          <td><TextInput value={fkValue} placeholder="customers.customer_id" onChange={(event) => { const value = safeInputValue(event); if (value.includes('.')) { const idx = value.indexOf('.'); updateEditingColumn(columnIndex, { fkTable: value.slice(0, idx), fkColumn: value.slice(idx + 1) }); } else { updateEditingColumn(columnIndex, { fkTable: null, fkColumn: null }); } }} /></td>
+                          <td><NumberInput min={0} value={column.fkMin ?? ''} onChange={(value) => updateEditingColumn(columnIndex, { fkMin: value === '' || value === null ? null : value })} /></td>
+                          <td><NumberInput min={0} value={column.fkMax ?? ''} onChange={(value) => updateEditingColumn(columnIndex, { fkMax: value === '' || value === null ? null : value })} /></td>
+                          <td><ActionIcon color="red" variant="subtle" aria-label={`Remove ${column.name}`} onClick={() => updateEditingTable({ columns: editingTable.columns.filter((_, idx) => idx !== columnIndex) })}><IconTrash size={15} /></ActionIcon></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <Group className="syn-table-editor-footer" justify="space-between" align="center">
+              <Text size="xs" c="dimmed">Changes stay in this table draft until you save them.</Text>
+              <Group gap="xs">
+                <Button variant="subtle" color="red" onClick={closeTableEditor}>Discard</Button>
+                <Button variant="light" leftSection={<IconDeviceFloppy size={16} />} onClick={() => saveTableEditor(false)}>Save</Button>
+                <Button leftSection={<IconDeviceFloppy size={16} />} onClick={() => saveTableEditor(true)}>Save &amp; close</Button>
+              </Group>
+            </Group>
+          </div>
+        ) : null}
+      </Modal>
+
       <GeneratorBrowseModal
         opened={browseTarget != null}
         generators={generators}
         current={browseColumn?.generator || ''}
         onClose={() => setBrowseTarget(null)}
         onSelect={(name) => {
-          if (browseTarget) updateColumn(browseTarget.tableIndex, browseTarget.columnIndex, { generator: name });
+          if (browseTarget) updateEditingColumn(browseTarget.columnIndex, { generator: name });
           setBrowseTarget(null);
         }}
       />
-    </Card>
+    </>
   );
 }
 
@@ -1212,7 +1506,7 @@ function GeneratorBrowseModal({
       opened={opened}
       onClose={onClose}
       title={`Choose a generator (${items.length} available)`}
-      size="xl"
+      fullScreen
       scrollAreaComponent={ScrollArea.Autosize}
     >
       <Stack gap="sm">
@@ -1322,18 +1616,14 @@ function OutputPanel({
 
   return (
     <>
-      <Card className="forge-card" p="md">
-        <Stack gap="sm">
-          <Group justify="space-between">
-            <div>
-              <Text fw={850}>Output, load, and partition execution</Text>
-              <Text size="sm" c="dimmed">
-                This preserves the provision behavior: insert/update/upsert/truncate-only, delete/truncate prep, fast load, and worker partitioning.
-              </Text>
-            </div>
+      <Stack className="syn-output-panel" gap="md">
+          <Group justify="space-between" align="center">
+            <Text size="sm" c="dimmed">
+              Configure the destination, load behavior, safeguards, and partition strategy.
+            </Text>
             <Badge variant="light">{draft.receiver}</Badge>
           </Group>
-          <SimpleGrid cols={{ base: 1, md: 4 }}>
+          <div className="syn-output-field-grid">
             <Select
               label="Output"
               data={[
@@ -1358,9 +1648,11 @@ function OutputPanel({
                     onChange={(event) => updateTargetInput(safeInputValue(event))}
                     style={{ flex: 1 }}
                   />
-                  <Button variant="light" onClick={() => setTargetBrowseOpened(true)}>
-                    Browse
-                  </Button>
+                  <Tooltip label="Browse target databases" withArrow>
+                    <ActionIcon size="lg" variant="light" aria-label="Browse target databases" onClick={() => setTargetBrowseOpened(true)}>
+                      <IconSearch size={17} />
+                    </ActionIcon>
+                  </Tooltip>
                 </Group>
                 <Group align="flex-end" wrap="nowrap">
                   <TextInput
@@ -1374,9 +1666,11 @@ function OutputPanel({
                     onChange={(event) => update({ targetSchema: safeInputValue(event) })}
                     style={{ flex: 1 }}
                   />
-                  <Button variant="light" disabled={!selectedTargetId} loading={targetSchemasLoading} onClick={() => setTargetSchemaBrowseOpened(true)}>
-                    Browse
-                  </Button>
+                  <Tooltip label="Browse target schemas" withArrow>
+                    <ActionIcon size="lg" variant="light" aria-label="Browse target schemas" disabled={!selectedTargetId} loading={targetSchemasLoading} onClick={() => setTargetSchemaBrowseOpened(true)}>
+                      <IconSearch size={17} />
+                    </ActionIcon>
+                  </Tooltip>
                 </Group>
                 <Select
                   label="Load action"
@@ -1414,10 +1708,10 @@ function OutputPanel({
                 />
               </>
             )}
-          </SimpleGrid>
+          </div>
           {draft.receiver === 'DB' ? (
             <>
-              <SimpleGrid cols={{ base: 1, md: 4 }}>
+              <div className="syn-output-field-grid">
               <Select
                 label="Target prep"
                 data={[
@@ -1448,38 +1742,52 @@ function OutputPanel({
                 value={draft.commitEveryRows}
                 onChange={(value) => update({ commitEveryRows: value === '' || value === null ? '' : value })}
               />
-            </SimpleGrid>
-            <Group gap="md">
-              <Switch label="Create missing tables" checked={draft.createTable} onChange={(event) => update({ createTable: safeInputChecked(event) })} />
-              <Switch
-                label="Drop and recreate first"
-                checked={draft.dropTable}
-                onChange={(event) =>
-                  update({
-                    dropTable: safeInputChecked(event),
-                    createTable: safeInputChecked(event) || draft.createTable,
-                    loadAction: safeInputChecked(event) ? 'REPLACE' : draft.loadAction,
-                    targetPrep: safeInputChecked(event) ? 'NONE' : draft.targetPrep
-                  })
-                }
-              />
-              <Switch
-                label="Skip bad rows"
-                checked={draft.continueOnError}
-                onChange={(event) => update({ continueOnError: safeInputChecked(event) })}
-              />
-              <Switch label="Fast load" checked={draft.fastLoad} onChange={(event) => update({ fastLoad: safeInputChecked(event) })} />
-              <NumberInput
-                label="Max rejects"
-                min={0}
-                value={draft.maxRejects}
-                disabled={!draft.continueOnError}
-                onChange={(value) => update({ maxRejects: value === '' || value === null ? '' : value })}
-                w={140}
-              />
-            </Group>
+            </div>
+            <div className="syn-output-options-band">
+              <Text fw={750} size="sm">Load controls</Text>
+              <div className="syn-output-options-grid">
+                <div className="syn-output-switch-cell">
+                  <Switch label="Create missing tables" checked={draft.createTable} onChange={(event) => update({ createTable: safeInputChecked(event) })} />
+                </div>
+                <div className="syn-output-switch-cell">
+                  <Switch
+                    label="Drop and recreate first"
+                    checked={draft.dropTable}
+                    onChange={(event) =>
+                      update({
+                        dropTable: safeInputChecked(event),
+                        createTable: safeInputChecked(event) || draft.createTable,
+                        loadAction: safeInputChecked(event) ? 'REPLACE' : draft.loadAction,
+                        targetPrep: safeInputChecked(event) ? 'NONE' : draft.targetPrep
+                      })
+                    }
+                  />
+                </div>
+                <div className="syn-output-switch-cell">
+                  <Switch
+                    label="Skip bad rows"
+                    checked={draft.continueOnError}
+                    onChange={(event) => update({ continueOnError: safeInputChecked(event) })}
+                  />
+                </div>
+                <div className="syn-output-switch-cell">
+                  <Switch label="Fast load" checked={draft.fastLoad} onChange={(event) => update({ fastLoad: safeInputChecked(event) })} />
+                </div>
+                <NumberInput
+                  label="Max rejects"
+                  min={0}
+                  value={draft.maxRejects}
+                  disabled={!draft.continueOnError}
+                  onChange={(value) => update({ maxRejects: value === '' || value === null ? '' : value })}
+                />
+              </div>
+            </div>
             <Divider />
-            <SimpleGrid cols={{ base: 1, md: 3 }}>
+            <div>
+              <Text fw={750} size="sm">Parallel execution</Text>
+              <Text size="xs" c="dimmed">Choose one worker for smaller jobs or partition large jobs across workers.</Text>
+            </div>
+            <div className="syn-output-parallel-grid">
               <Select
                 label="Execution mode"
                 data={[
@@ -1511,14 +1819,13 @@ function OutputPanel({
                 disabled={draft.executionMode === 'SINGLE'}
                 onChange={(value) => update({ partitionSize: value === '' || value === null ? '' : value })}
               />
-            </SimpleGrid>
+            </div>
             <Text size="xs" c="dimmed">
               {executionHint(draft.executionMode)}
             </Text>
           </>
           ) : null}
-        </Stack>
-      </Card>
+      </Stack>
 
       <DataSourceBrowseModal
         opened={targetBrowseOpened}
@@ -1555,6 +1862,7 @@ function EnterpriseTargetPanel({
   setDraft: (fn: (draft: SyntheticDraft) => SyntheticDraft) => void;
   dataSources: DataSource[];
 }) {
+  const [deliveryOverrideIndex, setDeliveryOverrideIndex] = useState<number | null>(null);
   const addTarget = () =>
     setDraft((current) => ({ ...current, targetSystems: current.targetSystems.concat(defaultTargetSystem(current, dataSources)) }));
   const updateTarget = (index: number, patch: Partial<SyntheticTargetSystem>) =>
@@ -1670,7 +1978,7 @@ function EnterpriseTargetPanel({
                 </Accordion.Control>
                 <Accordion.Panel>
                   <Stack gap="sm">
-                    <SimpleGrid cols={{ base: 1, md: 5 }}>
+                    <SimpleGrid cols={{ base: 1, md: 3 }}>
                       <NameInput label="Target name" value={target.name || ''} onChange={(value) => updateTarget(targetIndex, { name: value })} />
                       <Select
                         label="Data source"
@@ -1680,35 +1988,79 @@ function EnterpriseTargetPanel({
                         value={target.targetDataSourceId ? String(target.targetDataSourceId) : null}
                         onChange={(value) => updateTarget(targetIndex, { targetDataSourceId: value ? Number(value) : null, targetSchema: '' })}
                       />
-                      <TextInput label="Schema" value={target.targetSchema || ''} onChange={(event) => updateTarget(targetIndex, { targetSchema: safeInputValue(event) })} />
-                      <Select
-                        label="Load action"
-                        data={['REPLACE', 'INSERT', 'UPDATE', 'INSERT_UPDATE', 'TRUNCATE_ONLY']}
-                        value={target.loadAction || draft.loadAction}
-                        onChange={(value) => updateTarget(targetIndex, { loadAction: value || 'INSERT' })}
-                      />
-                      <Select
-                        label="Prep"
-                        data={['NONE', 'DELETE', 'TRUNCATE']}
-                        value={target.targetPrep || draft.targetPrep}
-                        onChange={(value) => updateTarget(targetIndex, { targetPrep: value || 'NONE' })}
-                      />
+                      <TextInput label="Target schema" value={target.targetSchema || ''} onChange={(event) => updateTarget(targetIndex, { targetSchema: safeInputValue(event) })} />
                     </SimpleGrid>
-                    <Group gap="xs">
-                      <Switch label="Create missing" checked={Boolean(target.createTable ?? draft.createTable)} onChange={(event) => updateTarget(targetIndex, { createTable: safeInputChecked(event) })} />
-                      <Switch label="Drop/recreate" checked={Boolean(target.dropTable ?? draft.dropTable)} onChange={(event) => updateTarget(targetIndex, { dropTable: safeInputChecked(event) })} />
-                      <Switch label="Fast load" checked={Boolean(target.fastLoad)} onChange={(event) => updateTarget(targetIndex, { fastLoad: safeInputChecked(event) })} />
-                      <Switch label="Skip bad rows" checked={Boolean(target.continueOnError)} onChange={(event) => updateTarget(targetIndex, { continueOnError: safeInputChecked(event) })} />
-                      <Button
-                        variant="subtle"
-                        color="red"
-                        onClick={() =>
-                          setDraft((current) => ({ ...current, targetSystems: current.targetSystems.filter((_, idx) => idx !== targetIndex) }))
-                        }
-                      >
-                        Remove target
-                      </Button>
-                    </Group>
+                    <Paper className="syn-target-delivery-summary" withBorder p="sm" radius="sm">
+                      <Group justify="space-between" align="center" wrap="wrap">
+                        <div>
+                          <Group gap={6}>
+                            <Text fw={750} size="sm">Delivery settings</Text>
+                            <Badge size="xs" variant="light" color={target.loadAction || target.targetPrep || target.createTable != null || target.dropTable != null || target.fastLoad != null || target.continueOnError != null ? 'blue' : 'gray'}>
+                              {target.loadAction || target.targetPrep || target.createTable != null || target.dropTable != null || target.fastLoad != null || target.continueOnError != null ? 'Custom' : 'Inherited'}
+                            </Badge>
+                          </Group>
+                          <Text size="xs" c="dimmed">
+                            {target.loadAction || draft.loadAction} · {target.targetPrep || draft.targetPrep} · {target.fastLoad == null ? (draft.fastLoad ? 'fast load' : 'standard load') : target.fastLoad ? 'fast load' : 'standard load'}
+                          </Text>
+                        </div>
+                        <Group gap="xs">
+                          <Button variant="subtle" size="compact-sm" onClick={() => setDeliveryOverrideIndex((current) => current === targetIndex ? null : targetIndex)}>
+                            {deliveryOverrideIndex === targetIndex ? 'Hide overrides' : 'Override delivery'}
+                          </Button>
+                          <Button
+                            variant="subtle"
+                            color="red"
+                            size="compact-sm"
+                            onClick={() =>
+                              setDraft((current) => ({ ...current, targetSystems: current.targetSystems.filter((_, idx) => idx !== targetIndex) }))
+                            }
+                          >
+                            Remove target
+                          </Button>
+                        </Group>
+                      </Group>
+                      {deliveryOverrideIndex === targetIndex ? (
+                        <Stack gap="sm" mt="sm">
+                          <Divider />
+                          <Group justify="space-between" align="flex-end" wrap="wrap">
+                            <SimpleGrid className="syn-target-delivery-fields" cols={{ base: 1, sm: 2 }}>
+                              <Select
+                                label="Load action override"
+                                data={['REPLACE', 'INSERT', 'UPDATE', 'INSERT_UPDATE', 'TRUNCATE_ONLY']}
+                                value={target.loadAction || draft.loadAction}
+                                onChange={(value) => updateTarget(targetIndex, { loadAction: value || null })}
+                              />
+                              <Select
+                                label="Prep override"
+                                data={['NONE', 'DELETE', 'TRUNCATE']}
+                                value={target.targetPrep || draft.targetPrep}
+                                onChange={(value) => updateTarget(targetIndex, { targetPrep: value || null })}
+                              />
+                            </SimpleGrid>
+                            <Button
+                              variant="light"
+                              size="compact-sm"
+                              onClick={() => updateTarget(targetIndex, {
+                                loadAction: null,
+                                targetPrep: null,
+                                createTable: null,
+                                dropTable: null,
+                                fastLoad: null,
+                                continueOnError: null
+                              })}
+                            >
+                              Use common defaults
+                            </Button>
+                          </Group>
+                          <Group gap="lg">
+                            <Switch label="Create missing" checked={Boolean(target.createTable ?? draft.createTable)} onChange={(event) => updateTarget(targetIndex, { createTable: safeInputChecked(event) })} />
+                            <Switch label="Drop/recreate" checked={Boolean(target.dropTable ?? draft.dropTable)} onChange={(event) => updateTarget(targetIndex, { dropTable: safeInputChecked(event) })} />
+                            <Switch label="Fast load" checked={Boolean(target.fastLoad ?? draft.fastLoad)} onChange={(event) => updateTarget(targetIndex, { fastLoad: safeInputChecked(event) })} />
+                            <Switch label="Skip bad rows" checked={Boolean(target.continueOnError ?? draft.continueOnError)} onChange={(event) => updateTarget(targetIndex, { continueOnError: safeInputChecked(event) })} />
+                          </Group>
+                        </Stack>
+                      ) : null}
+                    </Paper>
                     <div className="forge-grid-panel">
                       <ScrollArea type="always">
                         <table className="forge-table syn-target-map-table">

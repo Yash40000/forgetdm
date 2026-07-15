@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Badge, Button, Checkbox, Group, NumberInput, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { Badge, Button, Group, NumberInput, Select, Stack, Switch, Text, TextInput } from '@mantine/core';
 import { NameInput } from '@/components/name-input';
 import { notifications } from '@mantine/notifications';
+import { IconSearch } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { useConfirm } from '@/components/confirm';
@@ -45,6 +46,7 @@ export function FreshnessPanel({ detail, policies }: { detail: BusinessEntityDet
       }))
   );
   const [lastCheck, setLastCheck] = useState<LooseMap | null>(null);
+  const [tableSearch, setTableSearch] = useState('');
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: keys.businessEntity.syncPolicies(entityId) });
 
@@ -109,6 +111,16 @@ export function FreshnessPanel({ detail, policies }: { detail: BusinessEntityDet
   const patchDraft = (index: number, patch: Partial<MemberDraft>) =>
     setDrafts((current) => current.map((draft, i) => (i === index ? { ...draft, ...patch } : draft)));
 
+  const applyDefaults = () =>
+    setDrafts((current) => current.map((draft) => ({ ...draft, maxLagSeconds: form.maxLag, syncMode: form.syncMode })));
+
+  const visibleDrafts = drafts
+    .map((draft, index) => ({ draft, index }))
+    .filter(({ draft }) => {
+      const search = tableSearch.trim().toLowerCase();
+      return !search || `${draft.systemName} ${draft.tableName}`.toLowerCase().includes(search);
+    });
+
   const checkMembers = Array.isArray(lastCheck?.members)
     ? (lastCheck.members as LooseMap[])
     : Array.isArray((lastCheck?.result as LooseMap | undefined)?.members)
@@ -116,17 +128,22 @@ export function FreshnessPanel({ detail, policies }: { detail: BusinessEntityDet
       : [];
 
   return (
-    <Stack gap="lg">
+    <Stack gap="md">
       {confirmElement}
 
       <div>
-        <Text fw={650} size="sm">
-          New freshness policy
-        </Text>
-        <Text size="xs" c="dimmed" mb="xs">
-          Point each source at a watermark column (updated_at) with an SLA — stale slices get flagged here, on capsules, and before runs.
-        </Text>
-        <SimpleGrid cols={{ base: 1, sm: 3, lg: 6 }} mb="xs">
+        <Group justify="space-between" align="flex-start" mb="xs" wrap="wrap">
+          <div>
+            <Text fw={650} size="sm">New freshness policy</Text>
+            <Text size="xs" c="dimmed">
+              Set the default SLA and schedule, then configure the watermark used by each member table.
+            </Text>
+          </div>
+          <Button size="xs" loading={savePolicy.isPending} onClick={() => savePolicy.mutate()}>
+            Save policy
+          </Button>
+        </Group>
+        <div className="be-freshness-policy-grid">
           <NameInput size="xs" label="Name" placeholder={`${detail.entity.name} freshness`} value={form.name} onChange={(value) => setForm({ ...form, name: value })} />
           <Select size="xs" label="Mode" data={['POLLING', 'REALTIME', 'SCHEDULED', 'ON_DEMAND']} value={form.syncMode} onChange={(value) => setForm({ ...form, syncMode: value || 'POLLING' })} />
           <NumberInput
@@ -137,25 +154,54 @@ export function FreshnessPanel({ detail, policies }: { detail: BusinessEntityDet
             onChange={(value) => setForm({ ...form, maxLag: value === '' || value === null ? '' : String(value) })}
           />
           <TextInput {...technicalInputProps} size="xs" label="Cron" placeholder="0 */5 * * * *" value={form.cron} onChange={(e) => setForm({ ...form, cron: e.currentTarget.value })} />
-          <Checkbox size="xs" mt={26} label="Auto check when due" checked={form.auto} onChange={(e) => setForm({ ...form, auto: e.currentTarget.checked })} />
-          <Button size="xs" mt={22} loading={savePolicy.isPending} onClick={() => savePolicy.mutate()}>
-            Save policy
-          </Button>
-        </SimpleGrid>
+          <Switch
+            className="be-freshness-auto"
+            size="sm"
+            label="Auto check when due"
+            checked={form.auto}
+            onChange={(event) => setForm({ ...form, auto: event.currentTarget.checked })}
+          />
+        </div>
         {drafts.length ? (
-          <Stack gap={6}>
-            {drafts.map((draft, index) => (
-              <Group key={draft.memberId ?? index} gap="xs" wrap="wrap">
-                <Text size="xs" fw={600} w={140} style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {draft.systemName || draft.tableName}
-                </Text>
-                <TextInput {...technicalInputProps} size="xs" placeholder="table" value={draft.tableName} onChange={(e) => patchDraft(index, { tableName: e.currentTarget.value })} w={150} />
-                <TextInput {...technicalInputProps} size="xs" placeholder="watermark column (updated_at)" value={draft.watermarkColumn} onChange={(e) => patchDraft(index, { watermarkColumn: e.currentTarget.value })} w={210} />
-                <NumberInput size="xs" placeholder="SLA s" min={1} value={draft.maxLagSeconds === '' ? '' : Number(draft.maxLagSeconds)} onChange={(value) => patchDraft(index, { maxLagSeconds: value === '' || value === null ? '' : String(value) })} w={100} />
-                <Select size="xs" data={['POLLING', 'REALTIME', 'SCHEDULED', 'ON_DEMAND', 'HEARTBEAT']} value={draft.syncMode} onChange={(value) => patchDraft(index, { syncMode: value || 'POLLING' })} w={130} />
+          <div className="be-freshness-members">
+            <Group className="be-freshness-members-toolbar" justify="space-between" wrap="wrap">
+              <Group gap={8}>
+                <Text fw={650} size="sm">Member watermarks</Text>
+                <Badge size="xs" variant="light">{visibleDrafts.length} of {drafts.length}</Badge>
               </Group>
-            ))}
-          </Stack>
+              <Group gap={6}>
+                <TextInput
+                  {...technicalInputProps}
+                  size="xs"
+                  w={190}
+                  leftSection={<IconSearch size={13} />}
+                  placeholder="Filter tables"
+                  value={tableSearch}
+                  onChange={(event) => setTableSearch(event.currentTarget.value)}
+                />
+                <Button size="compact-xs" variant="subtle" onClick={applyDefaults}>Apply defaults to all</Button>
+              </Group>
+            </Group>
+            <div className="be-freshness-member-head" aria-hidden>
+              <span>Member</span>
+              <span>Physical table</span>
+              <span>Watermark column</span>
+              <span>SLA (seconds)</span>
+              <span>Check mode</span>
+            </div>
+            <div className="be-freshness-member-body">
+              {visibleDrafts.map(({ draft, index }) => (
+                <div className="be-freshness-member-row" key={draft.memberId ?? index}>
+                  <Text size="sm" fw={600} truncate="end">{draft.systemName || draft.tableName}</Text>
+                  <TextInput {...technicalInputProps} size="xs" aria-label="Physical table" placeholder="table" value={draft.tableName} onChange={(event) => patchDraft(index, { tableName: event.currentTarget.value })} />
+                  <TextInput {...technicalInputProps} size="xs" aria-label="Watermark column" placeholder="updated_at" value={draft.watermarkColumn} onChange={(event) => patchDraft(index, { watermarkColumn: event.currentTarget.value })} />
+                  <NumberInput size="xs" aria-label="SLA seconds" placeholder={form.maxLag || 'SLA'} min={1} value={draft.maxLagSeconds === '' ? '' : Number(draft.maxLagSeconds)} onChange={(value) => patchDraft(index, { maxLagSeconds: value === '' || value === null ? '' : String(value) })} />
+                  <Select size="xs" aria-label="Check mode" data={['POLLING', 'REALTIME', 'SCHEDULED', 'ON_DEMAND', 'HEARTBEAT']} value={draft.syncMode} onChange={(value) => patchDraft(index, { syncMode: value || 'POLLING' })} />
+                </div>
+              ))}
+              {!visibleDrafts.length ? <Text className="be-freshness-empty" size="sm" c="dimmed">No member tables match this filter.</Text> : null}
+            </div>
+          </div>
         ) : (
           <Text size="sm" c="dimmed">
             Add member tables on the Model tab first.

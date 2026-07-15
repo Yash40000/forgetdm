@@ -326,8 +326,9 @@ public class VirtualizationService {
                 String materializeUrl = h2FileUrl(base);
                 try (Connection h2 = DriverManager.getConnection(materializeUrl, "demo", "demo")) {
                     engine.materialize(h2, SqlDialect.H2, manifest);
+                    vdb.setSchemaName(DataSourceService.normalizeSchema(h2, manifest.schemaName()));
                 }
-                String jdbcUrl = h2FileUrl(base, manifest.schemaName());
+                String jdbcUrl = h2FileUrl(base, vdb.getSchemaName());
                 DataSourceEntity ds = new DataSourceEntity();
                 ds.setName(dsName);
                 ds.setKind("H2");
@@ -349,6 +350,7 @@ public class VirtualizationService {
                 SqlDialect dialect = SqlDialect.of(target);
                 try (Connection c = connections.open(target)) {
                     engine.materialize(c, dialect, manifest);
+                    vdb.setSchemaName(DataSourceService.normalizeSchema(c, manifest.schemaName()));
                 }
                 vdb.setDataSourceId(target.getId());
                 vdb.setTargetDataSourceId(target.getId());
@@ -414,6 +416,7 @@ public class VirtualizationService {
                 try (Connection c = connections.open(target)) {
                     dropKnownTables(c, vdb, manifest);
                     engine.materialize(c, SqlDialect.of(target), manifest);
+                    vdb.setSchemaName(DataSourceService.normalizeSchema(c, manifest.schemaName()));
                 }
             } else {
                 DataSourceEntity ds = dataSources.get(vdb.getDataSourceId());
@@ -422,6 +425,7 @@ public class VirtualizationService {
                 deleteH2Files(base);
                 try (Connection h2 = DriverManager.getConnection(h2FileUrl(base), "demo", "demo")) {
                     engine.materialize(h2, SqlDialect.H2, manifest);
+                    vdb.setSchemaName(DataSourceService.normalizeSchema(h2, manifest.schemaName()));
                 }
             }
             vdb.setCurrentSnapshotId(snapshot.getId());
@@ -483,7 +487,7 @@ public class VirtualizationService {
         if (defaultSchema == null || defaultSchema.isBlank()) return url;
         if (!defaultSchema.matches("[A-Za-z0-9_]+"))
             throw ApiException.bad("Illegal VDB schema: " + defaultSchema);
-        return url + ";INIT=SET SCHEMA " + defaultSchema;
+        return url + ";INIT=SET SCHEMA \"" + defaultSchema + "\"";
     }
 
     private static String safeName(String name) {

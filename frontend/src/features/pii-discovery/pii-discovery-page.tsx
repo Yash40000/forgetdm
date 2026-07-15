@@ -1,49 +1,56 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
   ActionIcon,
   Badge,
   Button,
+  Drawer,
   Group,
   Loader,
   Modal,
   Paper,
   Select,
-  SimpleGrid,
   Stack,
-  Tabs,
   Text,
   TextInput,
-  Textarea,
+  ThemeIcon,
   Title,
   Tooltip
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   IconDatabase,
+  IconDownload,
   IconFileCertificate,
+  IconHistory,
   IconMap,
+  IconPlus,
   IconRefresh,
   IconRegex,
   IconSearch,
-  IconShieldSearch
+  IconShieldCheck,
+  IconShieldSearch,
+  IconX
 } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { NameInput } from '@/components/name-input';
 import { QueryErrorBanner } from '@/components/query-error-banner';
-import { apiFetch, apiPatch, apiPost } from '@/lib/api';
+import { apiPatch, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { DataSource } from '@/lib/types';
+import type { MaskingPolicy, MaskingRule } from '@/lib/types';
+import { usePolicies, usePolicyRules } from '@/features/masking/hooks';
 import {
-  ColumnReviewPanel,
-  FindingsTable,
+  ColumnReviewWorkspace,
+  FindingsWorkspaceTable,
   ImpactDiagramPanel,
   ImpactMapPanel,
   LiveScanPanel,
-  MetricCard,
-  PatternsTable
+  PolicyRulesWorkspace,
+  ScanHistoryPanel
 } from './components';
 import {
   useDataSources,
@@ -52,8 +59,6 @@ import {
   useDiscoveryGraph,
   useDiscoveryJobs,
   useMaskFunctions,
-  usePiiPatternGroups,
-  usePiiPatterns,
   usePiiTypes,
   useSchemas,
   useTables
@@ -61,37 +66,35 @@ import {
 import type {
   DiscoveryColumnReviewRow,
   DiscoveryFinding,
+  DiscoveryGraph,
   DiscoveryJob,
-  ManualDraft,
-  PatternDraft,
-  PiiPattern
+  ManualDraft
 } from './types';
 import {
-  FALLBACK_PII_TYPES,
+  completePiiTypeCatalog,
+  DISCOVERY_SCAN_PROFILES,
   discoveryJobLive,
   findingSort,
   groupPiiTypes,
   orderPiiTypes,
 } from './utils';
 
-const EMPTY_PATTERN: PatternDraft = {
-  piiType: '',
-  kind: 'NAME',
-  regex: '',
-  suggestedFunction: '',
-  description: '',
-  visibility: 'PRIVATE',
-  ownerGroupId: ''
-};
+type DiscoveryWorkspace = 'findings' | 'columns' | 'impact' | 'history';
+type PolicyDrawer = 'browse' | 'create' | null;
 
 export function PiiDiscoveryPage() {
   const queryClient = useQueryClient();
   const completedJobRef = useRef<string | null>(null);
-  const [activeTab, setActiveTab] = useState<string | null>('scan');
+  const [workspace, setWorkspace] = useState<DiscoveryWorkspace | null>(null);
+  const [policyDrawer, setPolicyDrawer] = useState<PolicyDrawer>(null);
+  const [selectedPolicyId, setSelectedPolicyId] = useState<number | null>(null);
+  const [policySearch, setPolicySearch] = useState('');
   const [dataSourceId, setDataSourceId] = useState<number | null>(null);
   const [dataSourceInput, setDataSourceInput] = useState('');
   const [schema, setSchema] = useState<string | null>(null);
+  const [scanProfile, setScanProfile] = useState('GENERIC');
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
+  const [customScopeEdited, setCustomScopeEdited] = useState(false);
   const [typeScopeText, setTypeScopeText] = useState('');
   const [resultTypeScope, setResultTypeScope] = useState<string[]>([]);
   const [selectedTables, setSelectedTables] = useState<string[]>([]);
@@ -104,8 +107,13 @@ export function PiiDiscoveryPage() {
   const [browseSearch, setBrowseSearch] = useState('');
   const [policyName, setPolicyName] = useState('');
   const [manualDrafts, setManualDrafts] = useState<Record<string, ManualDraft>>({});
-  const [patternDraft, setPatternDraft] = useState<PatternDraft>(EMPTY_PATTERN);
-  const [deletePattern, setDeletePattern] = useState<PiiPattern | null>(null);
+
+  useEffect(() => {
+    if (!workspace) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [workspace]);
 
   const dataSourcesQuery = useDataSources();
   const schemasQuery = useSchemas(dataSourceId);
@@ -116,18 +124,26 @@ export function PiiDiscoveryPage() {
   const findingsQuery = useDiscoveryFindings(dataSourceId, schema, resultTypeScope);
   const columnReviewQuery = useDiscoveryColumnReview(dataSourceId, schema, reviewTable, resultTypeScope);
   const graphQuery = useDiscoveryGraph(dataSourceId, schema, resultTypeScope);
-  const patternsQuery = usePiiPatterns();
-  const groupsQuery = usePiiPatternGroups();
+  const policiesQuery = usePolicies();
+  const policyRulesQuery = usePolicyRules(selectedPolicyId);
 
   const dataSources = dataSourcesQuery.data || [];
   const schemas = schemasQuery.data || [];
   const tables = tablesQuery.data || [];
-  const piiTypes = piiTypesQuery.data?.length ? piiTypesQuery.data : FALLBACK_PII_TYPES;
+  const piiTypes = useMemo(
+    () => completePiiTypeCatalog(piiTypesQuery.data || []),
+    [piiTypesQuery.data]
+  );
   const maskFunctions = functionsQuery.data || [];
   const findings = (findingsQuery.data || []).slice().sort(findingSort);
   const jobs = jobsQuery.data || [];
   const latestJob = jobs[0] || null;
   const liveJob = jobs.find((job) => discoveryJobLive(job.status)) || latestJob;
+  const policies = useMemo(() => policiesQuery.data || [], [policiesQuery.data]);
+  const selectedPolicy = policies.find((policy) => policy.id === selectedPolicyId) || null;
+  const policyRules = useMemo(() => policyRulesQuery.data || [], [policyRulesQuery.data]);
+  const currentScanComplete = String(liveJob?.status || '').toUpperCase() === 'COMPLETED' && Number(liveJob?.totalTables || 0) > 0;
+  const hasReviewContext = currentScanComplete || Boolean(selectedPolicy);
   const refreshDiscoveryData = useCallback(
     () => queryClient.invalidateQueries({ queryKey: ['discovery'] }),
     [queryClient]
@@ -153,10 +169,21 @@ export function PiiDiscoveryPage() {
     .map((row) => catalogName(row, 'table'))
     .filter(Boolean)
     .map((value) => ({ value, label: value }));
-  const maskFunctionOptions = maskFunctions.map((fn) => ({ value: fn, label: fn }));
+  const selectedScanProfile = DISCOVERY_SCAN_PROFILES.find((profile) => profile.value === scanProfile)
+    || DISCOVERY_SCAN_PROFILES[0];
+  const customTypeScope = scanProfile === 'CUSTOM';
+  const profileTypeScope = customTypeScope
+    ? customScopeEdited ? selectedTypes : piiTypes
+    : selectedScanProfile.types?.length
+      ? [...selectedScanProfile.types]
+      : piiTypes;
+  const displayedTypeScopeText = customTypeScope
+    ? customScopeEdited ? typeScopeText : piiTypes.join(', ')
+    : profileTypeScope.join(', ');
 
   const chooseDataSource = (source: DataSource) => {
     if (source.id !== dataSourceId) {
+      setSelectedPolicyId(null);
       setSchema(null);
       setSelectedTables([]);
       setTableFocusText('');
@@ -184,7 +211,9 @@ export function PiiDiscoveryPage() {
   };
 
   const applyTypedTypes = () => {
+    if (scanProfile === 'CUSTOM' && !customScopeEdited) return piiTypes;
     const types = parseTypeScope(typeScopeText);
+    if (scanProfile === 'CUSTOM') setCustomScopeEdited(true);
     setSelectedTypes(types);
     return types;
   };
@@ -228,10 +257,22 @@ export function PiiDiscoveryPage() {
 
   const resultTypes = [...new Set(findings.map((item) => item.piiType).filter(Boolean))].sort();
   const resultStatuses = [...new Set(findings.map((item) => item.status).filter(Boolean))].sort();
-  const highConfidence = findings.filter((finding) => Number(finding.confidence || 0) >= 0.8).length;
   const approved = findings.filter((finding) => finding.status === 'APPROVED').length;
-  const suggested = findings.filter((finding) => finding.status !== 'APPROVED' && finding.status !== 'REJECTED').length;
-  const rejected = findings.filter((finding) => finding.status === 'REJECTED').length;
+  const policyNameError = validatePolicyName(policyName);
+  const filteredPolicies = useMemo(() => {
+    const needle = policySearch.trim().toLowerCase();
+    return policies
+      .filter((policy) => !needle || [policy.name, policy.description, policy.schemaName].filter(Boolean).join(' ').toLowerCase().includes(needle))
+      .sort((left, right) => {
+        const leftExact = Number(left.dataSourceId === dataSourceId && (!schema || left.schemaName === schema));
+        const rightExact = Number(right.dataSourceId === dataSourceId && (!schema || right.schemaName === schema));
+        return rightExact - leftExact || left.name.localeCompare(right.name);
+      });
+  }, [dataSourceId, policies, policySearch, schema]);
+  const effectiveGraph = useMemo(
+    () => selectedPolicy ? graphWithPolicyRules(graphQuery.data || {}, policyRules) : (graphQuery.data || {}),
+    [graphQuery.data, policyRules, selectedPolicy]
+  );
 
   const startScanMutation = useMutation({
     mutationFn: async ({ sourceId, schemaName, piiTypes, tableNames }: { sourceId: number; schemaName: string; piiTypes: string[]; tableNames: string[] }) => {
@@ -242,9 +283,10 @@ export function PiiDiscoveryPage() {
       return job;
     },
     onSuccess: (job, variables) => {
+      setSelectedPolicyId(null);
       setResultTypeScope([...(job.selectedTypes || variables.piiTypes)]);
       completedJobRef.current = null;
-      setActiveTab('scan');
+      setWorkspace(null);
       notifications.show({ color: 'blue', title: 'PII scan started', message: job.message || 'Live progress is open.' });
       void queryClient.invalidateQueries({ queryKey: keys.discovery.jobs(variables.sourceId, variables.schemaName) });
     },
@@ -305,7 +347,9 @@ export function PiiDiscoveryPage() {
   const generatePolicyMutation = useMutation({
     mutationFn: async () => {
       if (!dataSourceId || !schema) throw new Error('Select a data source and schema first.');
-      const name = policyName.trim() || `policy-ds-${dataSourceId}-${schema}`;
+      const nameError = validatePolicyName(policyName);
+      if (nameError) throw new Error(nameError);
+      const name = policyName.trim();
       return apiPost<{ id?: number; name?: string }>(`/api/discovery/generate-policy/${dataSourceId}?schema=${encodeURIComponent(schema)}`, {
         name
       });
@@ -316,47 +360,11 @@ export function PiiDiscoveryPage() {
         title: 'Policy generated',
         message: `${policy.name || 'Policy'} was created from approved findings.`
       });
+      if (policy.id) setSelectedPolicyId(policy.id);
+      setPolicyDrawer(null);
       void queryClient.invalidateQueries({ queryKey: keys.policies.all });
     },
     onError: (error) => notifyError('Policy generation failed', error)
-  });
-
-  const createPatternMutation = useMutation({
-    mutationFn: async () => {
-      if (!patternDraft.piiType.trim() || !patternDraft.regex.trim()) {
-        throw new Error('PII type and regex are required.');
-      }
-      return apiPost<Record<string, unknown>>('/api/discovery/patterns', {
-        piiType: patternDraft.piiType,
-        kind: patternDraft.kind,
-        regex: patternDraft.regex,
-        suggestedFunction: patternDraft.suggestedFunction || null,
-        description: patternDraft.description || null,
-        visibility: patternDraft.visibility,
-        ownerGroupId: patternDraft.visibility === 'GROUP' ? Number(patternDraft.ownerGroupId) || null : null
-      });
-    },
-    onSuccess: () => {
-      notifications.show({ color: 'green', title: 'Custom pattern added', message: 'The scanner will use it on the next run.' });
-      setPatternDraft(EMPTY_PATTERN);
-      void queryClient.invalidateQueries({ queryKey: keys.discovery.patterns });
-      void queryClient.invalidateQueries({ queryKey: keys.discovery.piiTypes });
-    },
-    onError: (error) => notifyError('Pattern save failed', error)
-  });
-
-  const deletePatternMutation = useMutation({
-    mutationFn: (pattern: PiiPattern) =>
-      apiFetch<void>(`/api/discovery/patterns/${pattern.id}`, {
-        method: 'DELETE'
-      }),
-    onSuccess: () => {
-      notifications.show({ color: 'green', title: 'Pattern deleted', message: 'The custom pattern was removed.' });
-      setDeletePattern(null);
-      void queryClient.invalidateQueries({ queryKey: keys.discovery.patterns });
-      void queryClient.invalidateQueries({ queryKey: keys.discovery.piiTypes });
-    },
-    onError: (error) => notifyError('Pattern delete failed', error)
   });
 
   const reviewScopeLabel = resultTypeScope.length
@@ -375,7 +383,26 @@ export function PiiDiscoveryPage() {
       notifyError('Schema required', new Error('Type a schema name or use Browse to select one.'));
       return;
     }
+    if (tablesQuery.isLoading || tablesQuery.isFetching) {
+      notifyError('Table catalog is still loading', new Error('Wait for the schema table list to finish loading, then start the scan.'));
+      return;
+    }
+    if (tablesQuery.isSuccess && tableOptions.length === 0) {
+      notifyError('Schema has no tables', new Error(`Schema ${schemaName} contains no scannable tables. Choose another schema or add tables first.`));
+      return;
+    }
     startScanMutation.mutate({ sourceId: source.id, schemaName, piiTypes: types, tableNames });
+  };
+
+  const changeScanProfile = (value: string | null) => {
+    const next = value || 'GENERIC';
+    setScanProfile(next);
+    setCustomScopeEdited(false);
+    const profile = DISCOVERY_SCAN_PROFILES.find((item) => item.value === next);
+    // Custom begins with the complete catalogue visible and selected; users can then remove only
+    // the types they do not want. This avoids a misleading empty field meaning an invisible "all".
+    const types = profile?.types == null ? piiTypes : [...profile.types];
+    applyTypeSelection(types);
   };
 
   const applyTypeSelection = (types: string[]) => {
@@ -394,7 +421,7 @@ export function PiiDiscoveryPage() {
   const handleUseScopeForResults = () => {
     const types = applyTypedTypes();
     setResultTypeScope(types);
-    setActiveTab('findings');
+    setWorkspace('findings');
     notifications.show({
       color: 'blue',
       title: 'Result scope applied',
@@ -403,21 +430,38 @@ export function PiiDiscoveryPage() {
   };
 
   const handleSelectAllTypes = () => {
+    setCustomScopeEdited(false);
     applyTypeSelection(piiTypes);
   };
 
   const handleClearTypeScope = () => {
+    setCustomScopeEdited(true);
     applyTypeSelection([]);
   };
 
-  const handleUseAllTypes = () => {
-    applyTypeSelection([]);
+  const selectPolicyContext = (policy: MaskingPolicy) => {
+    const source = policy.dataSourceId ? dataSources.find((item) => item.id === policy.dataSourceId) : null;
+    if (source) chooseDataSource(source);
+    else if (policy.dataSourceId) setDataSourceId(policy.dataSourceId);
+    if (policy.schemaName) setSchema(policy.schemaName);
+    setSelectedPolicyId(policy.id);
     setResultTypeScope([]);
-    notifications.show({
-      color: 'blue',
-      title: 'PII scope set to all types',
-      message: 'Click Start scan when you are ready to run discovery for all PII types.'
-    });
+    setPolicyDrawer(null);
+    setWorkspace(null);
+    notifications.show({ color: 'blue', title: 'Policy context selected', message: `${policy.name} is ready for findings and impact review.` });
+  };
+
+  const openCreatePolicy = () => {
+    if (!currentScanComplete) {
+      notifyError('Complete a scan first', new Error('A masking policy can only be generated from a completed scan with at least one scanned table.'));
+      return;
+    }
+    if (!approved) {
+      notifyError('No approved findings', new Error('Approve at least one discovery finding before generating a policy.'));
+      return;
+    }
+    if (!policyName.trim()) setPolicyName(suggestedPolicyName(dataSourceInput, schema));
+    setPolicyDrawer('create');
   };
 
   const filteredSources = dataSources
@@ -425,23 +469,40 @@ export function PiiDiscoveryPage() {
     .filter((source) => matchBrowse(source.name, source.kind, source.role, source.jdbcUrl, browseSearch));
   const filteredSchemas = schemaOptions.filter((item) => matchBrowse(item.label, browseSearch));
   const filteredTables = tableOptions.filter((item) => matchBrowse(item.label, browseSearch));
-  const groupedPiiTypes = groupPiiTypes(piiTypes, browseSearch);
+  const groupedPiiTypes = groupPiiTypes(customTypeScope ? piiTypes : profileTypeScope, browseSearch);
 
   return (
     <main className="forge-page pii-page">
-        <Stack gap="lg">
-          <Group justify="space-between" align="flex-start">
-            <div>
-              <Text className="pii-kicker">Sensitive data intelligence</Text>
-              <Title order={1}>PII Discovery</Title>
-              <Text c="dimmed" maw={820}>
-                Scan source metadata and sampled values, review findings with masking recommendations, add manual PII,
-                generate policies, and govern custom detection patterns.
-              </Text>
-            </div>
-          <Group gap="sm">
+        <Stack gap="md">
+          <Group justify="space-between" align="center" wrap="nowrap" className="pii-page-heading">
+            <Group gap="sm" wrap="nowrap">
+              <ThemeIcon size={40} radius="md" variant="light"><IconShieldSearch size={21} /></ThemeIcon>
+              <div>
+                <Group gap="xs"><Title order={1}>PII Discovery</Title>{discoveryJobLive(liveJob?.status) ? <Badge color="blue" variant="light">Scan active</Badge> : null}</Group>
+                <Text c="dimmed">Find, review, and protect sensitive data from one operational workspace.</Text>
+              </div>
+            </Group>
+          <Group gap="xs" className="pii-page-actions">
               {jobsQuery.isFetching || findingsQuery.isFetching ? <Loader size="sm" /> : null}
+              {jobs.length ? (
+                <Button size="xs" variant="subtle" leftSection={<IconHistory size={15} />} onClick={() => setWorkspace('history')}>
+                  Recent scans
+                </Button>
+              ) : null}
               <Button
+                size="xs"
+                variant={selectedPolicy ? 'light' : 'subtle'}
+                leftSection={<IconShieldCheck size={15} />}
+                rightSection={selectedPolicy ? <Badge size="xs" variant="filled">Selected</Badge> : null}
+                onClick={() => setPolicyDrawer('browse')}
+              >
+                Policies
+              </Button>
+              <Button component={Link} href="/pii-discovery/patterns" size="xs" variant="subtle" leftSection={<IconRegex size={15} />}>
+                Detection patterns
+              </Button>
+              <Button
+                size="xs"
                 leftSection={<IconRefresh size={16} />}
                 variant="default"
                 onClick={() => {
@@ -465,8 +526,8 @@ export function PiiDiscoveryPage() {
               findingsQuery.error,
               columnReviewQuery.error,
               graphQuery.error,
-              patternsQuery.error,
-              groupsQuery.error
+              policiesQuery.error,
+              policyRulesQuery.error
             ]}
             onRetry={refreshDiscoveryData}
             title="PII Discovery could not load all backend data"
@@ -498,6 +559,7 @@ export function PiiDiscoveryPage() {
                 placeholder="Type schema"
                 value={schema || ''}
                 onChange={(value) => {
+                  setSelectedPolicyId(null);
                   setSchema(value || null);
                   setSelectedTables([]);
                   setTableFocusText('');
@@ -505,6 +567,14 @@ export function PiiDiscoveryPage() {
                 }}
                 onBrowse={() => openBrowse('schema')}
                 disabled={!dataSourceId}
+              />
+              <Select
+                size="xs"
+                label="Scan profile"
+                data={DISCOVERY_SCAN_PROFILES.map((profile) => ({ value: profile.value, label: profile.label }))}
+                value={scanProfile}
+                onChange={changeScanProfile}
+                allowDeselect={false}
               />
               <BrowseField
                 label="Table focus"
@@ -518,10 +588,14 @@ export function PiiDiscoveryPage() {
               <BrowseField
                 label="PII type scope"
                 placeholder="Blank means all. Example: EMAIL, SSN"
-                value={typeScopeText}
-                onChange={setTypeScopeText}
+                value={displayedTypeScopeText}
+                onChange={(value) => {
+                  setCustomScopeEdited(true);
+                  setTypeScopeText(value);
+                }}
                 onBlur={() => applyTypedTypes()}
                 onBrowse={() => openBrowse('types')}
+                readOnly={!customTypeScope}
               />
             </div>
             <div className="pii-command-footer">
@@ -533,16 +607,17 @@ export function PiiDiscoveryPage() {
                   maxVisible={3}
                   onClear={() => applyTableSelection([])}
                 />
-                <InlineScope label="PII" values={selectedTypes} emptyLabel="all types" maxVisible={5} onClear={handleClearTypeScope} />
+                <InlineScope
+                  label="PII"
+                  values={profileTypeScope}
+                  emptyLabel="all types"
+                  maxVisible={5}
+                  onClear={customTypeScope ? handleClearTypeScope : undefined}
+                />
+                <Badge size="sm" variant="light" title={selectedScanProfile.detail}>{selectedScanProfile.label}</Badge>
                 <span className="pii-reviewing-text">Reviewing {reviewScopeLabel}</span>
               </div>
               <Group gap={6} className="pii-command-actions">
-                <Button size="xs" variant="subtle" onClick={handleSelectAllTypes}>
-                  Select all types
-                </Button>
-                <Button size="xs" variant="subtle" color="gray" onClick={handleUseAllTypes}>
-                  Set scope to all types
-                </Button>
                 <Button size="xs" variant="default" onClick={handleUseScopeForResults}>
                   Use type scope for results
                 </Button>
@@ -558,38 +633,59 @@ export function PiiDiscoveryPage() {
             </div>
           </Paper>
 
-          <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }}>
-            <MetricCard label="Findings" value={findings.length} detail="PII columns in review scope" />
-            <MetricCard label="PII types" value={resultTypes.length} detail="Distinct detected categories" />
-            <MetricCard label="High confidence" value={highConfidence} detail="Confidence at or above 80%" />
-            <MetricCard label="Approved" value={approved} detail="Ready for policy generation" tone="good" />
-            <MetricCard label="To review" value={suggested} detail={`${rejected} rejected / not PII`} tone={suggested ? 'warn' : 'good'} />
-          </SimpleGrid>
+          <section className="pii-live-command-center">
+            <LiveScanPanel job={liveJob} actions={<>
+                <Button size="xs" variant="light" leftSection={<IconSearch size={14} />} rightSection={<Badge size="xs" variant="filled">{selectedPolicy ? policyRules.length : findings.length}</Badge>} disabled={!hasReviewContext} onClick={() => setWorkspace('findings')}>
+                  Findings
+                </Button>
+                <Button size="xs" variant="default" leftSection={<IconDatabase size={14} />} onClick={() => setWorkspace('columns')}>
+                  Column review
+                </Button>
+                <Button size="xs" variant="default" leftSection={<IconFileCertificate size={14} />} disabled={!currentScanComplete || approved === 0} onClick={openCreatePolicy}>
+                  Create policy
+                </Button>
+                <Button size="xs" variant="default" leftSection={<IconMap size={14} />} disabled={!hasReviewContext} onClick={() => setWorkspace('impact')}>
+                  Impact map
+                </Button>
+              </>} />
+          </section>
 
-          <Tabs value={activeTab} onChange={setActiveTab} classNames={{ list: 'forge-tabs-list pii-tabs-list' }}>
-            <Tabs.List>
-              <Tabs.Tab value="scan" leftSection={<IconShieldSearch size={16} />}>
-                Live scan
-              </Tabs.Tab>
-              <Tabs.Tab value="findings" leftSection={<IconSearch size={16} />}>
-                Findings
-              </Tabs.Tab>
-              <Tabs.Tab value="columns" leftSection={<IconDatabase size={16} />}>
-                Column review
-              </Tabs.Tab>
-              <Tabs.Tab value="impact" leftSection={<IconMap size={16} />}>
-                Impact map
-              </Tabs.Tab>
-              <Tabs.Tab value="govern" leftSection={<IconRegex size={16} />}>
-                Policy & patterns
-              </Tabs.Tab>
-            </Tabs.List>
+          {workspace ? (
+            <div className="pii-focus-workspace" role="dialog" aria-modal="true" aria-label={`${workspaceTitle(workspace)} workspace`}>
+              <header className="pii-focus-workspace-head">
+                <Group gap="sm" wrap="nowrap">
+                  <ThemeIcon size={38} radius="md" variant="light">{workspaceIcon(workspace)}</ThemeIcon>
+                  <div>
+                    <Group gap="xs"><Text fw={800}>{workspaceTitle(workspace)}</Text><Badge variant="light">{workspace === 'history' ? `${jobs.length} runs` : selectedPolicy ? `${policyRules.length} policy rules` : `${findings.length} findings`}</Badge></Group>
+                    <Text size="xs" c="dimmed">{dataSourceInput || 'No source'} / {schema || 'No schema'} - {reviewScopeLabel}</Text>
+                  </div>
+                </Group>
+                <Group gap="xs" wrap="nowrap">
+                  {workspace === 'findings' ? (
+                    <Button
+                      size="xs"
+                      variant="default"
+                      leftSection={<IconDownload size={15} />}
+                      disabled={selectedPolicy ? !policyRules.length : !visibleFindings.length}
+                      onClick={() => selectedPolicy
+                        ? downloadPolicyRulesCsv(selectedPolicy, policyRules)
+                        : downloadFindingsCsv(dataSourceInput, schema, visibleFindings)}
+                    >
+                      Download CSV
+                    </Button>
+                  ) : null}
+                  <Tooltip label="Close workspace">
+                    <ActionIcon size="lg" variant="subtle" aria-label="Close focused workspace" onClick={() => setWorkspace(null)}><IconX size={20} /></ActionIcon>
+                  </Tooltip>
+                </Group>
+              </header>
+              <div className="pii-focus-workspace-body">
 
-            <Tabs.Panel value="scan" pt="md">
-              <LiveScanPanel job={liveJob} history={jobs} />
-            </Tabs.Panel>
+            {workspace === 'findings' && selectedPolicy ? (
+              <PolicyRulesWorkspace policy={selectedPolicy} rules={policyRules} loading={policyRulesQuery.isLoading || policyRulesQuery.isFetching} />
+            ) : null}
 
-            <Tabs.Panel value="findings" pt="md">
+            {workspace === 'findings' && !selectedPolicy ? (
               <Paper className="pii-panel" p={0}>
                 <div className="pii-panel-head">
                   <div>
@@ -631,17 +727,17 @@ export function PiiDiscoveryPage() {
                     clearable
                   />
                 </div>
-                <FindingsTable
+                <FindingsWorkspaceTable
                   rows={visibleFindings}
                   functions={maskFunctions}
                   updating={updateFindingMutation.isPending}
                   onUpdate={(id, body) => updateFindingMutation.mutate({ id, body })}
                 />
               </Paper>
-            </Tabs.Panel>
+            ) : null}
 
-            <Tabs.Panel value="columns" pt="md">
-              <ColumnReviewPanel
+            {workspace === 'columns' ? (
+              <ColumnReviewWorkspace
                 selectedTable={reviewTable}
                 tableOptions={tableOptions}
                 onTableChange={setReviewTable}
@@ -655,143 +751,123 @@ export function PiiDiscoveryPage() {
                 onManual={(row, draft) => manualMutation.mutate({ row, draft })}
                 manualPending={manualMutation.isPending}
               />
-            </Tabs.Panel>
+            ) : null}
 
-            <Tabs.Panel value="impact" pt="md">
+            {workspace === 'impact' ? (
               <Stack gap="md">
-                <ImpactDiagramPanel graph={graphQuery.data || {}} loading={graphQuery.isLoading || graphQuery.isFetching} />
-                <ImpactMapPanel graph={graphQuery.data || {}} loading={graphQuery.isLoading || graphQuery.isFetching} />
+                <ImpactDiagramPanel graph={effectiveGraph} loading={graphQuery.isLoading || graphQuery.isFetching || policyRulesQuery.isFetching} />
+                <ImpactMapPanel graph={effectiveGraph} loading={graphQuery.isLoading || graphQuery.isFetching || policyRulesQuery.isFetching} />
               </Stack>
-            </Tabs.Panel>
+            ) : null}
 
-            <Tabs.Panel value="govern" pt="md">
-              <section className="pii-govern-grid">
-                <Paper className="pii-panel" p="md">
-                  <Text fw={760}>Generate masking policy</Text>
-                  <Text size="sm" c="dimmed" mb="md">
-                    Creates policy rules from approved findings only. Suggested and rejected rows are intentionally ignored.
-                  </Text>
-                  <NameInput
-                    label="Policy name"
-                    placeholder={dataSourceId && schema ? `policy-ds-${dataSourceId}-${schema}` : 'policy name'}
-                    value={policyName}
-                    onChange={(value) => setPolicyName(value)}
-                  />
-                  <Group justify="space-between" mt="md">
-                    <Text size="sm" c="dimmed">
-                      {approved} approved finding{approved === 1 ? '' : 's'} available.
-                    </Text>
-                    <Button
-                      leftSection={<IconFileCertificate size={16} />}
-                      loading={generatePolicyMutation.isPending}
-                      onClick={() => generatePolicyMutation.mutate()}
-                    >
-                      Generate policy
-                    </Button>
-                  </Group>
-                </Paper>
-                <Paper className="pii-panel" p="md">
-                  <Text fw={760}>Custom detection pattern</Text>
-                  <Text size="sm" c="dimmed" mb="md">
-                    Add a private, group, or global regex used by future scans. NAME matches column names; VALUE matches sampled values.
-                  </Text>
-                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-                    <TextInput
-                      label="PII type"
-                      placeholder="LOYALTY_ID"
-                      value={patternDraft.piiType}
-                      onChange={(event) => {
-                        const value = event.currentTarget?.value || '';
-                        setPatternDraft((current) => ({ ...current, piiType: value }));
-                      }}
-                      spellCheck={false}
-                    />
-                    <Select
-                      label="Match"
-                      data={[
-                        { value: 'NAME', label: 'Column name' },
-                        { value: 'VALUE', label: 'Sample value' }
-                      ]}
-                      value={patternDraft.kind}
-                      onChange={(value) => setPatternDraft((current) => ({ ...current, kind: value === 'VALUE' ? 'VALUE' : 'NAME' }))}
-                    />
-                  </SimpleGrid>
-                  <Textarea
-                    mt="sm"
-                    label="Regex"
-                    autosize
-                    minRows={2}
-                    value={patternDraft.regex}
-                    onChange={(event) => {
-                      const value = event.currentTarget?.value || '';
-                      setPatternDraft((current) => ({ ...current, regex: value }));
-                    }}
-                    spellCheck={false}
-                    classNames={{ input: 'pii-mono-input' }}
-                  />
-                  <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm" mt="sm">
-                    <Select
-                      label="Suggested mask"
-                      data={maskFunctionOptions}
-                      value={patternDraft.suggestedFunction || null}
-                      onChange={(value) => setPatternDraft((current) => ({ ...current, suggestedFunction: value || '' }))}
-                      searchable
-                      clearable
-                    />
-                    <Select
-                      label="Visibility"
-                      data={[
-                        { value: 'PRIVATE', label: 'Private' },
-                        { value: 'GROUP', label: 'Group' },
-                        { value: 'GLOBAL', label: 'Global' }
-                      ]}
-                      value={patternDraft.visibility}
-                      onChange={(value) =>
-                        setPatternDraft((current) => ({ ...current, visibility: (value as PatternDraft['visibility']) || 'PRIVATE' }))
-                      }
-                    />
-                  </SimpleGrid>
-                  {patternDraft.visibility === 'GROUP' ? (
-                    <Select
-                      mt="sm"
-                      label="Group"
-                      data={(groupsQuery.data || []).map((group) => ({ value: String(group.id), label: group.name }))}
-                      value={patternDraft.ownerGroupId || null}
-                      onChange={(value) => setPatternDraft((current) => ({ ...current, ownerGroupId: value || '' }))}
-                    />
-                  ) : null}
-                  <TextInput
-                    mt="sm"
-                    label="Description"
-                    value={patternDraft.description}
-                    onChange={(event) => {
-                      const value = event.currentTarget?.value || '';
-                      setPatternDraft((current) => ({ ...current, description: value }));
-                    }}
-                    spellCheck={false}
-                  />
-                  <Group justify="flex-end" mt="md">
-                    <Button loading={createPatternMutation.isPending} onClick={() => createPatternMutation.mutate()}>
-                      Add pattern
-                    </Button>
-                  </Group>
-                </Paper>
-              </section>
-              <Paper className="pii-panel" p={0} mt="md">
-                <div className="pii-panel-head">
-                  <div>
-                    <Text fw={760}>Pattern library</Text>
-                    <Text size="sm" c="dimmed">
-                      Visible custom patterns for this user, group, and global scope.
-                    </Text>
-                  </div>
-                  {patternsQuery.isFetching ? <Loader size="sm" /> : null}
-                </div>
-                <PatternsTable rows={patternsQuery.data || []} onDelete={setDeletePattern} />
-              </Paper>
-            </Tabs.Panel>
-          </Tabs>
+            {workspace === 'history' ? <ScanHistoryPanel history={jobs} /> : null}
+
+              </div>
+            </div>
+          ) : null}
         </Stack>
+
+        <Drawer
+          opened={policyDrawer === 'browse'}
+          onClose={() => setPolicyDrawer(null)}
+          position="right"
+          size="lg"
+          title="Masking policies"
+          classNames={{ body: 'pii-policy-drawer-body' }}
+        >
+          <Stack gap="md">
+            <Text size="sm" c="dimmed">
+              Select an existing policy to review its governed rules and relationship impact without running another scan.
+            </Text>
+            {selectedPolicy ? (
+              <Paper className="pii-policy-context" p="sm">
+                <Group justify="space-between" align="flex-start">
+                  <div>
+                    <Group gap="xs"><Text fw={780}>{selectedPolicy.name}</Text><Badge variant="light" color="green">Active context</Badge></Group>
+                    <Text size="xs" c="dimmed">{policyContext(selectedPolicy, dataSources)}</Text>
+                  </div>
+                  <Button size="xs" variant="subtle" color="gray" onClick={() => setSelectedPolicyId(null)}>Clear</Button>
+                </Group>
+              </Paper>
+            ) : null}
+            <TextInput
+              leftSection={<IconSearch size={15} />}
+              placeholder="Search policy name, description, or schema..."
+              value={policySearch}
+              onChange={(event) => setPolicySearch(event.currentTarget?.value || '')}
+              spellCheck={false}
+            />
+            <div className="pii-policy-browser-list">
+              {filteredPolicies.map((policy) => {
+                const exact = policy.dataSourceId === dataSourceId && (!schema || policy.schemaName === schema);
+                return (
+                  <button
+                    key={policy.id}
+                    type="button"
+                    className={`pii-policy-choice ${selectedPolicyId === policy.id ? 'is-selected' : ''}`}
+                    onClick={() => selectPolicyContext(policy)}
+                  >
+                    <span>
+                      <b>{policy.name}</b>
+                      <small>{policyContext(policy, dataSources)}</small>
+                      {policy.description ? <small>{policy.description}</small> : null}
+                    </span>
+                    <span className="pii-policy-choice-badges">
+                      {exact ? <Badge size="xs" variant="light" color="green">Current source</Badge> : null}
+                      <Badge size="xs" variant="light">{policy.status || 'DRAFT'}</Badge>
+                    </span>
+                  </button>
+                );
+              })}
+              {!filteredPolicies.length ? <div className="pii-empty-small">No matching masking policies.</div> : null}
+            </div>
+            <Group justify="space-between">
+              <Button component={Link} href="/masking-policies" variant="subtle">Open Masking Policies</Button>
+              <Button leftSection={<IconPlus size={15} />} disabled={!currentScanComplete || approved === 0} onClick={openCreatePolicy}>
+                Create from scan
+              </Button>
+            </Group>
+          </Stack>
+        </Drawer>
+
+        <Drawer
+          opened={policyDrawer === 'create'}
+          onClose={() => setPolicyDrawer(null)}
+          position="right"
+          size="md"
+          title="Create policy from scan"
+        >
+          <Stack gap="md">
+            <Paper className="pii-policy-context" p="sm">
+              <Text size="xs" fw={850} tt="uppercase" c="dimmed">Scan evidence</Text>
+              <Text fw={760}>{dataSourceInput || 'No source'} / {schema || 'No schema'}</Text>
+              <Text size="sm" c="dimmed">{approved} approved finding{approved === 1 ? '' : 's'} will become policy rules.</Text>
+            </Paper>
+            <NameInput
+              label="Policy name"
+              description="8-120 characters. Start with a letter or number; spaces, dots, hyphens, and underscores are allowed."
+              placeholder="CUSTOMER DATA PROTECTION"
+              maxLength={120}
+              value={policyName}
+              error={policyName && policyNameError ? policyNameError : undefined}
+              onChange={setPolicyName}
+            />
+            <Text size="sm" c="dimmed">
+              Only approved findings are included. Suggested and rejected classifications remain discovery evidence and are not added to the policy.
+            </Text>
+            <Group justify="flex-end">
+              <Button variant="default" onClick={() => setPolicyDrawer(null)}>Discard</Button>
+              <Button
+                leftSection={<IconFileCertificate size={16} />}
+                loading={generatePolicyMutation.isPending}
+                disabled={Boolean(policyNameError) || !policyName.trim() || !currentScanComplete || approved === 0}
+                onClick={() => generatePolicyMutation.mutate()}
+              >
+                Create policy
+              </Button>
+            </Group>
+          </Stack>
+        </Drawer>
 
         <Modal
           opened={!!browseModal}
@@ -821,7 +897,7 @@ export function PiiDiscoveryPage() {
                   <button key={source.id} type="button" className="pii-browse-row" onClick={() => chooseDataSource(source)}>
                     <span>
                       <b>{source.name}</b>
-                      <small>{source.kind || 'database'} · {source.role || 'BOTH'}</small>
+                      <small>{source.kind || 'database'} / {source.role || 'BOTH'}</small>
                     </span>
                     <Badge variant="light">{source.environment || 'env not set'}</Badge>
                   </button>
@@ -837,6 +913,7 @@ export function PiiDiscoveryPage() {
                     type="button"
                     className="pii-browse-row"
                     onClick={() => {
+                      setSelectedPolicyId(null);
                       setSchema(item.value);
                       setSelectedTables([]);
                       setTableFocusText('');
@@ -908,14 +985,16 @@ export function PiiDiscoveryPage() {
                       </Text>
                       <div className="pii-type-browse-grid">
                         {group.types.map((type) => {
-                          const selected = selectedTypes.includes(type);
+                          const selected = customTypeScope ? profileTypeScope.includes(type) : true;
                           return (
                             <button
                               key={type}
                               type="button"
                               className={`pii-type-choice ${selected ? 'is-selected' : ''}`}
                               onClick={() => {
-                                const next = selected ? selectedTypes.filter((item) => item !== type) : [...selectedTypes, type];
+                                if (!customTypeScope) return;
+                                const next = selected ? profileTypeScope.filter((item) => item !== type) : [...profileTypeScope, type];
+                                setCustomScopeEdited(true);
                                 applyTypeSelection(next);
                               }}
                             >
@@ -930,17 +1009,15 @@ export function PiiDiscoveryPage() {
                 </div>
                 <Group justify="space-between">
                   <Text size="sm" c="dimmed">
-                    {selectedTypes.length ? `${selectedTypes.length} selected` : 'Blank means all PII types'}
+                    {customTypeScope
+                      ? profileTypeScope.length ? `${profileTypeScope.length} selected` : 'Blank means all PII types'
+                      : `${profileTypeScope.length} types included in ${selectedScanProfile.label}`}
                   </Text>
                   <Group gap="xs">
-                    <Button size="xs" variant="default" onClick={handleSelectAllTypes}>
-                      Select all
-                    </Button>
-                    <Button size="xs" variant="subtle" color="gray" onClick={handleClearTypeScope}>
-                      Clear
-                    </Button>
+                    {customTypeScope ? <Button size="xs" variant="default" onClick={handleSelectAllTypes}>Select all</Button> : null}
+                    {customTypeScope ? <Button size="xs" variant="subtle" color="gray" onClick={handleClearTypeScope}>Clear</Button> : null}
                     <Button size="xs" onClick={() => setBrowseModal(null)}>
-                      Apply
+                      {customTypeScope ? 'Apply' : 'Close'}
                     </Button>
                   </Group>
                 </Group>
@@ -949,29 +1026,24 @@ export function PiiDiscoveryPage() {
           </Stack>
         </Modal>
 
-        <Modal opened={!!deletePattern} onClose={() => setDeletePattern(null)} title="Delete custom pattern" centered>
-          <Stack gap="sm">
-            <Text size="sm">
-              Delete <b>{deletePattern?.piiType}</b> pattern? Future scans will stop using this regex.
-            </Text>
-            <Group justify="flex-end">
-              <Button variant="default" onClick={() => setDeletePattern(null)}>
-                Cancel
-              </Button>
-              <Button
-                color="red"
-                loading={deletePatternMutation.isPending}
-                onClick={() => {
-                  if (deletePattern) deletePatternMutation.mutate(deletePattern);
-                }}
-              >
-                Delete
-              </Button>
-            </Group>
-          </Stack>
-        </Modal>
     </main>
   );
+}
+
+function workspaceTitle(workspace: DiscoveryWorkspace) {
+  if (workspace === 'findings') return 'Findings review';
+  if (workspace === 'columns') return 'Column review';
+  if (workspace === 'impact') return 'PII impact map';
+  if (workspace === 'history') return 'Discovery run history';
+  return 'PII Discovery';
+}
+
+function workspaceIcon(workspace: DiscoveryWorkspace) {
+  if (workspace === 'findings') return <IconSearch size={19} />;
+  if (workspace === 'columns') return <IconDatabase size={19} />;
+  if (workspace === 'impact') return <IconMap size={19} />;
+  if (workspace === 'history') return <IconHistory size={19} />;
+  return <IconShieldSearch size={19} />;
 }
 
 function BrowseField({
@@ -979,6 +1051,7 @@ function BrowseField({
   value,
   placeholder,
   disabled,
+  readOnly,
   onChange,
   onBlur,
   onBrowse
@@ -987,6 +1060,7 @@ function BrowseField({
   value: string;
   placeholder: string;
   disabled?: boolean;
+  readOnly?: boolean;
   onChange: (value: string) => void;
   onBlur?: () => void;
   onBrowse: () => void;
@@ -1001,6 +1075,7 @@ function BrowseField({
         onChange={(event) => onChange(event.currentTarget?.value || '')}
         onBlur={onBlur}
         disabled={disabled}
+        readOnly={readOnly}
         spellCheck={false}
       />
       <Tooltip label={`Browse ${label.toLowerCase()}`}>
@@ -1029,7 +1104,7 @@ function InlineScope({
   values: string[];
   emptyLabel: string;
   maxVisible: number;
-  onClear: () => void;
+  onClear?: () => void;
 }) {
   const visible = values.slice(0, maxVisible);
   return (
@@ -1045,9 +1120,7 @@ function InlineScope({
             </Badge>
           ))}
           {values.length > visible.length ? <Badge variant="outline">+{values.length - visible.length}</Badge> : null}
-          <button type="button" className="pii-inline-clear" onClick={onClear}>
-            clear
-          </button>
+          {onClear ? <button type="button" className="pii-inline-clear" onClick={onClear}>clear</button> : null}
         </Group>
       ) : (
         <Text size="xs" fw={700}>
@@ -1112,6 +1185,139 @@ function catalogName(row: Record<string, unknown> | null | undefined, key: 'sche
   if (!row) return '';
   const value = row[key] ?? row.name ?? row.label;
   return typeof value === 'string' ? value : value == null ? '' : String(value);
+}
+
+function validatePolicyName(value: string) {
+  const clean = value.trim();
+  if (clean.length < 8 || clean.length > 120) return 'Policy name must be 8-120 characters.';
+  if (!/^[A-Za-z0-9][A-Za-z0-9 _.-]*$/.test(clean)) {
+    return 'Start with a letter or number and use only letters, numbers, spaces, dots, hyphens, or underscores.';
+  }
+  return null;
+}
+
+function suggestedPolicyName(sourceName: string, schema: string | null) {
+  const base = `${sourceName || 'SOURCE'} ${schema || 'SCHEMA'} PII POLICY`
+    .toUpperCase()
+    .replace(/[^A-Z0-9 _.-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return (base || 'DISCOVERY PII POLICY').slice(0, 120);
+}
+
+function policyContext(policy: MaskingPolicy, dataSources: DataSource[]) {
+  const source = dataSources.find((item) => item.id === policy.dataSourceId);
+  return `${source?.name || (policy.dataSourceId ? `Source ${policy.dataSourceId}` : 'Any source')} / ${policy.schemaName || 'Any schema'}`;
+}
+
+function graphWithPolicyRules(graph: DiscoveryGraph, rules: MaskingRule[]): DiscoveryGraph {
+  const rulesByTable = new Map<string, MaskingRule[]>();
+  for (const rule of rules) {
+    const key = String(rule.tableName || '').trim().toLowerCase();
+    if (!key) continue;
+    const current = rulesByTable.get(key) || [];
+    current.push(rule);
+    rulesByTable.set(key, current);
+  }
+
+  const seen = new Set<string>();
+  const nodes = (graph.nodes || []).map((node) => {
+    const key = String(node.label || node.id || '').trim().toLowerCase();
+    const tableRules = rulesByTable.get(key);
+    if (!tableRules) return node;
+    seen.add(key);
+    return {
+      ...node,
+      piiCount: tableRules.length,
+      piiColumns: tableRules.map((rule) => ({
+        column: rule.columnName,
+        piiType: 'POLICY_RULE',
+        function: rule.function,
+        param1: rule.param1,
+        param2: rule.param2,
+        status: 'APPROVED',
+        confidence: 1
+      }))
+    };
+  });
+
+  for (const [key, tableRules] of rulesByTable) {
+    if (seen.has(key)) continue;
+    const label = tableRules[0]?.tableName || key;
+    nodes.push({
+      id: label,
+      label,
+      piiCount: tableRules.length,
+      piiColumns: tableRules.map((rule) => ({
+        column: rule.columnName,
+        piiType: 'POLICY_RULE',
+        function: rule.function,
+        param1: rule.param1,
+        param2: rule.param2,
+        status: 'APPROVED',
+        confidence: 1
+      }))
+    });
+  }
+
+  return { ...graph, nodes };
+}
+
+function downloadFindingsCsv(sourceName: string, schema: string | null, findings: DiscoveryFinding[]) {
+  const rows = findings.map((finding) => [
+    sourceName,
+    schema || '',
+    finding.tableName,
+    finding.columnName,
+    finding.dataType || '',
+    finding.piiType,
+    finding.confidence,
+    finding.status,
+    finding.suggestedFunction || '',
+    finding.suggestedParam1 || '',
+    finding.suggestedParam2 || ''
+  ]);
+  downloadCsv(
+    `pii-findings-${sourceName || 'source'}-${schema || 'schema'}.csv`,
+    ['Data source', 'Schema', 'Table', 'Column', 'Data type', 'PII type', 'Confidence', 'Status', 'Mask function', 'Param 1', 'Param 2'],
+    rows
+  );
+}
+
+function downloadPolicyRulesCsv(policy: MaskingPolicy, rules: MaskingRule[]) {
+  downloadCsv(
+    `policy-${policy.name}.csv`,
+    ['Policy', 'Schema', 'Table', 'Column', 'Mask function', 'Param 1', 'Param 2', 'Deterministic'],
+    rules.map((rule) => [
+      policy.name,
+      rule.schemaName || policy.schemaName || '',
+      rule.tableName,
+      rule.columnName,
+      rule.function,
+      rule.param1 || '',
+      rule.param2 || '',
+      rule.deterministic === false ? 'No' : 'Yes'
+    ])
+  );
+}
+
+function downloadCsv(fileName: string, headers: string[], rows: Array<Array<unknown>>) {
+  const content = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob(['\uFEFF', content], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = fileName.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/-+/g, '-').slice(0, 160);
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function csvCell(value: unknown) {
+  let text = value == null ? '' : String(value);
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
 }
 
 function notifyError(title: string, error: unknown) {

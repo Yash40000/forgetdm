@@ -38,6 +38,7 @@ public class PiiPatternService {
 
     public record PatternRequest(String piiType, String kind, String regex, String suggestedFunction,
                                  String description, String visibility, Long ownerGroupId) {}
+    public record PatternTestRequest(String kind, String regex, String sample) {}
 
     /** Compiled, precedence-resolved custom patterns for the current user. */
     public record Effective(Map<String, Pattern> name, Map<String, Pattern> value, Map<String, String> suggested) {}
@@ -70,6 +71,20 @@ public class PiiPatternService {
                 currentUserId(), currentUsername(), groupId, ts(now), ts(now));
         audit.log(currentUsername(), "PII_PATTERN_CREATED", type + "/" + kind + " visibility=" + visibility);
         return Map.of("status", "created");
+    }
+
+    public Map<String, Object> test(PatternTestRequest req) {
+        if (req == null) throw ApiException.bad("Pattern test is required");
+        String kind = normalizeKind(req.kind());
+        String regex = validateRegex(req.regex());
+        String sample = req.sample() == null ? "" : req.sample();
+        Pattern compiled = "NAME".equals(kind)
+                ? Pattern.compile(regex, Pattern.CASE_INSENSITIVE)
+                : Pattern.compile(regex);
+        boolean matched = "NAME".equals(kind)
+                ? compiled.matcher(sample).find()
+                : compiled.matcher(sample.trim()).matches();
+        return Map.of("matched", matched, "kind", kind, "sample", sample);
     }
 
     public void delete(long id) {

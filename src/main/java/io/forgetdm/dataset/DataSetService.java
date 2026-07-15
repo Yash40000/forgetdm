@@ -3,6 +3,7 @@ package io.forgetdm.dataset;
 import io.forgetdm.audit.AuditService;
 import io.forgetdm.common.ApiException;
 import io.forgetdm.datasource.ConnectionFactory;
+import io.forgetdm.datasource.DataSourceEntity;
 import io.forgetdm.datasource.DataSourceService;
 import io.forgetdm.discovery.ClassificationEntity;
 import io.forgetdm.discovery.ClassificationRepository;
@@ -28,6 +29,9 @@ import java.util.stream.Collectors;
  */
 @Service
 public class DataSetService {
+
+    private static final int BLUEPRINT_NAME_MIN_LENGTH = 8;
+    private static final int BLUEPRINT_NAME_MAX_LENGTH = 64;
 
     private final DataSetDefinitionRepository       defs;
     private final TableProfileRepository            profiles;
@@ -95,13 +99,13 @@ public class DataSetService {
     }
 
     public DataSetDefinitionEntity create(DataSetDefinitionEntity req) {
-        if (req.getName() == null || req.getName().isBlank())
-            throw ApiException.bad("name is required");
+        String name = validateBlueprintName(req.getName());
         if (req.getDataSourceId() == null)
             throw ApiException.bad("dataSourceId is required");
-        defs.findByName(req.getName().trim()).ifPresent(d -> {
-            throw ApiException.bad("DataScope '" + req.getName() + "' already exists");
+        defs.findByName(name).ifPresent(d -> {
+            throw ApiException.bad("DataScope '" + name + "' already exists");
         });
+        req.setName(name);
         req.setUpdatedAt(Instant.now());
         DataSetDefinitionEntity saved = defs.save(req);
         audit.log("system", "DATASET_CREATED", saved.getName() + " id=" + saved.getId());
@@ -111,10 +115,11 @@ public class DataSetService {
     public DataSetDefinitionEntity update(Long id, DataSetDefinitionEntity req) {
         DataSetDefinitionEntity existing = get(id);
         if (req.getName() != null && !req.getName().isBlank()) {
-            defs.findByName(req.getName().trim()).ifPresent(d -> {
-                if (!d.getId().equals(id)) throw ApiException.bad("Name '" + req.getName() + "' already used");
+            String name = validateBlueprintName(req.getName());
+            defs.findByName(name).ifPresent(d -> {
+                if (!d.getId().equals(id)) throw ApiException.bad("Name '" + name + "' already used");
             });
-            existing.setName(req.getName().trim());
+            existing.setName(name);
         }
         if (req.getDescription() != null) existing.setDescription(req.getDescription());
         if (req.getDataSourceId() != null) existing.setDataSourceId(req.getDataSourceId());
@@ -211,24 +216,27 @@ public class DataSetService {
 
     @Transactional
     public List<TableProfileEntity> saveProfiles(Long datasetId, List<TableProfileEntity> incoming) {
-        get(datasetId);
+        DataSetDefinitionEntity definition = get(datasetId);
+        for (TableProfileEntity p : incoming) validateProfile(p);
+        validatePhysicalSourceTables(definition, incoming);
+
         profiles.deleteByDatasetId(datasetId);
         profiles.flush();          // flush deletes before re-inserting to avoid unique-constraint violations
         for (TableProfileEntity p : incoming) {
-            validateProfile(p);
             p.setDatasetId(datasetId);
             p.setId(null);         // force INSERT — deleted rows no longer exist
         }
         List<TableProfileEntity> saved = profiles.saveAll(incoming);
-        get(datasetId).setUpdatedAt(Instant.now());
+        definition.setUpdatedAt(Instant.now());
         audit.log("system", "DATASET_PROFILES_SAVED", "datasetId=" + datasetId + " count=" + saved.size());
         return saved;
     }
 
     @Transactional
     public TableProfileEntity saveProfile(Long datasetId, TableProfileEntity p) {
-        get(datasetId);
+        DataSetDefinitionEntity definition = get(datasetId);
         validateProfile(p);
+        validatePhysicalSourceTables(definition, List.of(p));
         p.setDatasetId(datasetId);
         profiles.findByDatasetIdAndTableName(datasetId, p.getTableName())
                 .map(TableProfileEntity::getId).ifPresent(profiles::deleteById);
@@ -371,13 +379,20 @@ public class DataSetService {
         get(datasetId);
         traversalRules.deleteByDatasetId(datasetId);
         traversalRules.flush();
-        Set<String> DIRECTIONS = Set.of("BOTH", "Q1_ONLY", "Q2_ONLY", "NONE");
+        Set<String> DIRECTIONS = Set.of("INHERIT", "BOTH", "Q1_ONLY", "Q2_ONLY", "NONE");
         for (RelationshipTraversalRuleEntity r : incoming) {
             if (r.getParentTable() == null || r.getChildTable() == null)
                 throw ApiException.bad("parentTable and childTable are required for traversal rule");
+            String source = r.getRelSource() == null ? "DB" : r.getRelSource().trim().toUpperCase(Locale.ROOT);
+            if (!Set.of("DB", "USER").contains(source))
+                throw ApiException.bad("relSource must be DB or USER");
+            if ("USER".equals(source) && r.getRelRefId() == null)
+                throw ApiException.bad("relRefId is required for a tool relationship traversal rule");
             String dir = r.getTraverseDirection() == null ? "BOTH" : r.getTraverseDirection().toUpperCase();
-            if (!DIRECTIONS.contains(dir)) throw ApiException.bad("traverseDirection must be BOTH, Q1_ONLY, Q2_ONLY, or NONE");
+            if (!DIRECTIONS.contains(dir)) throw ApiException.bad("traverseDirection must be INHERIT, BOTH, Q1_ONLY, Q2_ONLY, or NONE");
             r.setTraverseDirection(dir);
+            r.setRelSource(source);
+            if ("DB".equals(source)) r.setRelRefId(null);
             r.setDatasetId(datasetId);
             r.setId(null);
         }
@@ -749,13 +764,16 @@ public class DataSetService {
     // ─── Helpers used by ProvisioningService ────────────────────────────────
 
     public List<SubsetService.TableDirective> toDirectives(List<TableProfileEntity> tableProfiles) {
-        return tableProfiles.stream().map(p -> new SubsetService.TableDirective(
-                p.getTableName(), p.isIncluded(), p.getFilterExpr(),
-                p.getReferentialStrategy(),
-                effectiveQMode(p.getQ1Mode(), p.getQ1Override()),
-                effectiveQMode(p.getQ2Mode(), p.getQ2Override()),
-                p.getRowLimit()
-        )).collect(Collectors.toList());
+        return tableProfiles.stream().map(p -> {
+            boolean independent = "INDEPENDENT".equalsIgnoreCase(p.getReferentialStrategy());
+            return new SubsetService.TableDirective(
+                    p.getTableName(), p.isIncluded(), p.getFilterExpr(),
+                    p.getReferentialStrategy(),
+                    independent ? "NO" : effectiveQMode(p.getQ1Mode(), p.getQ1Override()),
+                    independent ? "NO" : effectiveQMode(p.getQ2Mode(), p.getQ2Override()),
+                    p.getRowLimit()
+            );
+        }).collect(Collectors.toList());
     }
 
     /** New-style q1/q2 mode (YES/NO/DEFER) wins; otherwise fall back to the classic console's boolean override. */
@@ -778,22 +796,22 @@ public class DataSetService {
                 edges.add(new SubsetService.UserRelEdge(
                         r.getParentTable(), parentCols[i].trim(),
                         r.getChildTable(),  childCols[i].trim(),
-                        r.getRelName() != null ? r.getRelName() : r.getParentTable() + "→" + r.getChildTable()
+                        r.getRelName() != null ? r.getRelName() : r.getParentTable() + "→" + r.getChildTable(),
+                        r.getId()
                 ));
             }
         }
         return edges;
     }
 
-    /** Traversal direction map: key = "parentLower->childLower", value = direction string. */
+    /** Traversal direction map keyed by parent/child plus relationship source and tool relationship id. */
     public Map<String, String> toTraversalDirectionMap(List<RelationshipTraversalRuleEntity> rules) {
         Map<String, String> map = new HashMap<>();
         // Sort by priority so higher-priority (lower number) wins on duplicate keys
         rules.stream()
              .sorted(Comparator.comparingInt(RelationshipTraversalRuleEntity::getPriority))
              .forEach(r -> {
-                 String key = r.getParentTable().toLowerCase(Locale.ROOT)
-                            + "->" + r.getChildTable().toLowerCase(Locale.ROOT);
+                 String key = ruleKey(r.getParentTable(), r.getChildTable(), r.getRelSource(), r.getRelRefId());
                  map.putIfAbsent(key, r.getTraverseDirection());
              });
         return map;
@@ -833,8 +851,57 @@ public class DataSetService {
         if (!Set.of("INHERIT", "FOLLOW_PARENT", "INDEPENDENT").contains(strat))
             throw ApiException.bad("referentialStrategy must be INHERIT, FOLLOW_PARENT, or INDEPENDENT");
         p.setReferentialStrategy(strat);
+        if ("INDEPENDENT".equals(strat)) {
+            p.setQ1Mode(null);
+            p.setQ1Override(null);
+            p.setQ2Mode(null);
+            p.setQ2Override(null);
+        }
         if (p.getFilterExpr() != null) SubsetService.guardFilter(p.getFilterExpr());
     }
+
+    /**
+     * Resolve every physical source before replacing the saved profile. This catches a
+     * mistyped DB_ALIAS,SCHEMA.TABLE while the user is still in Table Map instead of
+     * allowing a provisioning job to fail later.
+     */
+    private void validatePhysicalSourceTables(DataSetDefinitionEntity definition,
+                                              List<TableProfileEntity> tableProfiles) {
+        Map<SourceCatalogKey, Set<String>> tableCatalogs = new HashMap<>();
+        for (TableProfileEntity profile : tableProfiles) {
+            Long sourceId = profile.getSourceDataSourceId() != null
+                    ? profile.getSourceDataSourceId()
+                    : definition.getDataSourceId();
+            String schema = profile.getSourceSchemaName() != null
+                    ? profile.getSourceSchemaName()
+                    : definition.getSchemaName();
+            if (sourceId == null) {
+                throw ApiException.bad("A source data source is required before saving Table Map");
+            }
+
+            DataSourceEntity source = dataSources.get(sourceId);
+            String role = String.valueOf(source.getRole()).toUpperCase(Locale.ROOT);
+            if (!Set.of("SOURCE", "BOTH").contains(role)) {
+                throw ApiException.bad("Data source '" + source.getName() + "' is not source-capable");
+            }
+
+            SourceCatalogKey key = new SourceCatalogKey(
+                    sourceId,
+                    schema == null ? "" : schema.trim().toLowerCase(Locale.ROOT));
+            Set<String> tableNames = tableCatalogs.computeIfAbsent(key, ignored ->
+                    dataSources.tables(sourceId, notBlank(schema) ? schema : null).stream()
+                            .map(row -> String.valueOf(row.get("table")).toLowerCase(Locale.ROOT))
+                            .collect(Collectors.toSet()));
+            if (!tableNames.contains(profile.getTableName().toLowerCase(Locale.ROOT))) {
+                throw ApiException.bad("Source table '" + profile.getTableName()
+                        + "' was not found in data source '" + source.getName()
+                        + "', schema '" + (notBlank(schema) ? schema : "default")
+                        + "'. Correct DB_ALIAS,SCHEMA.TABLE before saving Table Map.");
+            }
+        }
+    }
+
+    private record SourceCatalogKey(Long dataSourceId, String schemaName) {}
 
     private static void validateOverride(ColumnOverrideEntity o) {
         if (o.getTableName() == null || o.getTableName().isBlank())
@@ -868,6 +935,15 @@ public class DataSetService {
     private static String ruleKey(String parent, String child, String source, Long refId) {
         String base = parent.toLowerCase(Locale.ROOT) + "->" + child.toLowerCase(Locale.ROOT) + ":" + source;
         return refId != null ? base + ":" + refId : base;
+    }
+
+    private static String validateBlueprintName(String value) {
+        if (value == null || value.isBlank()) throw ApiException.bad("name is required");
+        String name = value.trim();
+        if (name.length() < BLUEPRINT_NAME_MIN_LENGTH || name.length() > BLUEPRINT_NAME_MAX_LENGTH) {
+            throw ApiException.bad("DataScope blueprint name must be between " + BLUEPRINT_NAME_MIN_LENGTH + " and " + BLUEPRINT_NAME_MAX_LENGTH + " characters");
+        }
+        return name;
     }
 
     private static String blankToNull(String s) { return s == null || s.isBlank() ? null : s; }

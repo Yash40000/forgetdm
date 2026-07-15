@@ -26,6 +26,11 @@ public class PiiPatternController {
         return patterns.create(req);
     }
 
+    @PostMapping("/test")
+    public Map<String, Object> test(@RequestBody PiiPatternService.PatternTestRequest req) {
+        return patterns.test(req);
+    }
+
     @DeleteMapping("/{id}")
     public void delete(@PathVariable long id) {
         patterns.delete(id);

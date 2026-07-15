@@ -13,6 +13,7 @@ public class VirtualDatabaseEntity {
     @Column(name = "current_snapshot_id") private Long currentSnapshotId;
     @Column(name = "data_source_id") private Long dataSourceId;
     @Column(name = "jdbc_url", nullable = false) private String jdbcUrl;
+    @Column(name = "schema_name") private String schemaName;
     private String username;
     private String password;
     @Column(name = "storage_path", nullable = false) private String storagePath;
@@ -39,6 +40,8 @@ public class VirtualDatabaseEntity {
     public void setDataSourceId(Long dataSourceId) { this.dataSourceId = dataSourceId; }
     public String getJdbcUrl() { return jdbcUrl; }
     public void setJdbcUrl(String jdbcUrl) { this.jdbcUrl = jdbcUrl; }
+    public String getSchemaName() { return schemaName; }
+    public void setSchemaName(String schemaName) { this.schemaName = schemaName; }
     public String getUsername() { return username; }
     public void setUsername(String username) { this.username = username; }
     public String getPassword() { return password; }

@@ -24,6 +24,7 @@ class ForgeIntelligenceStoreServiceTest {
         jdbc.execute("DROP ALL OBJECTS");
         try (Connection connection = ds.getConnection()) {
             ScriptUtils.executeSqlScript(connection, new ClassPathResource("db/migration/V58__forge_intelligence_store.sql"));
+            ScriptUtils.executeSqlScript(connection, new ClassPathResource("db/migration/V59__forge_intelligence_store_exclusions.sql"));
         }
         createMetadataTables();
         store = new ForgeIntelligenceStoreService(jdbc, new ObjectMapper());
@@ -68,8 +69,23 @@ class ForgeIntelligenceStoreServiceTest {
         assertEquals("USER", added.origin());
         store.sync();
         assertTrue(store.search("Dormant account 365", 5).stream().anyMatch(value -> value.id() == added.id()));
-        store.deleteManualDocument(added.id());
+        store.removeDocument(added.id());
         assertTrue(store.search("Dormant account 365", 5).isEmpty());
+    }
+
+    @Test
+    void excludedSystemKnowledgeDoesNotReturnAfterRefresh() {
+        jdbc.update("INSERT INTO data_sources VALUES (1,'LegacyCore','DB2','SOURCE','UAT','banking')");
+        store.sync();
+        var document = store.search("LegacyCore", 5).stream().findFirst().orElseThrow();
+
+        store.removeDocument(document.id());
+        assertTrue(store.search("LegacyCore", 5).isEmpty());
+
+        store.sync();
+        assertTrue(store.search("LegacyCore", 5).isEmpty());
+        assertEquals(Boolean.TRUE, jdbc.queryForObject(
+                "SELECT excluded FROM forge_ai_documents WHERE id=?", Boolean.class, document.id()));
     }
 
     private void createMetadataTables() {

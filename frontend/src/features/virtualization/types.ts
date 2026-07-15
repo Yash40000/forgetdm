@@ -27,6 +27,7 @@ export type VirtVdb = {
   currentSnapshotId?: number | null;
   dataSourceId?: number | null;
   jdbcUrl: string;
+  schemaName?: string | null;
   username?: string | null;
   storagePath: string;
   status: string;

@@ -14,6 +14,8 @@ import type {
   SyntheticTargetSystem
 } from './types';
 
+export const SYNTHETIC_JOB_NAME_MIN_LENGTH = 8;
+
 export const GENERATOR_FALLBACKS = [
   'SEQUENCE',
   'PADDED_SEQUENCE',
@@ -214,9 +216,9 @@ export function targetSystemPlan(draft: SyntheticDraft): SyntheticTargetSystem[]
       targetPrep: target.targetPrep || draft.targetPrep || 'NONE',
       batchSize: target.batchSize || positiveOrNull(draft.batchSize),
       commitEveryRows: target.commitEveryRows ?? numberOr(draft.commitEveryRows, 0),
-      continueOnError: Boolean(target.continueOnError),
+      continueOnError: target.continueOnError == null ? draft.continueOnError : Boolean(target.continueOnError),
       maxRejects: target.maxRejects ?? (draft.maxRejects === '' ? null : numberOr(draft.maxRejects, 0)),
-      fastLoad: Boolean(target.fastLoad),
+      fastLoad: target.fastLoad == null ? draft.fastLoad : Boolean(target.fastLoad),
       tables: (target.tables || [])
         .filter((table) => table.logicalTable && table.physicalTable)
         .map((table) => ({
@@ -240,13 +242,13 @@ export function defaultTargetSystem(draft: SyntheticDraft, sources: DataSource[]
       name: name === 'No source' ? '' : name,
       targetDataSourceId: draft.targetDataSourceId,
       targetSchema: draft.targetSchema || null,
-      loadAction: draft.loadAction,
-      targetPrep: draft.targetPrep,
-      batchSize: positiveOrNull(draft.batchSize),
-      commitEveryRows: numberOr(draft.commitEveryRows, 0),
-      continueOnError: draft.continueOnError,
-      maxRejects: draft.maxRejects === '' ? null : numberOr(draft.maxRejects, 0),
-      fastLoad: draft.fastLoad,
+      loadAction: null,
+      targetPrep: null,
+      batchSize: null,
+      commitEveryRows: null,
+      continueOnError: null,
+      maxRejects: null,
+      fastLoad: null,
       tables: []
     },
     draft.tables

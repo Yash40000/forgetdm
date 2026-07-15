@@ -39,4 +39,10 @@ class DiscoveryMaskRecommendationTest {
         assertEquals("F|M|X", DiscoveryService.defaultParam1("SECURE_LOOKUP", "GENDER"));
         assertEquals("UPPER", DiscoveryService.defaultParam2("SECURE_LOOKUP", "GENDER"));
     }
+
+    @Test void narrowerProfileLocksExistingOutOfScopeClassification() {
+        assertTrue(DiscoveryService.shouldLockExistingClassification(false, "SUGGESTED"));
+        assertTrue(DiscoveryService.shouldLockExistingClassification(true, "APPROVED"));
+        assertFalse(DiscoveryService.shouldLockExistingClassification(true, "SUGGESTED"));
+    }
 }

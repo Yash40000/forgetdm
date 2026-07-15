@@ -1,11 +1,24 @@
 'use client';
 
 import { useState } from 'react';
-import { Badge, Button, Card, Divider, Group, Modal, Paper, Select, SimpleGrid, Stack, Tabs, Text, Textarea, Title } from '@mantine/core';
-import { NameInput } from '@/components/name-input';
+import { Badge, Button, Card, Drawer, Group, Modal, Select, Stack, Text, Textarea, Title } from '@mantine/core';
+import {
+  IconDatabase,
+  IconEdit,
+  IconFolderOpen,
+  IconHistory,
+  IconLock,
+  IconPlayerPlay,
+  IconPlus,
+  IconRoute,
+  IconShieldCheck,
+  IconTable,
+  IconVersions
+} from '@tabler/icons-react';
 import { notifications } from '@mantine/notifications';
 import { useQueryClient } from '@tanstack/react-query';
 
+import { NameInput } from '@/components/name-input';
 import { useConfirm } from '@/components/confirm';
 import { StatusPill } from '@/components/status-pill';
 import { apiFetch, apiPut } from '@/lib/api';
@@ -20,13 +33,21 @@ import type {
   SavedDataScopeJob,
   TableProfile
 } from '@/lib/types';
-import { isProfileIncluded, numberOrNull, sourceName } from '../utils';
-import { InfoRow } from './bits';
+import {
+  DATASCOPE_BLUEPRINT_NAME_MAX_LENGTH,
+  DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH,
+  isProfileIncluded,
+  numberOrNull,
+  piiCoverageCount,
+  sourceName
+} from '../utils';
 import { GuardrailsPanel } from './guardrails-panel';
 import { RelationshipsPanel } from './relationships-panel';
-import { RunPanel } from './run-panel';
+import { RunPanel, type RunPanelSection } from './run-panel';
 import { TableMapWorkspace } from './table-map-workspace';
 import { VersionsPanel } from './versions-panel';
+
+type BlueprintWorkspaceView = 'profiles' | 'relationships' | 'guardrails' | 'provision' | null;
 
 export function SelectedBlueprintWorkspace({
   blueprint,
@@ -39,6 +60,8 @@ export function SelectedBlueprintWorkspace({
   savedJobs,
   isProfilesLoading,
   isGuardrailsLoading,
+  onOpenLibrary,
+  onOpenCreate,
   onDeleted,
   onDraftDirtyChange
 }: {
@@ -52,6 +75,8 @@ export function SelectedBlueprintWorkspace({
   savedJobs: SavedDataScopeJob[];
   isProfilesLoading: boolean;
   isGuardrailsLoading: boolean;
+  onOpenLibrary?: () => void;
+  onOpenCreate?: () => void;
   onDeleted?: () => void;
   onDraftDirtyChange?: (dirty: boolean) => void;
 }) {
@@ -61,21 +86,43 @@ export function SelectedBlueprintWorkspace({
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
   const [editPolicyId, setEditPolicyId] = useState('');
-  const [activeTab, setActiveTab] = useState<string | null>('overview');
+  const [workspaceView, setWorkspaceView] = useState<BlueprintWorkspaceView>(null);
+  const [runSection, setRunSection] = useState<RunPanelSection>('build');
+  const [versionsOpened, setVersionsOpened] = useState(false);
   const [draftDirty, setDraftDirty] = useState(false);
   const [savingEdit, setSavingEdit] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   if (!blueprint) {
     return (
-      <Paper className="forge-card" p="xl">
-        <Text fw={800}>Select or create a DataScope blueprint.</Text>
-        <Text c="dimmed" size="sm">
-          The workspace appears here once a blueprint is selected.
-        </Text>
-      </Paper>
+      <section className="datascope-empty-workspace">
+        <span className="datascope-empty-icon"><IconDatabase size={24} /></span>
+        <div>
+          <Text fw={850}>Choose a blueprint to begin</Text>
+          <Text c="dimmed" size="sm">Open an existing definition or create one without filling the page with setup forms.</Text>
+        </div>
+        <Group gap="xs">
+          <Button variant="light" leftSection={<IconFolderOpen size={16} />} onClick={onOpenLibrary}>Open blueprints</Button>
+          <Button leftSection={<IconPlus size={16} />} onClick={onOpenCreate}>New blueprint</Button>
+        </Group>
+      </section>
     );
   }
+
+  const includedProfiles = profiles.filter(isProfileIncluded);
+  const includedCount = includedProfiles.length;
+  const profileReady = includedCount > 0 && Boolean(blueprint.driverTable);
+  const piiGapCount = piiCoverageCount(piiCoverage, 'unmasked');
+  const driftCount = drift?.issues?.length || (drift?.missingTables?.length || 0) + (drift?.missingColumns?.length || 0) + (drift?.changedColumns?.length || 0);
+  const guardrailIssueCount = piiGapCount + driftCount;
+  const target = blueprint.targetDataSourceId ? sourceName(blueprint.targetDataSourceId, dataSources) : 'Not configured';
+  const policy = policies.find((item) => item.id === blueprint.policyId);
+  const editNameLength = editName.trim().length;
+  const editNameError = editNameLength > 0 && editNameLength < DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH
+    ? `Use at least ${DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH} characters.`
+    : editNameLength > DATASCOPE_BLUEPRINT_NAME_MAX_LENGTH
+      ? `Use no more than ${DATASCOPE_BLUEPRINT_NAME_MAX_LENGTH} characters.`
+      : null;
 
   const openEdit = () => {
     setEditName(blueprint.name);
@@ -85,7 +132,7 @@ export function SelectedBlueprintWorkspace({
   };
 
   const saveEdit = async () => {
-    if (savingEdit) return;
+    if (savingEdit || editNameError || editNameLength < DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH) return;
     setSavingEdit(true);
     try {
       await apiPut<DataSetDefinition>(`/api/datasets/${blueprint.id}`, {
@@ -133,163 +180,159 @@ export function SelectedBlueprintWorkspace({
     onDraftDirtyChange?.(dirty);
   };
 
-  const changeTab = async (tab: string | null) => {
-    if (!tab || tab === activeTab) return;
+  const closeWorkspace = async () => {
     if (draftDirty) {
       const discard = await confirm({
         title: 'Discard unsaved DataScope changes?',
-        message: 'Moving to another tab will discard the unsaved profile, map, or relationship edits.',
+        message: 'Closing this workspace will discard unsaved profile, map, or relationship edits.',
         okText: 'Discard changes',
         danger: true
       });
       if (!discard) return;
     }
     handleDraftDirty(false);
-    setActiveTab(tab);
+    setWorkspaceView(null);
+  };
+
+  const openRunWorkspace = (section: RunPanelSection) => {
+    setRunSection(section);
+    setWorkspaceView('provision');
   };
 
   return (
-    <Card className="forge-card" p={0}>
+    <Card className="forge-card datascope-blueprint-workspace" p={0}>
       {confirmElement}
-      <Stack gap={0}>
-        <Group justify="space-between" p="lg" align="flex-start">
+      <header className="datascope-blueprint-header">
+        <Group gap="sm" wrap="nowrap" align="flex-start">
+          <span className="datascope-blueprint-header-icon"><IconDatabase size={18} /></span>
           <div>
-            <Group gap="xs" mb={4}>
-              <Title order={2} size="h3">
-                {blueprint.name}
-              </Title>
-              <StatusPill value={blueprint.driverTable ? 'READY' : 'DRAFT'} />
+            <Group gap="xs">
+              <Title order={2} size="h3">{blueprint.name}</Title>
+              <StatusPill value={profileReady ? 'READY' : 'DRAFT'} />
             </Group>
-            <Text c="dimmed" size="sm">
-              {blueprint.description || 'No description yet.'}
-            </Text>
+            <Text c="dimmed" size="sm">{blueprint.description || 'Relational subset and provisioning definition.'}</Text>
           </div>
-          <Group gap="xs">
-            <Badge variant="light">{sourceName(blueprint.dataSourceId, dataSources)}</Badge>
-            {blueprint.schemaName ? <Badge variant="outline">{blueprint.schemaName}</Badge> : null}
-            <Button size="xs" variant="light" onClick={openEdit}>
-              Edit
-            </Button>
-            <Button size="xs" variant="subtle" color="red" loading={deleting} onClick={() => void deleteBlueprint()}>
-              Delete
-            </Button>
-          </Group>
         </Group>
-        <Divider />
-        <Tabs value={activeTab} onChange={(tab) => void changeTab(tab)} keepMounted={false}>
-          <Tabs.List className="forge-tabs-list" px="lg">
-            <Tabs.Tab value="overview">Overview</Tabs.Tab>
-            <Tabs.Tab value="profiles">Table profiles</Tabs.Tab>
-            <Tabs.Tab value="relationships">Relationships</Tabs.Tab>
-            <Tabs.Tab value="guardrails">Guardrails</Tabs.Tab>
-            <Tabs.Tab value="run">Run & jobs</Tabs.Tab>
-            <Tabs.Tab value="versions">Versions</Tabs.Tab>
-          </Tabs.List>
-          <Tabs.Panel value="overview" p="lg">
-            <BlueprintOverview blueprint={blueprint} dataSources={dataSources} policies={policies} profiles={profiles} />
-          </Tabs.Panel>
-          <Tabs.Panel value="profiles" p="lg">
-            {/* key={blueprint.id}: switching blueprints must fully reset the draft state. */}
-            <TableMapWorkspace
-              key={blueprint.id}
-              blueprint={blueprint}
-              rows={profiles}
-              overrides={overrides}
-              dataSources={dataSources}
-              policies={policies}
-              loading={isProfilesLoading}
-              onDirtyChange={handleDraftDirty}
-            />
-          </Tabs.Panel>
-          <Tabs.Panel value="relationships" p="lg">
-            <RelationshipsPanel key={blueprint.id} blueprint={blueprint} profiles={profiles} onDirtyChange={handleDraftDirty} />
-          </Tabs.Panel>
-          <Tabs.Panel value="guardrails" p="lg">
-            <GuardrailsPanel coverage={piiCoverage} drift={drift} loading={isGuardrailsLoading} />
-          </Tabs.Panel>
-          <Tabs.Panel value="run" p="lg">
-            <RunPanel
-              key={blueprint.id}
-              blueprint={blueprint}
-              profiles={profiles}
-              policies={policies}
-              dataSources={dataSources}
-              drift={drift}
-              savedJobs={savedJobs}
-            />
-          </Tabs.Panel>
-          <Tabs.Panel value="versions" p="lg">
-            <VersionsPanel key={blueprint.id} blueprint={blueprint} />
-          </Tabs.Panel>
-        </Tabs>
-      </Stack>
+        <Group gap={6} className="datascope-blueprint-header-actions">
+          <Badge variant="light">{sourceName(blueprint.dataSourceId, dataSources)}</Badge>
+          {blueprint.schemaName ? <Badge variant="outline">{blueprint.schemaName}</Badge> : null}
+          <Button size="xs" variant="subtle" leftSection={<IconHistory size={14} />} onClick={() => openRunWorkspace('history')}>Run history</Button>
+          <Button size="xs" variant="subtle" leftSection={<IconDatabase size={14} />} onClick={() => openRunWorkspace('saved')}>Saved jobs {savedJobs.length ? `(${savedJobs.length})` : ''}</Button>
+          <Button size="xs" variant="subtle" leftSection={<IconVersions size={14} />} onClick={() => setVersionsOpened(true)}>Versions</Button>
+          <Button size="xs" variant="light" leftSection={<IconEdit size={14} />} onClick={openEdit}>Edit</Button>
+          <Button size="xs" variant="subtle" color="red" loading={deleting} onClick={() => void deleteBlueprint()}>Delete</Button>
+        </Group>
+      </header>
 
-      <Modal opened={editOpened} onClose={() => setEditOpened(false)} title="Edit blueprint">
+      <section className="datascope-workflow" aria-labelledby="datascope-workflow-title">
+        <Group justify="space-between" align="center" mb="xs">
+          <div>
+            <Text id="datascope-workflow-title" fw={850} size="sm">Blueprint workflow</Text>
+            <Text size="xs" c="dimmed">Open only the stage you need; completed stages keep their saved backend state.</Text>
+          </div>
+          <Badge variant="light" color={profileReady ? (guardrailIssueCount ? 'yellow' : 'green') : 'yellow'}>
+            {!profileReady ? 'Setup incomplete' : guardrailIssueCount ? `${guardrailIssueCount} guardrail issue${guardrailIssueCount === 1 ? '' : 's'}` : 'Ready to provision'}
+          </Badge>
+        </Group>
+
+        <div className="datascope-workflow-grid">
+          <button type="button" className="datascope-workflow-action" onClick={() => setWorkspaceView('profiles')}>
+            <span className="datascope-workflow-icon" data-step="1"><IconTable size={18} /></span>
+            <span className="datascope-workflow-copy"><strong>Table profile &amp; map</strong><small>{includedCount ? `${includedCount} included table${includedCount === 1 ? '' : 's'} · driver ${blueprint.driverTable || 'not selected'}` : 'Choose source tables, mappings, filters, and driver'}</small></span>
+            <Badge size="xs" variant="light" color={profileReady ? 'green' : 'yellow'}>{profileReady ? 'Saved' : 'Configure'}</Badge>
+            <span className="datascope-workflow-affordance"><IconEdit size={13} /> Edit</span>
+          </button>
+          <button type="button" className="datascope-workflow-action" disabled={!includedCount} onClick={() => setWorkspaceView('relationships')}>
+            <span className="datascope-workflow-icon" data-step="2"><IconRoute size={18} /></span>
+            <span className="datascope-workflow-copy"><strong>Relationships</strong><small>{includedCount ? `FK traversal, custom keys · parents ${blueprint.globalQ1 === false ? 'off' : 'on'} · children ${blueprint.globalQ2 === false ? 'off' : 'on'}` : 'Add profile tables first'}</small></span>
+            <Badge size="xs" variant="light" color={includedCount ? 'blue' : 'gray'}>{includedCount ? 'Review' : 'Locked'}</Badge>
+            <span className="datascope-workflow-affordance">{includedCount ? <IconEdit size={13} /> : <IconLock size={13} />}{includedCount ? ' Edit' : ' Locked'}</span>
+          </button>
+          <button type="button" className="datascope-workflow-action" disabled={!includedCount} onClick={() => setWorkspaceView('guardrails')}>
+            <span className="datascope-workflow-icon" data-step="3"><IconShieldCheck size={18} /></span>
+            <span className="datascope-workflow-copy"><strong>Guardrails</strong><small>{isGuardrailsLoading ? 'Checking PII coverage and schema drift' : guardrailIssueCount ? `${piiGapCount} PII gap${piiGapCount === 1 ? '' : 's'} · ${driftCount} drift issue${driftCount === 1 ? '' : 's'}` : 'PII coverage and schema drift are clear'}</small></span>
+            <Badge size="xs" variant="light" color={!includedCount ? 'gray' : guardrailIssueCount ? 'yellow' : 'green'}>{!includedCount ? 'Locked' : guardrailIssueCount ? 'Review' : 'Clear'}</Badge>
+            <span className="datascope-workflow-affordance">{includedCount ? <IconShieldCheck size={13} /> : <IconLock size={13} />}{includedCount ? ' Review' : ' Locked'}</span>
+          </button>
+          <button type="button" className="datascope-workflow-action" disabled={!profileReady} onClick={() => openRunWorkspace('build')}>
+            <span className="datascope-workflow-icon" data-step="4"><IconPlayerPlay size={18} /></span>
+            <span className="datascope-workflow-copy"><strong>Preview &amp; provision</strong><small>{profileReady ? `${target} · preview closure, save job, or launch` : 'Save a driver and included tables first'}</small></span>
+            <Badge size="xs" variant="light" color={profileReady ? 'blue' : 'gray'}>{profileReady ? 'Ready' : 'Locked'}</Badge>
+            <span className="datascope-workflow-affordance">{profileReady ? <IconPlayerPlay size={13} /> : <IconLock size={13} />}{profileReady ? ' Open' : ' Locked'}</span>
+          </button>
+        </div>
+
+        <div className="datascope-workflow-summary" aria-label="Current DataScope blueprint summary">
+          <div><span>Source</span><strong>{sourceName(blueprint.dataSourceId, dataSources)}</strong><small>{blueprint.schemaName || 'Default schema'}</small></div>
+          <div><span>Subset driver</span><strong>{blueprint.driverTable || 'Not selected'}</strong><small>{blueprint.driverFilter || 'No row filter'}</small></div>
+          <div><span>Destination</span><strong>{target}</strong><small>{blueprint.targetSchemaName || 'Target schema pending'}</small></div>
+          <div><span>Protection</span><strong>{policy?.name || 'Per-table / unmasked'}</strong><small>{guardrailIssueCount ? `${guardrailIssueCount} issue${guardrailIssueCount === 1 ? '' : 's'} to review` : 'Guardrails clear'}</small></div>
+        </div>
+      </section>
+
+      <Modal opened={workspaceView === 'profiles'} onClose={() => void closeWorkspace()} title="Table profile and mapping workspace" fullScreen>
+        <TableMapWorkspace
+          key={blueprint.id}
+          blueprint={blueprint}
+          rows={profiles}
+          overrides={overrides}
+          dataSources={dataSources}
+          policies={policies}
+          loading={isProfilesLoading}
+          onDirtyChange={handleDraftDirty}
+        />
+      </Modal>
+
+      <Modal opened={workspaceView === 'relationships'} onClose={() => void closeWorkspace()} title="Relationship traversal workspace" fullScreen>
+        <RelationshipsPanel key={blueprint.id} blueprint={blueprint} profiles={profiles} onDirtyChange={handleDraftDirty} />
+      </Modal>
+
+      <Modal opened={workspaceView === 'guardrails'} onClose={() => setWorkspaceView(null)} title="DataScope guardrail review" size="90vw" centered>
+        <GuardrailsPanel coverage={piiCoverage} drift={drift} loading={isGuardrailsLoading} />
+      </Modal>
+
+      <Modal opened={workspaceView === 'provision'} onClose={() => setWorkspaceView(null)} title="Preview, provision, and operate" fullScreen>
+        <RunPanel
+          key={`${blueprint.id}-${runSection}`}
+          blueprint={blueprint}
+          profiles={profiles}
+          policies={policies}
+          dataSources={dataSources}
+          drift={drift}
+          savedJobs={savedJobs}
+          initialSection={runSection}
+        />
+      </Modal>
+
+      <Drawer opened={versionsOpened} onClose={() => setVersionsOpened(false)} position="right" size="xl" title="Blueprint versions">
+        <VersionsPanel key={blueprint.id} blueprint={blueprint} />
+      </Drawer>
+
+      <Modal opened={editOpened} onClose={() => setEditOpened(false)} title="Edit blueprint" size="lg">
         <Stack gap="sm">
-          <NameInput label="Name" value={editName} onChange={(value) => setEditName(value)} />
-          <Textarea label="Description" minRows={2} value={editDescription} onChange={(e) => setEditDescription(e.currentTarget.value)} />
+          <NameInput
+            label="Name"
+            description={`${DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH}-${DATASCOPE_BLUEPRINT_NAME_MAX_LENGTH} characters`}
+            value={editName}
+            onChange={setEditName}
+            maxLength={DATASCOPE_BLUEPRINT_NAME_MAX_LENGTH}
+            error={editNameError}
+          />
+          <Textarea label="Description" minRows={2} value={editDescription} onChange={(event) => setEditDescription(event.currentTarget.value)} />
           <Select
             label="Default masking policy"
             description="Per-table policies in the table map override this."
-            data={[{ value: '', label: 'No default policy' }].concat(policies.map((p) => ({ value: String(p.id), label: p.name })))}
+            data={[{ value: '', label: 'No default policy' }].concat(policies.map((item) => ({ value: String(item.id), label: item.name })))}
             value={editPolicyId}
             searchable
             onChange={(value) => setEditPolicyId(value || '')}
           />
           <Group justify="flex-end">
-            <Button variant="light" onClick={() => setEditOpened(false)}>
-              Cancel
-            </Button>
-            <Button loading={savingEdit} disabled={!editName.trim()} onClick={() => void saveEdit()}>
-              Save
-            </Button>
+            <Button variant="light" onClick={() => setEditOpened(false)}>Cancel</Button>
+            <Button loading={savingEdit} disabled={!!editNameError || editNameLength < DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH} onClick={() => void saveEdit()}>Save</Button>
           </Group>
         </Stack>
       </Modal>
     </Card>
-  );
-}
-
-function BlueprintOverview({
-  blueprint,
-  dataSources,
-  policies,
-  profiles
-}: {
-  blueprint: DataSetDefinition;
-  dataSources: DataSource[];
-  policies: MaskingPolicy[];
-  profiles: TableProfile[];
-}) {
-  const policy = policies.find((item) => item.id === blueprint.policyId);
-  const target = dataSources.find((item) => item.id === blueprint.targetDataSourceId);
-  const included = profiles.filter(isProfileIncluded).length;
-
-  return (
-    <SimpleGrid cols={{ base: 1, md: 2 }}>
-      <Paper className="forge-card" p="md">
-        <Text fw={800} mb="sm">
-          Extraction definition
-        </Text>
-        <Stack gap={8}>
-          <InfoRow label="Driver table" value={blueprint.driverTable || 'Not selected'} />
-          <InfoRow label="Driver filter" value={blueprint.driverFilter || 'No filter'} />
-          <InfoRow label="Max driver rows" value={blueprint.maxDriverRows || 'No cap'} />
-          <InfoRow label="Q1 — pull parents" value={blueprint.globalQ1 === false ? 'No' : 'Yes'} />
-          <InfoRow label="Q2 — pull children" value={blueprint.globalQ2 === false ? 'No' : 'Yes'} />
-        </Stack>
-      </Paper>
-      <Paper className="forge-card" p="md">
-        <Text fw={800} mb="sm">
-          Provisioning posture
-        </Text>
-        <Stack gap={8}>
-          <InfoRow label="Included tables" value={included} />
-          <InfoRow label="Default policy" value={policy?.name || 'Per-table or unmasked'} />
-          <InfoRow label="Target DB" value={target?.name || 'Not configured'} />
-          <InfoRow label="Target schema" value={blueprint.targetSchemaName || 'Use target default'} />
-        </Stack>
-      </Paper>
-    </SimpleGrid>
   );
 }

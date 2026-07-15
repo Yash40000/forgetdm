@@ -7,7 +7,7 @@ import {
   Button,
   Checkbox,
   Group,
-  Paper,
+  Modal,
   ScrollArea,
   Select,
   SimpleGrid,
@@ -53,6 +53,8 @@ export function ValueListsPanel({ lists, dataSources }: { lists: SyntheticValueL
   const { confirm, confirmElement } = useConfirm();
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState<EditorDraft>(EMPTY_EDITOR);
+  const [editorOpened, setEditorOpened] = useState(false);
+  const [importOpened, setImportOpened] = useState(false);
   const [importDraft, setImportDraft] = useState({
     dataSourceId: '',
     schema: '',
@@ -92,6 +94,7 @@ export function ValueListsPanel({ lists, dataSources }: { lists: SyntheticValueL
       notifications.show({ color: 'green', title: 'Reference list saved', message: `Use @${saved.name} in generators or lookup masking functions.` });
       setEditingId(null);
       setDraft(EMPTY_EDITOR);
+      setEditorOpened(false);
       await refresh();
     },
     onError: (error) => notifications.show({ color: 'red', title: 'Could not save reference list', message: error.message })
@@ -116,6 +119,7 @@ export function ValueListsPanel({ lists, dataSources }: { lists: SyntheticValueL
     onSuccess: async (saved) => {
       notifications.show({ color: 'green', title: 'Live values imported', message: `@${saved.name} now has ${valueCount(saved.listValues)} values.` });
       setImportDraft((current) => ({ ...current, name: '', description: '', table: '', column: '' }));
+      setImportOpened(false);
       await refresh();
     },
     onError: (error) => notifications.show({ color: 'red', title: 'Could not import values', message: error.message })
@@ -130,6 +134,13 @@ export function ValueListsPanel({ lists, dataSources }: { lists: SyntheticValueL
       listValues: list.listValues || '',
       visibility: list.visibility || 'GLOBAL'
     });
+    setEditorOpened(true);
+  };
+
+  const createList = () => {
+    setEditingId(null);
+    setDraft(EMPTY_EDITOR);
+    setEditorOpened(true);
   };
 
   const deleteList = async (list: SyntheticValueList) => {
@@ -165,120 +176,153 @@ export function ValueListsPanel({ lists, dataSources }: { lists: SyntheticValueL
   return (
     <Stack gap="md">
       {confirmElement}
-      <div>
-        <Text fw={850}>Reference value lists</Text>
-        <Text size="sm" c="dimmed">
-          Maintain reusable product codes, statuses, branches, masking lookups, and weighted domains once. Reference them as @name from generators or masking policies.
-        </Text>
-      </div>
+      <Group justify="space-between" align="flex-start" wrap="wrap">
+        <div>
+          <Text fw={850}>Reference value lists</Text>
+          <Text size="sm" c="dimmed">
+            Reusable values, weighted domains, and lookup mappings referenced as @name.
+          </Text>
+        </div>
+        <Group gap="xs">
+          <Button variant="light" leftSection={<IconPlus size={15} />} onClick={createList}>Create list</Button>
+          <Button leftSection={<IconDatabaseImport size={15} />} onClick={() => setImportOpened(true)}>Import live column</Button>
+        </Group>
+      </Group>
 
-      <QueryErrorBanner
-        errors={[schemasQuery.error, tablesQuery.error, columnsQuery.error]}
-        onRetry={() => Promise.all([schemasQuery.refetch(), tablesQuery.refetch(), columnsQuery.refetch()])}
-        title="Live reference-data catalog could not be loaded"
-      />
-
-      <SimpleGrid cols={{ base: 1, lg: 2 }}>
-        <Paper className="forge-card" p="md">
-          <Stack gap="sm">
-            <Group justify="space-between">
-              <div>
-                <Text fw={800}>{editingId ? 'Edit reference list' : 'Create reference list'}</Text>
-                <Text size="xs" c="dimmed">Values: ACTIVE|INACTIVE. Weighted: ACTIVE:80|INACTIVE:20. Direct lookup: A=&gt;ALPHA|B=&gt;BETA.</Text>
-              </div>
-              {editingId ? <Badge variant="light">editing</Badge> : <IconPlus size={18} />}
-            </Group>
-            <SimpleGrid cols={{ base: 1, sm: 2 }}>
-              <NameInput
-                label="Reference name"
-                placeholder="bank-a.product_type"
-                value={draft.name}
-                disabled={Boolean(editingId)}
-                onChange={(value) => setDraft({ ...draft, name: value })}
-              />
-              <TextInput
-                {...technicalInputProps}
-                label="System tag"
-                placeholder="bank-a"
-                value={draft.systemTag}
-                onChange={(event) => setDraft({ ...draft, systemTag: event.currentTarget.value })}
-              />
-            </SimpleGrid>
-            <TextInput label="Description" value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.currentTarget.value })} />
-            <Textarea
+      <Modal
+        opened={editorOpened}
+        onClose={() => {
+          if (saveMutation.isPending) return;
+          setEditorOpened(false);
+          setEditingId(null);
+          setDraft(EMPTY_EDITOR);
+        }}
+        title={editingId ? 'Edit reference list' : 'Create reference list'}
+        size="lg"
+        centered
+        closeOnClickOutside={!saveMutation.isPending}
+        closeOnEscape={!saveMutation.isPending}
+      >
+        <Stack gap="sm">
+          <Group justify="space-between" align="flex-start">
+            <Text size="xs" c="dimmed">
+              Plain: ACTIVE|INACTIVE. Weighted: ACTIVE:80|INACTIVE:20. Lookup: A=&gt;ALPHA|B=&gt;BETA.
+            </Text>
+            {editingId ? <Badge variant="light">Editing</Badge> : null}
+          </Group>
+          <SimpleGrid cols={{ base: 1, sm: 2 }}>
+            <NameInput
+              label="Reference name"
+              placeholder="bank-a.product_type"
+              value={draft.name}
+              disabled={Boolean(editingId)}
+              onChange={(value) => setDraft({ ...draft, name: value })}
+            />
+            <TextInput
               {...technicalInputProps}
-              label="Values"
-              placeholder="CHECKING|SAVINGS|MONEY_MARKET"
-              autosize
-              minRows={4}
-              maxRows={10}
-              value={draft.listValues}
-              onChange={(event) => setDraft({ ...draft, listValues: event.currentTarget.value })}
+              label="System tag"
+              placeholder="bank-a"
+              value={draft.systemTag}
+              onChange={(event) => setDraft({ ...draft, systemTag: event.currentTarget.value })}
             />
-            <Select label="Visibility" data={['GLOBAL', 'PRIVATE']} value={draft.visibility} onChange={(value) => setDraft({ ...draft, visibility: value || 'GLOBAL' })} />
-            <Group justify="flex-end">
-              {editingId ? (
-                <Button variant="subtle" onClick={() => { setEditingId(null); setDraft(EMPTY_EDITOR); }}>Cancel</Button>
-              ) : null}
-              <Button loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>Save list</Button>
-            </Group>
-          </Stack>
-        </Paper>
+          </SimpleGrid>
+          <TextInput label="Description" value={draft.description} onChange={(event) => setDraft({ ...draft, description: event.currentTarget.value })} />
+          <Textarea
+            {...technicalInputProps}
+            label="Values"
+            placeholder="CHECKING|SAVINGS|MONEY_MARKET"
+            autosize
+            minRows={5}
+            maxRows={12}
+            value={draft.listValues}
+            onChange={(event) => setDraft({ ...draft, listValues: event.currentTarget.value })}
+          />
+          <Select label="Visibility" data={['GLOBAL', 'PRIVATE']} value={draft.visibility} onChange={(value) => setDraft({ ...draft, visibility: value || 'GLOBAL' })} />
+          <Group justify="flex-end">
+            <Button
+              variant="subtle"
+              disabled={saveMutation.isPending}
+              onClick={() => {
+                setEditorOpened(false);
+                setEditingId(null);
+                setDraft(EMPTY_EDITOR);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>Save list</Button>
+          </Group>
+        </Stack>
+      </Modal>
 
-        <Paper className="forge-card" p="md">
-          <Stack gap="sm">
-            <div>
-              <Text fw={800}>Import from a live column</Text>
-              <Text size="xs" c="dimmed">Reads distinct values and optional frequencies. Columns with more than 200 distinct values are rejected as non-reference data.</Text>
-            </div>
+      <Modal
+        opened={importOpened}
+        onClose={() => !importMutation.isPending && setImportOpened(false)}
+        title="Import reference values from a live column"
+        size="xl"
+        centered
+        closeOnClickOutside={!importMutation.isPending}
+        closeOnEscape={!importMutation.isPending}
+      >
+        <Stack gap="sm">
+          <Text size="xs" c="dimmed">
+            Reads distinct values and optional frequencies. Columns with more than 200 distinct values are rejected as non-reference data.
+          </Text>
+          <QueryErrorBanner
+            errors={[schemasQuery.error, tablesQuery.error, columnsQuery.error]}
+            onRetry={() => Promise.all([schemasQuery.refetch(), tablesQuery.refetch(), columnsQuery.refetch()])}
+            title="Live reference-data catalog could not be loaded"
+          />
+          <Select
+            label="Data source"
+            placeholder="Choose source"
+            searchable
+            data={sourceOptions(dataSources, 'source')}
+            value={importDraft.dataSourceId}
+            onChange={(value) => setImportDraft({ ...importDraft, dataSourceId: value || '', schema: '', table: '', column: '' })}
+          />
+          <SimpleGrid cols={{ base: 1, sm: 3 }}>
             <Select
-              label="Data source"
-              placeholder="Choose source"
+              label="Schema"
               searchable
-              data={sourceOptions(dataSources, 'source')}
-              value={importDraft.dataSourceId}
-              onChange={(value) => setImportDraft({ ...importDraft, dataSourceId: value || '', schema: '', table: '', column: '' })}
+              clearable
+              data={schemaOptions(schemasQuery.data)}
+              value={importDraft.schema || null}
+              onChange={(value) => setImportDraft({ ...importDraft, schema: value || '', table: '', column: '' })}
+              disabled={!importSourceId}
             />
-            <SimpleGrid cols={{ base: 1, sm: 3 }}>
-              <Select
-                label="Schema"
-                searchable
-                clearable
-                data={schemaOptions(schemasQuery.data)}
-                value={importDraft.schema || null}
-                onChange={(value) => setImportDraft({ ...importDraft, schema: value || '', table: '', column: '' })}
-                disabled={!importSourceId}
-              />
-              <Select
-                label="Table"
-                searchable
-                data={tableOptions(tablesQuery.data)}
-                value={importDraft.table || null}
-                onChange={(value) => setImportDraft({ ...importDraft, table: value || '', column: '' })}
-                disabled={!importSourceId}
-              />
-              <Select
-                label="Column"
-                searchable
-                data={(columnsQuery.data || []).map((column) => ({ value: column.column, label: `${column.column} (${column.type || 'unknown'})` }))}
-                value={importDraft.column || null}
-                onChange={(value) => setImportDraft({ ...importDraft, column: value || '' })}
-                disabled={!importDraft.table}
-              />
-            </SimpleGrid>
-            <SimpleGrid cols={{ base: 1, sm: 2 }}>
-              <NameInput label="Reference name" description="Optional; defaults from system/column." value={importDraft.name} onChange={(value) => setImportDraft({ ...importDraft, name: value })} />
-              <TextInput {...technicalInputProps} label="System tag" value={importDraft.systemTag} onChange={(event) => setImportDraft({ ...importDraft, systemTag: event.currentTarget.value })} />
-            </SimpleGrid>
-            <TextInput label="Description" value={importDraft.description} onChange={(event) => setImportDraft({ ...importDraft, description: event.currentTarget.value })} />
-            <Group justify="space-between">
-              <Checkbox label="Store source frequencies as weights" checked={importDraft.weighted} onChange={(event) => setImportDraft({ ...importDraft, weighted: event.currentTarget.checked })} />
-              <Select w={130} data={['GLOBAL', 'PRIVATE']} value={importDraft.visibility} onChange={(value) => setImportDraft({ ...importDraft, visibility: value || 'GLOBAL' })} />
-              <Button leftSection={<IconDatabaseImport size={15} />} loading={importMutation.isPending} onClick={() => importMutation.mutate()}>Import values</Button>
-            </Group>
-          </Stack>
-        </Paper>
-      </SimpleGrid>
+            <Select
+              label="Table"
+              searchable
+              data={tableOptions(tablesQuery.data)}
+              value={importDraft.table || null}
+              onChange={(value) => setImportDraft({ ...importDraft, table: value || '', column: '' })}
+              disabled={!importSourceId}
+            />
+            <Select
+              label="Column"
+              searchable
+              data={(columnsQuery.data || []).map((column) => ({ value: column.column, label: `${column.column} (${column.type || 'unknown'})` }))}
+              value={importDraft.column || null}
+              onChange={(value) => setImportDraft({ ...importDraft, column: value || '' })}
+              disabled={!importDraft.table}
+            />
+          </SimpleGrid>
+          <SimpleGrid cols={{ base: 1, sm: 2 }}>
+            <NameInput label="Reference name" description="Optional; defaults from system and column." value={importDraft.name} onChange={(value) => setImportDraft({ ...importDraft, name: value })} />
+            <TextInput {...technicalInputProps} label="System tag" value={importDraft.systemTag} onChange={(event) => setImportDraft({ ...importDraft, systemTag: event.currentTarget.value })} />
+          </SimpleGrid>
+          <TextInput label="Description" value={importDraft.description} onChange={(event) => setImportDraft({ ...importDraft, description: event.currentTarget.value })} />
+          <Group justify="space-between" align="flex-end" wrap="wrap">
+            <Checkbox label="Store source frequencies as weights" checked={importDraft.weighted} onChange={(event) => setImportDraft({ ...importDraft, weighted: event.currentTarget.checked })} />
+            <Select w={150} label="Visibility" data={['GLOBAL', 'PRIVATE']} value={importDraft.visibility} onChange={(value) => setImportDraft({ ...importDraft, visibility: value || 'GLOBAL' })} />
+          </Group>
+          <Group justify="flex-end">
+            <Button variant="subtle" disabled={importMutation.isPending} onClick={() => setImportOpened(false)}>Cancel</Button>
+            <Button leftSection={<IconDatabaseImport size={15} />} loading={importMutation.isPending} onClick={() => importMutation.mutate()}>Import values</Button>
+          </Group>
+        </Stack>
+      </Modal>
 
       <div className="forge-grid-panel">
         <ScrollArea>

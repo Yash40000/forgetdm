@@ -13,7 +13,7 @@ import { NameInput } from '@/components/name-input';
 import { apiFetch, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { SyntheticPlan, SyntheticPlanSummary, SyntheticSavedJob, SyntheticJob } from '../types';
-import { downloadTextFile, formatRows, formatTime, safeInputValue, savedJobScript } from '../utils';
+import { downloadTextFile, formatRows, formatTime, safeInputValue, savedJobScript, SYNTHETIC_JOB_NAME_MIN_LENGTH } from '../utils';
 import { PlanSummaryCard } from './plan-summary-card';
 
 type SavedJobsPanelProps = {
@@ -38,6 +38,9 @@ export function SyntheticSavedJobsPanel({ jobs, onLoad, onRun }: SavedJobsPanelP
     note: string;
   } | null>(null);
   const [approvalBusy, setApprovalBusy] = useState(false);
+  const editNameLength = editName.trim().length;
+  const unchangedLegacyName = Boolean(editJob && editName.trim() === editJob.name.trim());
+  const editNameValid = editNameLength >= SYNTHETIC_JOB_NAME_MIN_LENGTH || unchangedLegacyName;
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: keys.synthetic.savedJobs });
 
@@ -260,13 +263,19 @@ export function SyntheticSavedJobsPanel({ jobs, onLoad, onRun }: SavedJobsPanelP
 
       <Modal opened={Boolean(editJob)} onClose={() => setEditJob(null)} title="Edit saved job" size="md">
         <Stack gap="sm">
-          <NameInput label="Name" value={editName} onChange={(value) => setEditName(value)} />
+          <NameInput
+            label="Name"
+            description={`At least ${SYNTHETIC_JOB_NAME_MIN_LENGTH} characters`}
+            error={editNameLength > 0 && !editNameValid ? `Enter at least ${SYNTHETIC_JOB_NAME_MIN_LENGTH} characters` : undefined}
+            value={editName}
+            onChange={(value) => setEditName(value)}
+          />
           <Textarea label="Description" value={editDescription} onChange={(event) => setEditDescription(safeInputValue(event))} />
           <Group justify="flex-end">
             <Button variant="light" onClick={() => setEditJob(null)}>
               Cancel
             </Button>
-            <Button disabled={!editName.trim()} onClick={saveEdit}>
+            <Button disabled={!editNameValid} onClick={saveEdit}>
               Save
             </Button>
           </Group>

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import {
-  ActionIcon, Badge, Button, Divider, FileInput, Group, Modal, NumberInput, Paper, ScrollArea,
+  ActionIcon, Badge, Button, Divider, Drawer, FileInput, Group, Modal, NumberInput, Paper, ScrollArea,
   SegmentedControl, Select, SimpleGrid, Stack, Table, Tabs, Text, TextInput, ThemeIcon, Title
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
@@ -13,6 +13,7 @@ import {
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { QueryErrorBanner } from '@/components/query-error-banner';
+import { useConfirm } from '@/components/confirm';
 import { apiFetch, apiFormPost, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { DataSource } from '@/lib/types';
@@ -31,6 +32,7 @@ type Preview = { columns: string[]; rows: Array<Record<string, unknown>>; rowCou
 
 export function MappingDesignerPage() {
   const queryClient = useQueryClient();
+  const { confirm, confirmElement } = useConfirm();
   const mappingsQuery = useMappings();
   const assetsQuery = useMappingAssets();
   const dataSourcesQuery = useDataSources();
@@ -51,6 +53,8 @@ export function MappingDesignerPage() {
   const [columnTypes, setColumnTypes] = useState<Record<string, string>>({});
   const [workspaceView, setWorkspaceView] = useState<string | null>('VISUAL');
   const [deleteOpened, setDeleteOpened] = useState(false);
+  const [libraryOpened, setLibraryOpened] = useState(false);
+  const [mappingSearch, setMappingSearch] = useState('');
 
   const mappings = useMemo(() => mappingsQuery.data || [], [mappingsQuery.data]);
   const assets = useMemo(() => assetsQuery.data || [], [assetsQuery.data]);
@@ -61,6 +65,17 @@ export function MappingDesignerPage() {
   const dialect = useMemo(() => dialectFor(spec, dataSources), [dataSources, spec]);
   const compiledSpec = useMemo(() => compileSpec(spec, dataSources), [dataSources, spec]);
   const mappingLineage = useMemo(() => lineageFor(spec, sourceColumns), [sourceColumns, spec]);
+  const filteredMappings = useMemo(() => {
+    const query = mappingSearch.trim().toLowerCase();
+    return mappings.filter((mapping) => !query || `${mapping.name} ${mapping.description || ''}`.toLowerCase().includes(query));
+  }, [mappingSearch, mappings]);
+  const configuredSourceCount = spec.sources.filter((source) => Boolean(source.dataSourceId || source.assetId || source.table)).length;
+  const mappedColumnCount = spec.columns.filter((column) => column.action !== 'UNUSED').length;
+  const targetLabel = spec.target.type === 'DATABASE'
+    ? spec.target.table || 'Database target pending'
+    : spec.target.type === 'FILE'
+      ? `${spec.target.format || 'CSV'} output`
+      : 'Preview only';
 
   const updateSpec = (next: MappingSpec | ((current: MappingSpec) => MappingSpec)) => {
     setSpec((current) => typeof next === 'function' ? next(current) : next);
@@ -103,9 +118,24 @@ export function MappingDesignerPage() {
     try {
       setMappingId(mapping.id); setName(mapping.name); setDescription(mapping.description || ''); setSpec(toV2(mapping)); setDiscoveredSourceColumns([]); setColumnTypes({});
       setDirty(false); setValidation(null); setPreview(null);
+      setLibraryOpened(false);
     } catch (error) { notifyError('Mapping could not be opened', error); }
   };
-  const newMapping = () => { setMappingId(null); setName(''); setDescription(''); setSpec(emptySpec()); setDiscoveredSourceColumns([]); setColumnTypes({}); setDirty(false); setValidation(null); setPreview(null); };
+  const newMapping = () => { setMappingId(null); setName(''); setDescription(''); setSpec(emptySpec()); setDiscoveredSourceColumns([]); setColumnTypes({}); setDirty(false); setValidation(null); setPreview(null); setLibraryOpened(false); };
+  const requestOpenMapping = async (mapping: MappingEntity) => {
+    if (dirty && mapping.id !== mappingId) {
+      const discard = await confirm({ title: 'Discard unsaved mapping changes?', message: `Open "${mapping.name}" and discard the current unsaved edits?`, okText: 'Discard and open', danger: true });
+      if (!discard) return;
+    }
+    openMapping(mapping);
+  };
+  const requestNewMapping = async () => {
+    if (dirty) {
+      const discard = await confirm({ title: 'Start a new mapping?', message: 'The current mapping has unsaved changes. Discard them and start a new design?', okText: 'Discard and start new', danger: true });
+      if (!discard) return;
+    }
+    newMapping();
+  };
 
   const validate = async () => {
     try {
@@ -174,31 +204,40 @@ export function MappingDesignerPage() {
 
   return (
     <main className="forge-page mapx-page">
-      <header className="forge-page-header mapx-header">
-        <div><Text className="forge-eyebrow">Data engineering</Text><Title order={1}>Mapping Designer</Title><Text c="dimmed">Design reusable database and managed-file transformations with governed execution lineage.</Text></div>
-        <Group><Button variant="default" leftSection={<IconRefresh size={16} />} onClick={newMapping}>New</Button>{mappingId ? <Button variant="subtle" color="red" leftSection={<IconTrash size={15} />} onClick={() => setDeleteOpened(true)}>Delete</Button> : null}<Button variant="default" leftSection={<IconCircleCheck size={16} />} onClick={() => void validate()}>Validate</Button><Button leftSection={<IconDatabase size={16} />} loading={saveMutation.isPending} disabled={!name.trim()} onClick={() => saveMutation.mutate()}>Save version</Button></Group>
+      {confirmElement}
+      <header className="mapx-header">
+        <Group gap="sm" wrap="nowrap" className="mapx-heading-copy">
+          <ThemeIcon size={40} radius="md" variant="light"><IconArrowsExchange size={21} /></ThemeIcon>
+          <div><Group gap="xs"><Title order={1}>Mapping Designer</Title>{dirty ? <Badge color="yellow" variant="light">Unsaved</Badge> : mappingId ? <Badge color="green" variant="light">Versioned</Badge> : null}</Group><Text c="dimmed">Build governed database and file transformation flows.</Text></div>
+        </Group>
+        <Group gap="xs" className="mapx-header-actions">
+          <Button size="sm" variant="subtle" leftSection={<IconFolderOpen size={16} />} onClick={() => setLibraryOpened(true)}>Mappings <Badge size="xs" variant="light">{mappings.length}</Badge></Button>
+          <Button size="sm" variant="default" leftSection={<IconRefresh size={16} />} onClick={() => void requestNewMapping()}>New</Button>
+          <Button size="sm" variant="default" leftSection={<IconCircleCheck size={16} />} onClick={() => void validate()}>Validate</Button>
+          <Button size="sm" leftSection={<IconDatabase size={16} />} loading={saveMutation.isPending} disabled={!name.trim()} onClick={() => saveMutation.mutate()}>Save version</Button>
+        </Group>
       </header>
 
-      <SimpleGrid cols={{ base: 1, lg: 4 }} spacing="md" className="mapx-layout">
-        <Paper className="mapx-library" p="md">
-          <Group justify="space-between"><Text fw={800}>Mapping library</Text><Badge variant="light">{mappings.length}</Badge></Group>
-          <TextInput mt="sm" placeholder="Search mappings" leftSection={<IconFolderOpen size={15} />} />
-          <ScrollArea.Autosize mah={620} mt="sm">
-            <Stack gap={6}>
-              {mappings.map((mapping) => <button type="button" key={mapping.id} className={`mapx-library-row ${mapping.id === mappingId ? 'is-active' : ''}`} onClick={() => openMapping(mapping)}><span><b>{mapping.name}</b><small>{mapping.description || 'No description'}</small></span><IconArrowsExchange size={16} /></button>)}
-              {!mappings.length ? <Text size="sm" c="dimmed" py="lg" ta="center">No saved mappings yet.</Text> : null}
-            </Stack>
-          </ScrollArea.Autosize>
-        </Paper>
+      <QueryErrorBanner
+        errors={[mappingsQuery.error, assetsQuery.error, dataSourcesQuery.error, functionsQuery.error]}
+        onRetry={() => Promise.all([mappingsQuery.refetch(), assetsQuery.refetch(), dataSourcesQuery.refetch(), functionsQuery.refetch()])}
+      />
 
-        <Stack gap="md" className="mapx-workspace" style={{ gridColumn: 'span 3' }}>
-          <Paper className="mapx-panel" p="md">
-            <Group justify="space-between" align="flex-start">
-              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm" style={{ flex: 1 }}>
-                <TextInput label="Mapping name" value={name} onChange={(event) => { setName(event.currentTarget?.value || ''); setDirty(true); }} placeholder="customer_to_qa" spellCheck={false} />
-                <TextInput label="Description" value={description} onChange={(event) => { setDescription(event.currentTarget?.value || ''); setDirty(true); }} placeholder="Purpose and owning application" />
-              </SimpleGrid>
-              <Group gap="xs" ml="md">{dirty ? <Badge color="yellow">Unsaved</Badge> : mappingId ? <Badge color="green">Saved</Badge> : <Badge>Draft</Badge>}{mappingId ? <Button size="xs" variant="subtle" leftSection={<IconRestore size={14} />} onClick={() => setVersionsOpened(true)}>Versions</Button> : null}</Group>
+      <Stack gap="sm" className="mapx-workspace">
+          <Paper className="mapx-panel mapx-definition-bar" p="sm">
+            <div className="mapx-definition-grid">
+              <TextInput size="sm" label="Mapping name" value={name} onChange={(event) => { setName(event.currentTarget?.value || ''); setDirty(true); }} placeholder="customer_to_qa" spellCheck={false} />
+              <TextInput size="sm" label="Description" value={description} onChange={(event) => { setDescription(event.currentTarget?.value || ''); setDirty(true); }} placeholder="Purpose and owning application" />
+              <Group gap={6} className="mapx-definition-actions">
+                {mappingId ? <Button size="xs" variant="subtle" leftSection={<IconRestore size={14} />} onClick={() => setVersionsOpened(true)}>Versions</Button> : <Badge variant="light">New draft</Badge>}
+                {mappingId ? <ActionIcon variant="subtle" color="red" aria-label="Delete mapping" onClick={() => setDeleteOpened(true)}><IconTrash size={16} /></ActionIcon> : null}
+              </Group>
+            </div>
+            <Group gap={6} mt="xs" className="mapx-design-summary">
+              <Badge variant="light" color="blue">{configuredSourceCount} source{configuredSourceCount === 1 ? '' : 's'}</Badge>
+              <Badge variant="light" color="violet">{(spec.transforms || []).length} transform{(spec.transforms || []).length === 1 ? '' : 's'}</Badge>
+              <Badge variant="light" color="cyan">{mappedColumnCount} mapped columns</Badge>
+              <Badge variant="light" color="green">{targetLabel}</Badge>
             </Group>
           </Paper>
 
@@ -248,16 +287,24 @@ export function MappingDesignerPage() {
               </Paper>
             </Tabs.Panel>
           </Tabs>
-        </Stack>
-      </SimpleGrid>
+      </Stack>
 
       <AssetModal opened={assetModal} onClose={() => setAssetModal(false)} file={assetFile} setFile={setAssetFile} name={assetName} setName={setAssetName} format={assetFormat} setFormat={setAssetFormat} loading={uploadMutation.isPending} onUpload={() => uploadMutation.mutate()} />
       <VersionsModal mappingId={mappingId} opened={versionsOpened} onClose={() => setVersionsOpened(false)} onRestored={(mapping) => { openMapping(mapping); void queryClient.invalidateQueries({ queryKey: keys.mappings.all }); }} />
       <Modal opened={deleteOpened} onClose={() => setDeleteOpened(false)} title="Delete mapping"><Stack><Text size="sm">Delete <b>{name}</b>? Saved execution and audit evidence is retained, but this definition will no longer be available for new runs.</Text><Group justify="flex-end"><Button variant="default" onClick={() => setDeleteOpened(false)}>Keep mapping</Button><Button color="red" loading={deleteMutation.isPending} onClick={() => deleteMutation.mutate()}>Delete mapping</Button></Group></Stack></Modal>
-      <QueryErrorBanner
-        errors={[mappingsQuery.error, assetsQuery.error, dataSourcesQuery.error, functionsQuery.error]}
-        onRetry={() => Promise.all([mappingsQuery.refetch(), assetsQuery.refetch(), dataSourcesQuery.refetch(), functionsQuery.refetch()])}
-      />
+      <Drawer opened={libraryOpened} onClose={() => setLibraryOpened(false)} position="left" size="md" title="Mapping library">
+        <Stack gap="sm">
+          <Group justify="space-between"><Text size="sm" c="dimmed">Open a versioned mapping or start a clean design.</Text><Badge variant="light">{mappings.length}</Badge></Group>
+          <TextInput placeholder="Search name or description" leftSection={<IconFolderOpen size={15} />} value={mappingSearch} onChange={(event) => setMappingSearch(event.currentTarget.value)} spellCheck={false} />
+          <Button variant="light" leftSection={<IconPlus size={15} />} onClick={() => void requestNewMapping()}>New mapping</Button>
+          <ScrollArea.Autosize mah="calc(100vh - 190px)">
+            <Stack gap={6}>
+              {filteredMappings.map((mapping) => <button type="button" key={mapping.id} className={`mapx-library-row ${mapping.id === mappingId ? 'is-active' : ''}`} onClick={() => void requestOpenMapping(mapping)}><span><b>{mapping.name}</b><small>{mapping.description || 'No description'}</small></span><IconArrowsExchange size={16} /></button>)}
+              {!filteredMappings.length ? <Text size="sm" c="dimmed" py="xl" ta="center">No matching mappings.</Text> : null}
+            </Stack>
+          </ScrollArea.Autosize>
+        </Stack>
+      </Drawer>
     </main>
   );
 }
@@ -292,9 +339,7 @@ function AssetModal({ opened, onClose, file, setFile, name, setName, format, set
 
 function VersionsModal({ mappingId, opened, onClose, onRestored }: { mappingId: number | null; opened: boolean; onClose: () => void; onRestored: (mapping: MappingEntity) => void }) { const versions = useQuery({ queryKey: keys.mappings.versions(mappingId), queryFn: () => apiFetch<Array<{ id: number; versionNo: number; specHash: string; createdBy: string; createdAt: string }>>(`/api/mappings/${mappingId}/versions`), enabled: opened && !!mappingId }); return <Modal opened={opened} onClose={onClose} title="Immutable mapping versions" size="lg"><Stack>{(versions.data || []).map((version) => <Paper key={version.id} p="sm" withBorder><Group justify="space-between"><div><Text fw={750}>Version {version.versionNo}</Text><Text size="xs" c="dimmed">{new Date(version.createdAt).toLocaleString()} by {version.createdBy}</Text><Text size="xs" className="mapx-hash">{version.specHash}</Text></div><Button size="xs" variant="default" onClick={async () => { if (!mappingId) return; const restored = await apiPost<MappingEntity>(`/api/mappings/${mappingId}/versions/${version.id}/restore`, {}); onRestored(restored); onClose(); }}>Restore as new version</Button></Group></Paper>)}{!versions.data?.length ? <Text c="dimmed" ta="center" py="lg">No versions found.</Text> : null}</Stack></Modal>; }
 
-async function fetchSourceColumns(source: MappingSource, assets: MappingAsset[]) { return (await fetchSourceColumnMeta(source, assets)).map((column) => column.name); }
 async function fetchSourceColumnMeta(source: MappingSource, assets: MappingAsset[]) { if (source.type === 'FILE') return columnMetaForSource(source, assets); if (!source.dataSourceId || !source.table) return []; return fetchDbColumnMeta(source.dataSourceId, source.schema || '', source.table); }
-async function fetchDbColumns(dataSourceId: number, schema: string, table: string) { return (await fetchDbColumnMeta(dataSourceId, schema, table)).map((column) => column.name); }
 async function fetchDbColumnMeta(dataSourceId: number, schema: string, table: string) { const rows = await apiFetch<Array<Record<string, unknown>>>(`/api/datasources/${dataSourceId}/tables/${encodeURIComponent(table)}/columns?schema=${encodeURIComponent(schema)}`); return rows.map((row) => ({ name: String(row.name || row.column || row.columnName || ''), type: String(row.type || row.dataType || row.typeName || '') })).filter((column) => column.name); }
 function columnsForSource(source: MappingSource, assets: MappingAsset[]) { if (source.type !== 'FILE' || !source.assetId) return []; const asset = assets.find((item) => item.id === source.assetId); try { return (JSON.parse(asset?.schemaJson || '[]') as Array<{ name: string }>).map((column) => column.name); } catch { return []; } }
 function columnMetaForSource(source: MappingSource, assets: MappingAsset[]) { if (source.type !== 'FILE' || !source.assetId) return []; const asset = assets.find((item) => item.id === source.assetId); try { return (JSON.parse(asset?.schemaJson || '[]') as Array<{ name: string; type?: string }>).map((column) => ({ name: column.name, type: column.type || '' })); } catch { return []; } }

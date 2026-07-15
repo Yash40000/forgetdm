@@ -1,10 +1,10 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Button, Group, Modal, Stack, Text, TextInput, Textarea } from '@mantine/core';
+import { ActionIcon, Button, Group, Modal, Stack, Text, TextInput, Textarea, Tooltip } from '@mantine/core';
 import { NameInput } from '@/components/name-input';
 import { notifications } from '@mantine/notifications';
-import { IconFolderOpen, IconPlus, IconSearch } from '@tabler/icons-react';
+import { IconChevronLeft, IconChevronRight, IconFolderOpen, IconPlus, IconSearch } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { apiPost } from '@/lib/api';
@@ -20,12 +20,16 @@ export function EntityList({
   blueprints,
   dataSources,
   selectedId,
+  collapsed,
+  onCollapsedChange,
   onSelect
 }: {
   entities: BusinessEntitySummary[];
   blueprints: DataSetDefinition[];
   dataSources: DataSource[];
   selectedId: number | null;
+  collapsed: boolean;
+  onCollapsedChange: (collapsed: boolean) => void;
   onSelect: (id: number) => void;
 }) {
   const queryClient = useQueryClient();
@@ -71,40 +75,78 @@ export function EntityList({
     onError: (error) => notifications.show({ color: 'red', title: 'Could not create entity', message: error.message })
   });
 
+  const collapseRail = () => {
+    setSearch('');
+    onCollapsedChange(true);
+  };
+
   return (
-    <div className="be-rail">
-      <div className="be-rail-head">
-        <TextInput
-          size="xs"
-          leftSection={<IconSearch size={14} />}
-          placeholder="Search entities"
-          value={search}
-          onChange={(event) => setSearch(event.currentTarget.value)}
-          style={{ flex: 1 }}
-        />
-        <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={() => setCreateOpened(true)}>
-          New
-        </Button>
+    <div className={`be-rail ${collapsed ? 'is-collapsed' : ''}`}>
+      <div className={`be-rail-head ${collapsed ? 'is-collapsed' : ''}`}>
+        {collapsed ? (
+          <Tooltip label="Expand entity list" position="right">
+            <ActionIcon variant="subtle" size="sm" aria-label="Expand entity list" onClick={() => onCollapsedChange(false)}>
+              <IconChevronRight size={16} />
+            </ActionIcon>
+          </Tooltip>
+        ) : (
+          <>
+            <TextInput
+              size="xs"
+              leftSection={<IconSearch size={14} />}
+              placeholder={`Search ${entities.length} entities`}
+              value={search}
+              onChange={(event) => setSearch(event.currentTarget.value)}
+              style={{ flex: 1 }}
+            />
+            <Tooltip label="New business entity" position="bottom">
+              <ActionIcon variant="light" size="sm" aria-label="New business entity" onClick={() => setCreateOpened(true)}>
+                <IconPlus size={15} />
+              </ActionIcon>
+            </Tooltip>
+            <Tooltip label="Collapse entity list" position="right">
+              <ActionIcon variant="subtle" size="sm" aria-label="Collapse entity list" onClick={collapseRail}>
+                <IconChevronLeft size={16} />
+              </ActionIcon>
+            </Tooltip>
+          </>
+        )}
       </div>
 
       <div className="be-rail-list" role="listbox" aria-label="Business entities">
         {rows.length ? rows.map((entity) => (
-          <button
+          <Tooltip
             key={entity.id}
-            type="button"
-            role="option"
-            aria-selected={entity.id === selectedId}
-            className={`be-rail-row ${entity.id === selectedId ? 'is-selected' : ''}`}
-            onClick={() => entity.id && onSelect(entity.id)}
+            label={`${entity.name} - ${entity.domain || 'No domain'} / ${entity.memberCount || 0} tables`}
+            position="right"
+            disabled={!collapsed}
           >
-            <span className="be-dot" style={{ background: statusDot(entity.status) }} aria-hidden />
-            <span className="be-rail-row-body">
-              <span className="be-rail-row-name">{entity.name}</span>
-              <span className="be-rail-row-meta">{entity.domain || 'No domain'} / {entity.memberCount || 0} tables</span>
-            </span>
-          </button>
+            <button
+              type="button"
+              role="option"
+              aria-label={collapsed ? entity.name : undefined}
+              aria-selected={entity.id === selectedId}
+              className={`be-rail-row ${entity.id === selectedId ? 'is-selected' : ''}`}
+              onClick={() => entity.id && onSelect(entity.id)}
+            >
+              {collapsed ? (
+                <span className="be-rail-monogram">
+                  {entityInitials(entity.name)}
+                  <span className="be-dot" style={{ background: statusDot(entity.status) }} aria-hidden />
+                </span>
+              ) : (
+                <>
+                  <span className="be-dot" style={{ background: statusDot(entity.status) }} aria-hidden />
+                  <span className="be-rail-row-body">
+                    <span className="be-rail-row-name">{entity.name}</span>
+                    <span className="be-rail-row-meta">{entity.domain || 'No domain'} / {entity.memberCount || 0} tables</span>
+                  </span>
+                </>
+              )}
+            </button>
+          </Tooltip>
         )) : (
-          <Text size="sm" c="dimmed" p="sm">{search ? 'No entities match.' : 'No business entities yet - create the first one.'}</Text>
+          collapsed ? null : <Text size="sm" c="dimmed" p="sm">{search ? 'No entities match.' : 'No business entities yet - create the first one.'}</Text>
         )}
       </div>
 
@@ -143,4 +185,10 @@ export function EntityList({
       />
     </div>
   );
+}
+
+function entityInitials(name?: string | null) {
+  const words = (name || 'Entity').trim().split(/\s+/).filter(Boolean);
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase();
 }

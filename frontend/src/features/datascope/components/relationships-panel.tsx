@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Alert, Badge, Button, Group, Loader, Paper, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Badge, Button, Group, Loader, Modal, Paper, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { NameInput } from '@/components/name-input';
 import { notifications } from '@mantine/notifications';
-import { IconLink, IconPlus } from '@tabler/icons-react';
+import { IconLink, IconListDetails, IconPlus } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { useConfirm } from '@/components/confirm';
@@ -15,11 +15,10 @@ import { useCustomPks, useRelationships, useUserRels } from '../hooks';
 import { equalsIgnoreCase, isProfileIncluded, qModeValue, technicalInputProps } from '../utils';
 
 const DIRECTION_OPTIONS = [
-  { value: '', label: 'Not set (use Q1/Q2 settings)' },
+  { value: '', label: 'Use table Q1/Q2 settings' },
   { value: 'BOTH', label: 'Both (Q1 + Q2)' },
   { value: 'Q1_ONLY', label: 'Q1 only — parent pull' },
-  { value: 'Q2_ONLY', label: 'Q2 only — child cascade' },
-  { value: 'NONE', label: 'None — never traverse' }
+  { value: 'Q2_ONLY', label: 'Q2 only — child cascade' }
 ];
 
 /**
@@ -44,34 +43,61 @@ export function RelationshipsPanel({
 
   /* per-edge direction draft */
   const [directions, setDirections] = useState<Record<string, string>>({});
+  const [selections, setSelections] = useState<Record<string, string>>({});
   const [directionsDirty, setDirectionsDirty] = useState(false);
+  const [stepsOpened, setStepsOpened] = useState(false);
   const edges = useMemo(() => relationshipsQuery.data || [], [relationshipsQuery.data]);
+  const relationshipGroups = useMemo(() => groupRelationships(edges), [edges]);
   useEffect(() => {
     if (directionsDirty) return;
-    const next: Record<string, string> = {};
-    for (const edge of edges) next[edgeKey(edge)] = edge.traverseDirection || '';
+    const nextDirections: Record<string, string> = {};
+    const nextSelections: Record<string, string> = {};
+    for (const edge of edges) {
+      nextDirections[edgeKey(edge)] = edge.traverseDirection === 'INHERIT' || edge.traverseDirection === 'NONE' ? '' : edge.traverseDirection || '';
+    }
+    for (const group of relationshipGroups) {
+      const configured = group.edges.find((edge) => edge.traverseDirection && edge.traverseDirection !== 'NONE');
+      const allExplicitlyDisabled = group.edges.length > 0 && group.edges.every((edge) => edge.traverseDirection === 'NONE');
+      const available = group.edges.filter((edge) => edge.traverseDirection !== 'NONE');
+      nextSelections[group.key] = allExplicitlyDisabled
+        ? 'NONE'
+        : edgeKey(configured || preferredRelationship(available.length ? available : group.edges));
+    }
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDirections(next);
-  }, [edges, directionsDirty]);
+    setDirections(nextDirections);
+    setSelections(nextSelections);
+  }, [edges, relationshipGroups, directionsDirty]);
+  const selectedEdges = useMemo(
+    () =>
+      relationshipGroups.flatMap((group) => {
+        const selected = selections[group.key];
+        return selected && selected !== 'NONE' ? group.edges.filter((edge) => edgeKey(edge) === selected) : [];
+      }),
+    [relationshipGroups, selections]
+  );
 
   const saveDirections = useMutation({
     mutationFn: () => {
-      const rules: TraversalRule[] = edges
-        .filter((edge) => (directions[edgeKey(edge)] || '') !== '')
-        .map((edge) => ({
-          datasetId: blueprint.id,
-          parentTable: edge.parentTable,
-          childTable: edge.childTable,
-          relSource: edge.source || 'DB',
-          relRefId: edge.relRefId || null,
-          traverseDirection: directions[edgeKey(edge)],
-          priority: edge.priority || 0,
-          note: edge.traversalNote || null
-        }));
+      const rules: TraversalRule[] = relationshipGroups.flatMap((group) => {
+        const selected = selections[group.key] || edgeKey(preferredRelationship(group.edges));
+        return group.edges.map((edge) => {
+          const key = edgeKey(edge);
+          return {
+            datasetId: blueprint.id,
+            parentTable: edge.parentTable,
+            childTable: edge.childTable,
+            relSource: edge.source || 'DB',
+            relRefId: edge.relRefId || null,
+            traverseDirection: selected === key ? directions[key] || 'INHERIT' : 'NONE',
+            priority: edge.priority || 0,
+            note: edge.traversalNote || null
+          };
+        });
+      });
       return apiPut<TraversalRule[]>(`/api/datasets/${blueprint.id}/traversal-rules`, rules);
     },
     onSuccess: async () => {
-      notifications.show({ color: 'green', title: 'Traversal rules saved', message: 'Per-relationship directions updated.' });
+      notifications.show({ color: 'green', title: 'Relationship traversal saved', message: 'Relationship choices and directions updated.' });
       setDirectionsDirty(false);
       await queryClient.invalidateQueries({ queryKey: keys.datascope.relationships(blueprint.id) });
     },
@@ -191,8 +217,11 @@ export function RelationshipsPanel({
                 </Badge>
               ) : null}
               <Badge variant="light">{edges.length} edge(s)</Badge>
+              <Button variant="subtle" leftSection={<IconListDetails size={16} />} onClick={() => setStepsOpened(true)}>
+                Show steps
+              </Button>
               <Button loading={saveDirections.isPending} disabled={!directionsDirty} onClick={() => saveDirections.mutate()}>
-                Save directions
+                Save relationships
               </Button>
             </Group>
           </Group>
@@ -212,46 +241,60 @@ export function RelationshipsPanel({
                   <tr>
                     <th>Child (FK side)</th>
                     <th>Parent (PK side)</th>
-                    <th>Source</th>
+                    <th style={{ minWidth: 330 }}>Relationship to use</th>
                     <th style={{ minWidth: 230 }}>Traversal direction</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {edges.map((edge) => (
-                    <tr key={edgeKey(edge)}>
+                  {relationshipGroups.map((group) => {
+                    const selected = selections[group.key] || edgeKey(preferredRelationship(group.edges));
+                    const selectedEdge = group.edges.find((edge) => edgeKey(edge) === selected) || null;
+                    return (
+                    <tr key={group.key}>
                       <td>
                         <Text fw={700} size="sm">
-                          {edge.childTable}
+                          {group.childTable}
                         </Text>
                         <Text size="xs" c="dimmed">
-                          {(edge.childColumns || []).join(', ')}
+                          {(selectedEdge?.childColumns || []).join(', ') || 'No relationship selected'}
                         </Text>
                       </td>
                       <td>
                         <Text fw={700} size="sm">
-                          {edge.parentTable}
+                          {group.parentTable}
                         </Text>
                         <Text size="xs" c="dimmed">
-                          {(edge.parentColumns || []).join(', ')}
+                          {(selectedEdge?.parentColumns || []).join(', ') || 'Traversal disabled'}
                         </Text>
                       </td>
                       <td>
-                        <Badge variant="light" color={edge.source === 'USER' ? 'blue' : 'gray'}>
-                          {edge.source === 'USER' ? edge.relName || 'custom' : 'DB catalog'}
-                        </Badge>
+                        <Select
+                          data={[
+                            { value: 'NONE', label: 'None - do not use a relationship' },
+                            ...group.edges.map((edge) => ({ value: edgeKey(edge), label: relationshipLabel(edge) }))
+                          ]}
+                          value={selected}
+                          onChange={(value) => {
+                            if (!value) return;
+                            setDirectionsDirty(true);
+                            setSelections((current) => ({ ...current, [group.key]: value }));
+                          }}
+                        />
                       </td>
                       <td>
                         <Select
                           data={DIRECTION_OPTIONS}
-                          value={directions[edgeKey(edge)] ?? ''}
+                          disabled={!selectedEdge}
+                          value={selectedEdge ? directions[edgeKey(selectedEdge)] ?? '' : ''}
                           onChange={(value) => {
+                            if (!selectedEdge) return;
                             setDirectionsDirty(true);
-                            setDirections((current) => ({ ...current, [edgeKey(edge)]: value || '' }));
+                            setDirections((current) => ({ ...current, [edgeKey(selectedEdge)]: value || '' }));
                           }}
                         />
                       </td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>
@@ -259,7 +302,9 @@ export function RelationshipsPanel({
         </Stack>
       </Paper>
 
-      <TraversalPathCard blueprint={blueprint} profiles={profiles} edges={edges} directions={directions} />
+      <Modal opened={stepsOpened} onClose={() => setStepsOpened(false)} title="Relationship extraction steps" fullScreen>
+        <TraversalPathCard blueprint={blueprint} profiles={profiles} edges={selectedEdges} directions={directions} />
+      </Modal>
 
       <SimpleGrid cols={{ base: 1, lg: 2 }}>
         <Paper className="forge-card" p="md">
@@ -401,12 +446,47 @@ export function RelationshipsPanel({
 }
 
 function edgeKey(edge: RelationshipInfo) {
-  return `${edge.source}|${edge.parentTable}|${(edge.parentColumns || []).join(',')}|${edge.childTable}|${(edge.childColumns || []).join(',')}`.toLowerCase();
+  return `${edge.source}|${edge.relRefId || ''}|${edge.parentTable}|${(edge.parentColumns || []).join(',')}|${edge.childTable}|${(edge.childColumns || []).join(',')}`.toLowerCase();
+}
+
+type RelationshipGroup = {
+  key: string;
+  parentTable: string;
+  childTable: string;
+  edges: RelationshipInfo[];
+};
+
+function relationshipPairKey(edge: RelationshipInfo) {
+  return `${edge.parentTable}|${edge.childTable}`.toLowerCase();
+}
+
+function groupRelationships(edges: RelationshipInfo[]): RelationshipGroup[] {
+  const groups = new Map<string, RelationshipGroup>();
+  for (const edge of edges) {
+    const key = relationshipPairKey(edge);
+    const group = groups.get(key) || { key, parentTable: edge.parentTable, childTable: edge.childTable, edges: [] };
+    group.edges.push(edge);
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort(
+    (a, b) => a.childTable.localeCompare(b.childTable) || a.parentTable.localeCompare(b.parentTable)
+  );
+}
+
+function preferredRelationship(edges: RelationshipInfo[]) {
+  return edges.find((edge) => edge.source === 'DB') || edges[0];
+}
+
+function relationshipLabel(edge: RelationshipInfo) {
+  const child = (edge.childColumns || []).join(', ');
+  const parent = (edge.parentColumns || []).join(', ');
+  const source = edge.source === 'USER' ? `Tool - ${edge.relName || 'custom relationship'}` : 'Database FK';
+  return `${source}: ${child} -> ${parent}`;
 }
 
 /* ---------- traversal path (live preview of the effective walk) ---------- */
 
-type PathPull = { table: string; cols: string; defer: boolean; viaEdgeRule: boolean };
+type PathPull = { table: string; cols: string; sentence: string; source: string; defer: boolean; viaEdgeRule: boolean };
 type PathInfo = { q1: PathPull[]; q2: PathPull[]; skipped: string[] };
 type QState = 'on' | 'off' | 'defer';
 
@@ -433,6 +513,7 @@ function TraversalPathCard({
 
   const tableModeState = (table: string, which: 'q1' | 'q2'): QState => {
     const profile = profileByName.get(table.toLowerCase());
+    if ((profile?.referentialStrategy || profile?.strategy) === 'INDEPENDENT') return 'off';
     const mode = which === 'q1' ? qModeValue(profile?.q1Mode, profile?.q1Override) : qModeValue(profile?.q2Mode, profile?.q2Override);
     if (mode === 'yes') return 'on';
     if (mode === 'no') return 'off';
@@ -446,6 +527,10 @@ function TraversalPathCard({
   for (const edge of edges) {
     const dir = directions[edgeKey(edge)] || '';
     const cols = (edge.parentColumns || []).map((pc, i) => `${pc}=${(edge.childColumns || [])[i] ?? '?'}`).join(', ');
+    const relationship = (edge.parentColumns || [])
+      .map((parentColumn, index) => `${edge.childTable}.${(edge.childColumns || [])[index] ?? '?'} = ${edge.parentTable}.${parentColumn}`)
+      .join(' AND ');
+    const source = edge.source === 'USER' ? `tool relationship ${edge.relName || ''}`.trim() : 'database FK';
     const parentIncluded = includedNames.has(edge.parentTable.toLowerCase());
     const childIncluded = includedNames.has(edge.childTable.toLowerCase());
     const childProfile = profileByName.get(edge.childTable.toLowerCase());
@@ -456,7 +541,14 @@ function TraversalPathCard({
       const state: QState = dir ? (dir === 'BOTH' || dir === 'Q1_ONLY' ? 'on' : 'off') : tableModeState(edge.childTable, 'q1');
       if (!parentIncluded) infoFor(edge.childTable).skipped.push(`↑ parent ${edge.parentTable} is not included in the profile`);
       else if (state === 'off') infoFor(edge.childTable).skipped.push(`↑ skip parent ${edge.parentTable}${dir ? ' (edge rule)' : ''}`);
-      else infoFor(edge.childTable).q1.push({ table: edge.parentTable, cols, defer: state === 'defer', viaEdgeRule: !!dir });
+      else infoFor(edge.childTable).q1.push({
+        table: edge.parentTable,
+        cols,
+        sentence: `For every selected child row in ${edge.childTable}, extract the matching parent row from ${edge.parentTable} where ${relationship} because Q1 is enabled.`,
+        source,
+        defer: state === 'defer',
+        viaEdgeRule: !!dir
+      });
     }
 
     // Q2: this parent cascades to its child rows
@@ -465,7 +557,14 @@ function TraversalPathCard({
       if (!childIncluded) infoFor(edge.parentTable).skipped.push(`↓ child ${edge.childTable} is not included in the profile`);
       else if (childIndependent) infoFor(edge.parentTable).skipped.push(`↓ ${edge.childTable} is INDEPENDENT — seeds itself from its own filter`);
       else if (state === 'off') infoFor(edge.parentTable).skipped.push(`↓ skip child ${edge.childTable}${dir ? ' (edge rule)' : ''}`);
-      else infoFor(edge.parentTable).q2.push({ table: edge.childTable, cols, defer: state === 'defer', viaEdgeRule: !!dir });
+      else infoFor(edge.parentTable).q2.push({
+        table: edge.childTable,
+        cols,
+        sentence: `For every selected parent row in ${edge.parentTable}, extract all matching child rows from ${edge.childTable} where ${relationship} because Q2 is enabled.`,
+        source,
+        defer: state === 'defer',
+        viaEdgeRule: !!dir
+      });
     }
   }
 
@@ -481,29 +580,55 @@ function TraversalPathCard({
   }
 
   const driverTable = blueprint.driverTable || '';
-  const ordered = [
-    ...included.filter((p) => equalsIgnoreCase(p.tableName, driverTable)),
-    ...included.filter((p) => !equalsIgnoreCase(p.tableName, driverTable))
-  ];
+  const includedByName = new Map(included.map((profile) => [profile.tableName.toLowerCase(), profile]));
+  const ordered: TableProfile[] = [];
+  const queued = new Set<string>();
+  const queue: string[] = [];
+  const enqueue = (table: string) => {
+    const key = table.toLowerCase();
+    if (!includedByName.has(key) || queued.has(key)) return;
+    queued.add(key);
+    queue.push(key);
+  };
+  if (driverTable) enqueue(driverTable);
+  included
+    .filter((profile) => (profile.referentialStrategy || profile.strategy) === 'INDEPENDENT')
+    .forEach((profile) => enqueue(profile.tableName));
+  while (queue.length) {
+    const key = queue.shift()!;
+    const profile = includedByName.get(key);
+    if (!profile) continue;
+    ordered.push(profile);
+    const info = map[key];
+    [...(info?.q1 || []), ...(info?.q2 || [])].forEach((pull) => enqueue(pull.table));
+  }
+  included.forEach((profile) => enqueue(profile.tableName));
+  while (queue.length) {
+    const profile = includedByName.get(queue.shift()!);
+    if (profile) ordered.push(profile);
+  }
 
   return (
     <Paper className="forge-card" p="md">
       <Stack gap="sm">
         <div>
-          <Text fw={800}>Traversal path</Text>
+          <Text fw={800}>Optim-style extraction steps</Text>
           <Text size="sm" c="dimmed">
-            The effective walk, per table — combining edge rules above (including unsaved changes), per-table Q1/Q2 modes, and the
-            blueprint defaults. ↑ pulls parents (Q1), ↓ cascades to children (Q2).
+            Starting from the driver table, these steps explain in words how Q1 parent pulls and Q2 child cascades expand the
+            extract. The engine repeats the relationship closure until no new rows are found.
           </Text>
         </div>
         <SimpleGrid cols={{ base: 1, md: 2 }}>
-          {ordered.map((profile) => {
+          {ordered.map((profile, index) => {
             const info = map[profile.tableName.toLowerCase()] || { q1: [], q2: [], skipped: [] };
             const isDriver = equalsIgnoreCase(profile.tableName, driverTable);
             const strategy = profile.referentialStrategy || profile.strategy || 'INHERIT';
             return (
               <Paper key={profile.tableName} withBorder p="sm" radius="md">
                 <Group gap={6} mb={4} wrap="wrap">
+                  <Badge variant="outline" size="sm">
+                    STEP {index + 1}
+                  </Badge>
                   {isDriver ? (
                     <Badge color="green" variant="filled" size="sm">
                       DRIVER
@@ -520,7 +645,7 @@ function TraversalPathCard({
                 </Group>
                 {isDriver ? (
                   <Text size="xs" c="dimmed" mb={4}>
-                    seed: {blueprint.driverFilter ? `WHERE ${blueprint.driverFilter}` : 'all rows'}
+                    Start here: extract {blueprint.driverFilter ? `rows matching WHERE ${blueprint.driverFilter}` : 'all rows'}
                     {blueprint.maxDriverRows ? ` (max ${blueprint.maxDriverRows})` : ''}
                   </Text>
                 ) : null}
@@ -531,7 +656,7 @@ function TraversalPathCard({
                 ) : null}
                 {info.q1.map((pull) => (
                   <Text key={`q1-${pull.table}-${pull.cols}`} size="xs">
-                    ↑ pulls parent <b>{pull.table}</b> <span style={{ opacity: 0.65 }}>via {pull.cols}</span>
+                    {pull.sentence} <span style={{ opacity: 0.65 }}>Using {pull.source}.</span>
                     {pull.defer ? (
                       <Badge component="span" size="xs" variant="light" color="grape" ml={4}>
                         deferred
@@ -541,7 +666,7 @@ function TraversalPathCard({
                 ))}
                 {info.q2.map((pull) => (
                   <Text key={`q2-${pull.table}-${pull.cols}`} size="xs">
-                    ↓ cascades to <b>{pull.table}</b> <span style={{ opacity: 0.65 }}>via {pull.cols}</span>
+                    {pull.sentence} <span style={{ opacity: 0.65 }}>Using {pull.source}.</span>
                     {pull.defer ? (
                       <Badge component="span" size="xs" variant="light" color="grape" ml={4}>
                         deferred

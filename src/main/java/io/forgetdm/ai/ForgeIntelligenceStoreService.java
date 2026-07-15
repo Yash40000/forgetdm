@@ -170,17 +170,34 @@ public class ForgeIntelligenceStoreService {
 
     public SearchHit addManualDocument(String type, String title, String content, JsonNode metadata) {
         if (title == null || title.isBlank()) throw ApiException.bad("Knowledge title is required");
+        String cleanTitle = title.trim();
+        if (cleanTitle.length() < 8 || cleanTitle.length() > 120) {
+            throw ApiException.bad("Knowledge title must be between 8 and 120 characters");
+        }
         if (content == null || content.isBlank()) throw ApiException.bad("Knowledge content is required");
         String normalizedType = type == null || type.isBlank() ? "BUSINESS_GLOSSARY" : type.trim().toUpperCase(Locale.ROOT);
         String key = "USER:" + UUID.randomUUID();
-        upsert(key, normalizedType, "USER", title.trim(), clip(content, 4000), clip(content, 100_000),
+        upsert(key, normalizedType, "USER", cleanTitle, clip(content, 4000), clip(content, 100_000),
                 metadata == null ? json.createObjectNode() : metadata, "INTERNAL", actor());
         return documents(key, null, 1).stream().findFirst().orElseGet(() -> search(title, 1).get(0));
     }
 
-    public void deleteManualDocument(long id) {
-        int changed = jdbc.update("DELETE FROM forge_ai_documents WHERE id=? AND origin='USER'", id);
-        if (changed == 0) throw ApiException.notFound("User-managed knowledge document " + id + " not found");
+    public void removeDocument(long id) {
+        boolean denied = AccessContext.current()
+                .map(principal -> !principal.hasPermission("assistant.manage"))
+                .orElse(false);
+        if (denied) throw ApiException.forbidden("Data Store management permission is required");
+
+        List<Map<String, Object>> rows = jdbc.queryForList(
+                "SELECT id,origin,title FROM forge_ai_documents WHERE id=? AND active=TRUE", id);
+        if (rows.isEmpty()) throw ApiException.notFound("Data Store document " + id + " not found");
+        String origin = str(rows.get(0).get("origin"));
+        if ("USER".equalsIgnoreCase(origin)) {
+            jdbc.update("DELETE FROM forge_ai_documents WHERE id=?", id);
+            return;
+        }
+        jdbc.update("UPDATE forge_ai_documents SET active=FALSE,excluded=TRUE,excluded_by=?,excluded_at=?,updated_at=? WHERE id=?",
+                actor(), Timestamp.from(Instant.now()), Timestamp.from(Instant.now()), id);
     }
 
     public void recordApprovedPlan(long runId, String goal, String summary, JsonNode intent, JsonNode plan,
@@ -321,7 +338,7 @@ public class ForgeIntelligenceStoreService {
                         JsonNode metadata, String sensitivity, String actor) {
         String metadataText = metadata == null ? "{}" : metadata.toString();
         String hash = sha256(type + "\n" + title + "\n" + summary + "\n" + searchable + "\n" + metadataText);
-        List<Map<String, Object>> existing = jdbc.queryForList("SELECT id,content_hash FROM forge_ai_documents WHERE document_key=?", key);
+        List<Map<String, Object>> existing = jdbc.queryForList("SELECT id,content_hash,excluded FROM forge_ai_documents WHERE document_key=?", key);
         if (existing.isEmpty()) {
             jdbc.update("INSERT INTO forge_ai_documents(document_key,document_type,origin,title,summary,searchable_text,metadata_json,sensitivity,content_hash,version_no,active,created_by,created_at,updated_at) " +
                             "VALUES (?,?,?,?,?,?,?,?,?,1,TRUE,?,?,?)",
@@ -330,10 +347,11 @@ public class ForgeIntelligenceStoreService {
             return;
         }
         boolean changed = !hash.equals(str(existing.get(0).get("content_hash")));
+        boolean excluded = Boolean.TRUE.equals(existing.get(0).get("excluded"));
         jdbc.update("UPDATE forge_ai_documents SET document_type=?,origin=?,title=?,summary=?,searchable_text=?,metadata_json=?,sensitivity=?,content_hash=?," +
-                        "version_no=version_no+?,active=TRUE,updated_at=? WHERE document_key=?",
+                        "version_no=version_no+?,active=?,updated_at=? WHERE document_key=?",
                 type, origin, clip(title, 300), summary, searchable, metadataText, sensitivity, hash, changed ? 1 : 0,
-                Timestamp.from(Instant.now()), key);
+                !excluded, Timestamp.from(Instant.now()), key);
     }
 
     private long insertSync(String actor) {

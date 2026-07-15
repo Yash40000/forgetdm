@@ -141,6 +141,8 @@ export type SyntheticPartition = {
   attemptCount?: number;
   cancelRequested?: boolean;
   error?: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
 };
 
 export type SyntheticJob = {

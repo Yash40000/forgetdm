@@ -259,12 +259,29 @@ export function defaultMaskParamsForMap(fn: string | null | undefined, pii: stri
   if (fn === 'SSN') return { param1: 'VALID_PRESERVE_AREA', param2: 'PRESERVE_FORMAT' };
   if (fn === 'CREDIT_CARD') return { param1: 'VALID_PRESERVE_BIN', param2: 'PRESERVE_FORMAT' };
   if (fn === 'CHARACTER_MAP') return { param1: null, param2: 'AS_IS' };
-  if (fn === 'TOKENIZE') return { param1: pii === 'USERNAME' ? 'USR_' : 'TKN_', param2: pii === 'USERNAME' ? '24' : '32' };
+  if (fn === 'TOKENIZE') {
+    const prefixes: Record<string, string> = {
+      USERNAME: 'USR_',
+      MEDICAL_RECORD_NUMBER: 'MRN_',
+      HEALTH_PLAN_ID: 'HPL_',
+      PRESCRIPTION_ID: 'RX_',
+      BIOMETRIC_ID: 'BIO_',
+      GENETIC_DATA: 'GEN_',
+      DEVICE_ID: 'DEV_',
+      COOKIE_ID: 'CK_',
+      PERSON_ID: 'PID_',
+      VEHICLE_ID: 'VEH_',
+      URL: 'URL_'
+    };
+    return { param1: prefixes[String(pii || '')] || 'TKN_', param2: pii === 'USERNAME' ? '24' : '32' };
+  }
   if (fn === 'SECURE_LOOKUP') return { param1: pii === 'GENDER' ? 'F|M|X' : 'ALPHA|BETA|GAMMA', param2: pii === 'GENDER' ? 'UPPER' : 'AS_IS' };
   if (fn === 'DIRECT_LOOKUP') return { param1: '@lookup:direct:demo.account-tier', param2: 'NOT_FOUND=ERROR;TRIM=BOTH;CASE=UPPER;CACHE=ON' };
   if (fn === 'HASH_LOOKUP') return { param1: '@lookup:hash:demo.us-first-names', param2: 'SEED=0;CASE=SENSITIVE;CACHE=ON' };
   if (fn === 'REDACT') return { param1: '*', param2: 'FULL' };
-  if (fn === 'NUMERIC_NOISE') return { param1: 'PERCENT:10', param2: null };
+  if (fn === 'NUMERIC_NOISE') return pii === 'AGE'
+    ? { param1: 'ABS:2', param2: '0:120' }
+    : { param1: 'PERCENT:10', param2: null };
   if (fn === 'MIN_MAX') return { param1: '0', param2: '100' };
   if (fn === 'BANK_ACCOUNT') return { param1: 'KEEP_LAST4', param2: null };
   if (fn === 'IBAN') return { param1: 'PRESERVE_COUNTRY', param2: 'PRESERVE_FORMAT' };

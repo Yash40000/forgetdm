@@ -1,14 +1,14 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ActionIcon, Badge, Button, FileInput, Group, NumberFormatter, Paper, Progress, ScrollArea, Select,
+  ActionIcon, Badge, Button, Drawer, FileInput, Group, NumberFormatter, Paper, Progress, ScrollArea, Select,
   SimpleGrid, Stack, Switch, Table, Tabs, Text, TextInput, Textarea, ThemeIcon, Title, Tooltip
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 import {
   IconAlertTriangle, IconCircleCheck, IconCloudDownload, IconFile, IconFileAnalytics, IconFileTextShield,
-  IconHistory, IconPlus, IconPlayerPlay, IconShieldLock, IconSquare, IconTrash
+  IconHistory, IconInfoCircle, IconMaximize, IconMinimize, IconPlus, IconPlayerPlay, IconShieldLock, IconSquare, IconTrash
 } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
@@ -20,6 +20,7 @@ import type { UnstructuredJob, UnstructuredProfile, UnstructuredRule } from './t
 const EMPTY_PROFILE: UnstructuredProfile = { name: '', description: '', rulesJson: '[]', status: 'DRAFT', versionNo: 1 };
 
 export function UnstructuredMaskingPage() {
+  const pageRef = useRef<HTMLElement | null>(null);
   const queryClient = useQueryClient();
   const profilesQuery = useUnstructuredProfiles();
   const jobsQuery = useUnstructuredJobs();
@@ -34,6 +35,23 @@ export function UnstructuredMaskingPage() {
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
   const [profileDraft, setProfileDraft] = useState<UnstructuredProfile>(EMPTY_PROFILE);
   const [rules, setRules] = useState<UnstructuredRule[]>([]);
+  const [securityOpened, setSecurityOpened] = useState(false);
+  const [fullScreen, setFullScreen] = useState(false);
+
+  useEffect(() => {
+    const changed = () => setFullScreen(document.fullscreenElement === pageRef.current);
+    document.addEventListener('fullscreenchange', changed);
+    return () => document.removeEventListener('fullscreenchange', changed);
+  }, []);
+
+  const toggleFullScreen = async () => {
+    try {
+      if (document.fullscreenElement === pageRef.current) await document.exitFullscreen();
+      else await pageRef.current?.requestFullscreen();
+    } catch (error) {
+      notifyError('Full screen is unavailable', error);
+    }
+  };
 
   const effectiveProfileId = profileId || profiles.find((profile) => profile.status === 'ACTIVE')?.id || profiles[0]?.id || null;
   const selectedJob = jobs.find((job) => job.id === selectedJobId) || jobs[0] || null;
@@ -54,18 +72,20 @@ export function UnstructuredMaskingPage() {
   const runPreview = async () => { if (!effectiveProfileId) return; try { setPreviewResult(await apiPost('/api/unstructured/preview', { profileId: effectiveProfileId, text: previewText, seed })); } catch (error) { notifyError('Preview failed', error); } };
   const cancel = async (job: UnstructuredJob) => { try { await apiPost(`/api/unstructured/jobs/${job.id}/cancel`, {}); void queryClient.invalidateQueries({ queryKey: keys.unstructured.jobs }); } catch (error) { notifyError('Cancel failed', error); } };
 
-  return <main className="forge-page unx-page">
-    <header className="forge-page-header"><div><Text className="forge-eyebrow">File privacy</Text><Title order={1}>Unstructured Masking</Title><Text c="dimmed">Detect and deterministically mask PII in documents and text-based files without releasing unchanged binaries.</Text></div><Badge size="lg" variant="light" leftSection={<IconShieldLock size={14} />}>Fail closed</Badge></header>
+  return <main ref={pageRef} className="forge-page unx-page">
+    <Drawer opened={securityOpened} onClose={() => setSecurityOpened(false)} position="right" size={430} title="Security model" classNames={{ body: 'unx-security-drawer-body' }}>
+      <SafetyRail />
+    </Drawer>
+    <header className="forge-page-header"><div><Text className="forge-eyebrow">File privacy</Text><Title order={1}>Unstructured Masking</Title><Text c="dimmed">Find and mask sensitive content across documents, data files, and free-flow text.</Text></div><Group gap="xs" className="unx-header-actions"><Badge size="lg" variant="light" leftSection={<IconShieldLock size={14} />}>Fail closed</Badge><Button variant="subtle" leftSection={<IconInfoCircle size={16} />} onClick={() => setSecurityOpened(true)}>About security</Button><Tooltip label={fullScreen ? 'Exit full screen' : 'Open full-screen workspace'}><ActionIcon size="lg" variant="light" aria-label={fullScreen ? 'Exit full screen' : 'Open full-screen workspace'} onClick={() => void toggleFullScreen()}>{fullScreen ? <IconMinimize size={18} /> : <IconMaximize size={18} />}</ActionIcon></Tooltip></Group></header>
     <Tabs defaultValue="run" className="forge-feature-tabs">
       <Tabs.List><Tabs.Tab value="run" leftSection={<IconFileTextShield size={16} />}>Mask a file</Tabs.Tab><Tabs.Tab value="profiles" leftSection={<IconShieldLock size={16} />}>Profiles</Tabs.Tab><Tabs.Tab value="history" leftSection={<IconHistory size={16} />}>Run history</Tabs.Tab><Tabs.Tab value="formats" leftSection={<IconFileAnalytics size={16} />}>Format coverage</Tabs.Tab></Tabs.List>
-      <Tabs.Panel value="run" pt="md"><SimpleGrid cols={{ base: 1, xl: 3 }} spacing="md">
-        <Stack gap="md" style={{ gridColumn: 'span 2' }}>
+      <Tabs.Panel value="run" pt="md">
+        <Stack gap="md" className="unx-run-workspace">
           <Paper className="unx-panel" p="md"><Group justify="space-between"><div><Text fw={800}>Upload and mask</Text><Text size="sm" c="dimmed">The source is encrypted immediately and destroyed after completion or failure.</Text></div><Badge variant="light">100 MB default limit</Badge></Group><SimpleGrid cols={{ base: 1, sm: 2 }} mt="md"><Select label="Active profile" searchable data={profiles.filter((profile) => profile.status === 'ACTIVE').map((profile) => ({ value: String(profile.id), label: `${profile.name} v${profile.versionNo}` }))} value={effectiveProfileId ? String(effectiveProfileId) : null} onChange={(value) => setProfileId(value ? Number(value) : null)} /><TextInput label="Deterministic seed" value={seed} onChange={(event) => setSeed(event.currentTarget?.value || '')} placeholder="Optional" spellCheck={false} /><FileInput label="Document or data file" value={file} onChange={setFile} leftSection={<IconFile size={15} />} placeholder="PDF, DOCX, CSV, JSON, XML, HTML, logs..." clearable /><Button mt={24} size="md" leftSection={<IconPlayerPlay size={16} />} disabled={!file || !effectiveProfileId} loading={startMutation.isPending} onClick={() => startMutation.mutate()}>Start governed masking</Button></SimpleGrid></Paper>
           <Paper className="unx-panel" p="md"><Group justify="space-between"><div><Text fw={800}>Rule preview</Text><Text size="sm" c="dimmed">Test the selected profile without uploading a file.</Text></div><Button variant="default" onClick={() => void runPreview()}>Preview masking</Button></Group><Textarea mt="sm" minRows={4} value={previewText} onChange={(event) => setPreviewText(event.currentTarget?.value || '')} />{previewResult ? <SimpleGrid cols={{ base: 1, sm: 2 }} mt="md"><Paper p="sm" withBorder><Text size="xs" fw={800} c="dimmed" tt="uppercase">Masked result</Text><Text className="unx-preview-text">{previewResult.masked}</Text></Paper><Paper p="sm" withBorder><Text size="xs" fw={800} c="dimmed" tt="uppercase">Detections</Text><Group mt="xs">{Object.entries(previewResult.findings).map(([type, count]) => <Badge key={type} variant="light">{type}: {count}</Badge>)}</Group><Text mt="sm" fw={800}>{previewResult.findingsCount} replacement(s)</Text></Paper></SimpleGrid> : null}</Paper>
           {selectedJob ? <LiveJob job={selectedJob} onCancel={() => void cancel(selectedJob)} /> : null}
         </Stack>
-        <SafetyRail />
-      </SimpleGrid></Tabs.Panel>
+      </Tabs.Panel>
       <Tabs.Panel value="profiles" pt="md"><SimpleGrid cols={{ base: 1, lg: 4 }} spacing="md"><Paper className="unx-panel" p="md"><Group justify="space-between"><Text fw={800}>Profile library</Text><Button size="xs" variant="subtle" leftSection={<IconPlus size={14} />} onClick={() => { setProfileDraft(EMPTY_PROFILE); setRules([]); }}>New</Button></Group><Stack gap={6} mt="sm">{profiles.map((profile) => <button className={`unx-profile-row ${profileDraft.id === profile.id ? 'is-active' : ''}`} type="button" key={profile.id} onClick={() => openProfile(profile)}><span><b>{profile.name}</b><small>Version {profile.versionNo}</small></span><Badge size="xs" color={profile.status === 'ACTIVE' ? 'green' : 'gray'}>{profile.status}</Badge></button>)}</Stack></Paper><Stack gap="md" style={{ gridColumn: 'span 3' }}><Paper className="unx-panel" p="md"><SimpleGrid cols={{ base: 1, sm: 3 }}><TextInput label="Profile name" value={profileDraft.name} onChange={(event) => setProfileDraft((current) => ({ ...current, name: event.currentTarget?.value || '' }))} /><TextInput label="Description" value={profileDraft.description || ''} onChange={(event) => setProfileDraft((current) => ({ ...current, description: event.currentTarget?.value || '' }))} /><Select label="Lifecycle" data={['DRAFT', 'ACTIVE', 'RETIRED']} value={profileDraft.status} onChange={(value) => setProfileDraft((current) => ({ ...current, status: (value || 'DRAFT') as UnstructuredProfile['status'] }))} /></SimpleGrid></Paper><RuleEditor rules={rules} onChange={setRules} /><Group justify="flex-end"><Button loading={saveProfileMutation.isPending} disabled={!profileDraft.name.trim() || !rules.length} onClick={() => saveProfileMutation.mutate()}>Save profile version</Button></Group></Stack></SimpleGrid></Tabs.Panel>
       <Tabs.Panel value="history" pt="md"><JobHistory jobs={jobs} onOpen={setSelectedJobId} onDelete={async (job) => { try { await apiFetch(`/api/unstructured/jobs/${job.id}`, { method: 'DELETE' }); void queryClient.invalidateQueries({ queryKey: keys.unstructured.jobs }); } catch (error) { notifyError('Delete failed', error); } }} /></Tabs.Panel>
       <Tabs.Panel value="formats" pt="md"><FormatCoverage capabilities={capabilitiesQuery.data} /></Tabs.Panel>
@@ -81,8 +101,31 @@ function RuleEditor({ rules, onChange }: { rules: UnstructuredRule[]; onChange: 
 
 function JobHistory({ jobs, onOpen, onDelete }: { jobs: UnstructuredJob[]; onOpen: (id: number) => void; onDelete: (job: UnstructuredJob) => void }) { return <Paper className="unx-panel" p="md"><Group justify="space-between"><div><Text fw={800}>Unstructured masking history</Text><Text size="sm" c="dimmed">Source copies are destroyed; masked outputs expire under the configured retention policy.</Text></div><Badge>{jobs.length} recent</Badge></Group><Stack gap="xs" mt="md">{jobs.map((job) => <div key={job.id} className="unx-job-row"><button type="button" onClick={() => onOpen(job.id)}><span><b>{job.originalFilename}</b><small>#{job.id} - {new Date(job.createdAt).toLocaleString()} - {job.createdBy}</small></span><span><Badge color={statusColor(job.status)}>{human(job.status)}</Badge><small><NumberFormatter value={job.findingsCount} thousandSeparator /> findings</small></span></button><Group gap={4}>{job.outputName ? <ActionIcon component="a" href={`/api/unstructured/jobs/${job.id}/download`} variant="subtle"><IconCloudDownload size={16} /></ActionIcon> : null}{!['RUNNING', 'QUEUED'].includes(job.status) ? <ActionIcon color="red" variant="subtle" onClick={() => onDelete(job)}><IconTrash size={16} /></ActionIcon> : null}</Group></div>)}{!jobs.length ? <Text c="dimmed" ta="center" py="xl">No unstructured masking jobs yet.</Text> : null}</Stack></Paper>; }
 
-function FormatCoverage({ capabilities }: { capabilities?: { nativePreserving: string[]; safeTextRebuild: string[]; blockedWithoutExtractor: string[]; guarantee: string } }) { if (!capabilities) return <Paper p="xl"><Text>Loading format capabilities...</Text></Paper>; return <SimpleGrid cols={{ base: 1, lg: 3 }}><CoverageCard color="green" icon={<IconCircleCheck size={19} />} title="Native structure preserved" rows={capabilities.nativePreserving} detail="The original logical structure remains usable after masking." /><CoverageCard color="blue" icon={<IconFileAnalytics size={19} />} title="Safe text rebuild" rows={capabilities.safeTextRebuild} detail="Text is extracted and masked; the original binary is not copied to the output." /><CoverageCard color="yellow" icon={<IconAlertTriangle size={19} />} title="Requires approved extractor" rows={capabilities.blockedWithoutExtractor} detail={capabilities.guarantee} /></SimpleGrid>; }
-function CoverageCard({ color, icon, title, rows, detail }: { color: string; icon: React.ReactNode; title: string; rows: string[]; detail: string }) { return <Paper className="unx-panel" p="md"><ThemeIcon color={color} variant="light">{icon}</ThemeIcon><Text fw={850} mt="sm">{title}</Text><Text size="sm" c="dimmed">{detail}</Text><Stack gap={6} mt="md">{rows.map((row) => <Paper key={row} p="xs" withBorder><Text size="sm">{row}</Text></Paper>)}</Stack></Paper>; }
+function FormatCoverage({ capabilities }: { capabilities?: { nativePreserving: string[]; safeTextRebuild: string[]; blockedWithoutExtractor: string[]; guarantee: string } }) {
+  if (!capabilities) return <Paper p="xl"><Text>Loading format capabilities...</Text></Paper>;
+  const supported = capabilities.nativePreserving.length + capabilities.safeTextRebuild.length;
+  return <Stack gap="md" className="unx-format-workspace">
+    <Paper className="unx-format-overview" p="md">
+      <Group justify="space-between" align="center">
+        <div><Text fw={850}>Protection path by format</Text><Text size="sm" c="dimmed">Every upload follows one explicit handling path. Unsupported content is stopped before output.</Text></div>
+        <Badge size="lg" variant="light" color="blue">{supported} supported format groups</Badge>
+      </Group>
+      <div className="unx-format-flow">
+        <div className="is-native"><b>1</b><span><strong>Preserve</strong><small>Mask in native structure</small></span></div>
+        <i aria-hidden="true" />
+        <div className="is-rebuild"><b>2</b><span><strong>Rebuild safely</strong><small>Extract, mask, emit text</small></span></div>
+        <i aria-hidden="true" />
+        <div className="is-blocked"><b>3</b><span><strong>Stop safely</strong><small>No unchanged fallback</small></span></div>
+      </div>
+    </Paper>
+    <SimpleGrid cols={{ base: 1, lg: 3 }}>
+      <CoverageCard tone="native" color="green" icon={<IconCircleCheck size={19} />} title="Native structure preserved" rows={capabilities.nativePreserving} detail="The original logical structure remains usable after masking." />
+      <CoverageCard tone="rebuild" color="blue" icon={<IconFileAnalytics size={19} />} title="Safe text rebuild" rows={capabilities.safeTextRebuild} detail="Text is extracted and masked; the original binary is never copied to output." />
+      <CoverageCard tone="blocked" color="yellow" icon={<IconAlertTriangle size={19} />} title="Approved extractor required" rows={capabilities.blockedWithoutExtractor} detail={capabilities.guarantee} />
+    </SimpleGrid>
+  </Stack>;
+}
+function CoverageCard({ tone, color, icon, title, rows, detail }: { tone: string; color: string; icon: React.ReactNode; title: string; rows: string[]; detail: string }) { return <Paper className={`unx-panel unx-coverage-card is-${tone}`} p="md"><Group justify="space-between" align="flex-start"><ThemeIcon color={color} variant="light">{icon}</ThemeIcon><Badge size="sm" variant="light" color={color}>{rows.length} groups</Badge></Group><Text fw={850} mt="sm">{title}</Text><Text size="sm" c="dimmed" className="unx-coverage-detail">{detail}</Text><div className="unx-format-tags">{rows.map((row) => <Badge key={row} variant="outline" color={color}>{row}</Badge>)}</div></Paper>; }
 function Metric({ label, value }: { label: string; value: string }) { return <div className="unx-metric"><Text size="xs" c="dimmed" fw={800} tt="uppercase">{label}</Text><Text fw={800}>{value}</Text></div>; }
 function parseRules(value: string) { try { return JSON.parse(value || '[]') as UnstructuredRule[]; } catch { return []; } }
 function safeObject(value?: string | null) { try { return JSON.parse(value || '{}') as Record<string, unknown>; } catch { return {}; } }

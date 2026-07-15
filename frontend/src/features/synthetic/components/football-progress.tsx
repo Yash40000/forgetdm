@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import { ActionIcon, Badge, Group, Paper, Progress, Text, Tooltip } from '@mantine/core';
-import { IconRepeat, IconX } from '@tabler/icons-react';
+import { IconArrowsMaximize, IconFileText, IconRepeat, IconX } from '@tabler/icons-react';
 
 import type { SyntheticJob, SyntheticPlan, SyntheticPartition } from '../types';
 import { formatRows, formatTime, generationStages, isJobDone, jobTone, progressDetail } from '../utils';
@@ -20,10 +20,21 @@ type FootballProgressProps = {
   job?: SyntheticJob | null;
   plan?: SyntheticPlan | null;
   title?: string;
+  mode?: 'compact' | 'full';
+  onExpand?: () => void;
+  onOpenLog?: () => void;
   onPartitionAction?: (partitionId: string, action: 'cancel' | 'retry') => void;
 };
 
-export function FootballProgress({ job, plan, title = 'Synthetic generation progress', onPartitionAction }: FootballProgressProps) {
+export function FootballProgress({
+  job,
+  plan,
+  title = 'Synthetic generation progress',
+  mode = 'full',
+  onExpand,
+  onOpenLog,
+  onPartitionAction
+}: FootballProgressProps) {
   const percent = clamp(Math.round(Number(job?.percent || 0)), 0, 100);
   const status = String(job?.status || 'IDLE').toUpperCase();
   const done = isJobDone(job?.status) && status === 'COMPLETED';
@@ -45,6 +56,103 @@ export function FootballProgress({ job, plan, title = 'Synthetic generation prog
       : 'Waiting';
   const updated = formatTime(job?.updatedAt);
   const gameTone = failed ? 'failed' : cancelled ? 'cancelled' : done ? 'done' : job ? 'running' : 'idle';
+
+  if (mode === 'compact') {
+    return (
+      <Paper className={`forge-card syn-progress-card syn-game-hub syn-game-compact is-${gameTone}`} p="sm">
+        <div className="syn-game-topline syn-game-compact-topline">
+          <div className="syn-game-title">
+            <Text fw={900} size="md">
+              {title}
+            </Text>
+            <Text size="sm" c="dimmed" lineClamp={1}>
+              {detail}
+            </Text>
+          </div>
+          <div className="syn-game-top-actions">
+            {onOpenLog ? (
+              <Tooltip label="Open run log">
+                <ActionIcon variant="light" aria-label="Open run log" onClick={onOpenLog}>
+                  <IconFileText size={17} />
+                </ActionIcon>
+              </Tooltip>
+            ) : null}
+            {onExpand ? (
+              <Tooltip label="Open full match centre">
+                <ActionIcon variant="light" aria-label="Open full match centre" onClick={onExpand}>
+                  <IconArrowsMaximize size={17} />
+                </ActionIcon>
+              </Tooltip>
+            ) : null}
+            <Badge color={job?.status ? jobTone(job.status) : 'gray'} variant="filled" radius="sm">
+              {job?.status || 'Waiting'}
+            </Badge>
+            <div className="syn-game-big-percent">{percent}%</div>
+          </div>
+        </div>
+
+        <div className="syn-game-arena syn-main-monitor-arena">
+          <div className="syn-match-board syn-compact-match-board">
+            <div className="syn-stage-row syn-match-status-ribbon">
+              {stages.map((stage, index) => (
+                <span key={`${stage}-${index}`} className={`syn-stage ${done || index < activeIndex ? 'done' : index === activeIndex ? 'active' : ''}`}>
+                  {stage}
+                </span>
+              ))}
+            </div>
+            <LiveFootballCanvas
+              percent={percent}
+              active={active}
+              done={done}
+              failed={failed}
+              cancelled={cancelled}
+              stage={activeStage}
+              detail={detail}
+            />
+          </div>
+
+          <div className="syn-live-command-center syn-main-live-command-center">
+            <div className="syn-live-hero">
+              <span>Central run state</span>
+              <b>{job?.currentTable || activeStage}</b>
+              <em>{detail}</em>
+            </div>
+            <div className="syn-live-stat-grid">
+              <TelemetryRow label="Stage" value={activeStage} />
+              <TelemetryRow label="Current table" value={job?.currentTable || '-'} />
+              <TelemetryRow label="Table rows" value={tableRows} detail={tablePct == null ? 'Waiting for table total' : `${tablePct}% complete`} />
+              <TelemetryRow label="Total rows" value={totalRows} detail={totalPct == null ? 'Planned rows' : `${totalPct}% complete`} />
+            </div>
+            <div className="syn-live-progress-grid">
+              <ProgressBlock label="Overall generation" value={percent} detail={job?.rowsTotal ? `${formatRows(job.rowsDone)} of ${formatRows(job.rowsTotal)} rows` : detail} />
+              <ProgressBlock
+                label={job?.currentTable ? `Current table - ${job.currentTable}` : 'Current table'}
+                value={tablePct ?? percent}
+                detail={job?.tableRowsTotal ? `${formatRows(job.tableRowsDone)} of ${formatRows(job.tableRowsTotal)} rows` : 'Waiting for table total'}
+              />
+            </div>
+            <div className="syn-game-message syn-live-signal-center">
+              <span>Live signal</span>
+              <b>{job?.message || activeStage}</b>
+              <em>{updated ? `Updated ${updated}` : detail}</em>
+            </div>
+          </div>
+        </div>
+
+        <div className="syn-compact-run-footer">
+          <span>
+            <b>{job?.currentTable || 'No active table'}</b>
+            {job?.tableCount ? ` · ${job.tableCount} table(s)` : ''}
+          </span>
+          <span>
+            {partitionStats.total
+              ? `${partitionStats.completed}/${partitionStats.total} partitions complete${partitionStats.failed ? ` · ${partitionStats.failed} failed` : ''}`
+              : 'Single runner or partitions not started'}
+          </span>
+        </div>
+      </Paper>
+    );
+  }
 
   return (
     <Paper className={`forge-card syn-progress-card syn-game-hub is-${gameTone}`} p="md">
@@ -90,11 +198,6 @@ export function FootballProgress({ job, plan, title = 'Synthetic generation prog
               stage={activeStage}
               detail={detail}
             />
-            <div className="syn-match-scoreboard">
-              <span>LIVE</span>
-              <b>{activeStage}</b>
-              <strong>{percent}%</strong>
-            </div>
           </div>
 
           <div className="syn-live-command-center">
@@ -355,16 +458,22 @@ const SYN_TRICKS: Array<{ n: string; t: string; s?: number; h?: number; p?: numb
   { n: 'Thigh stall', t: 'stallKnee' }, { n: 'Knee stall', t: 'stallKnee' }
 ];
 
-const W = 1200;
+const W = 1500;
 const H = 220;
 const GROUND = 174;
+const SCENE_GUTTER = 150;
 const PITCH_X = 18;
 const PITCH_W = W - 36;
 const CENTER_X = PITCH_X + PITCH_W / 2;
-const GOAL_X = W - 150;
-const RUN_START = 92;
+const GOAL_X = SCENE_GUTTER + 1050;
+const RUNWAY_START = SCENE_GUTTER + 48;
+const RUN_START = SCENE_GUTTER + 92;
 const RUN_END = GOAL_X - 86;
 const BALL_GOAL_X = GOAL_X + 71;
+const SUCCESS_RUN_START = 760;
+const SUCCESS_RUN_END = 2250;
+const SUCCESS_ANIMATION_END = 5600;
+const CELEBRATION_X = Math.min(W - 102, GOAL_X + 198);
 
 type EngineState = {
   progress: number;
@@ -486,7 +595,7 @@ function LiveFootballCanvas({
 
       paintFrame(ctx, staticLayerRef.current, s, ts);
 
-      const kicking = s.done && ts - s.kickStart < 2200;
+      const kicking = s.done && ts - s.kickStart < SUCCESS_ANIMATION_END;
       const keepGoing = !reducedMotion && !s.failed && ((s.active && !s.done) || kicking);
       if (keepGoing) rafRef.current = requestAnimationFrame(frame);
     };
@@ -595,29 +704,65 @@ function buildStaticLayer(dpr: number): HTMLCanvasElement {
   return layer;
 }
 
+function drawGoalForeground(ctx: CanvasRenderingContext2D) {
+  const x = GOAL_X;
+  const y = 50;
+  const w = 104;
+  const h = 122;
+  const d = 44;
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(255,255,255,.34)';
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 8; i += 1) {
+    const a = i / 8;
+    ctx.beginPath();
+    ctx.moveTo(x + w + d * a, y + 20 * a);
+    ctx.lineTo(x + w + d * a, y + h + 4 * a);
+    ctx.stroke();
+  }
+  for (let i = 1; i < 7; i += 1) {
+    const yy = y + (h / 7) * i;
+    ctx.beginPath();
+    ctx.moveTo(x, yy);
+    ctx.lineTo(x + w + d, yy + 12);
+    ctx.stroke();
+  }
+  strokeLine(ctx, [[x, y], [x + w, y], [x + w + d, y + 20]], '#f8fafc', 7);
+  strokeLine(ctx, [[x, y], [x, y + h]], '#f8fafc', 8);
+  strokeLine(ctx, [[x + w, y], [x + w, y + h]], '#e5edf6', 6);
+  strokeLine(ctx, [[x, y + h], [x + w, y + h], [x + w + d, y + h + 4]], '#d7e3ef', 5);
+  strokeLine(ctx, [[x + w + d, y + 20], [x + w + d, y + h + 4]], '#d7e3ef', 4);
+  ctx.restore();
+}
+
 function paintFrame(ctx: CanvasRenderingContext2D, staticLayer: HTMLCanvasElement | null, s: EngineState, ts: number) {
   ctx.clearRect(0, 0, W, H);
   if (staticLayer) ctx.drawImage(staticLayer, 0, 0, W, H);
 
   /* progress runway */
-  const progressX = 48 + (s.progress / 100) * (GOAL_X - 48);
-  const run = ctx.createLinearGradient(48, 0, Math.max(60, progressX), 0);
+  const progressX = RUNWAY_START + (s.progress / 100) * (GOAL_X - RUNWAY_START);
+  const run = ctx.createLinearGradient(RUNWAY_START, 0, Math.max(RUNWAY_START + 12, progressX), 0);
   run.addColorStop(0, 'rgba(255,211,66,.28)');
   run.addColorStop(1, 'rgba(255,255,255,.10)');
   ctx.fillStyle = run;
-  roundedRect(ctx, 48, 156, Math.max(12, progressX - 48), 10, 999);
+  roundedRect(ctx, RUNWAY_START, 156, Math.max(12, progressX - RUNWAY_START), 10, 999);
   ctx.fill();
 
   const p = clamp(s.progress / 100, 0, 1);
-  const cx = RUN_START + p * (RUN_END - RUN_START);
-  const avatar = drawSilhouettePlayer(ctx, s, cx, ts);
+  const baseX = RUN_START + p * (RUN_END - RUN_START);
+  const successElapsed = s.done ? Math.max(0, ts - s.kickStart) : -1;
+  const successRun = s.done ? smoothStep(clamp((successElapsed - SUCCESS_RUN_START) / (SUCCESS_RUN_END - SUCCESS_RUN_START), 0, 1)) : 0;
+  const cx = s.done ? RUN_END + successRun * (CELEBRATION_X - RUN_END) : baseX;
+  const avatar = drawSilhouettePlayer(ctx, s, cx, ts, successElapsed);
   const foot = avatar.rightFoot;
   const spin = ts / 105 + s.progress / 10;
 
   if (s.done) {
     const k = easeOut((ts - s.kickStart) / 950);
-    const startX = foot[0] + 6;
-    const startY = foot[1] - 8;
+    const startX = RUN_END + 24;
+    const startY = GROUND - 17;
     const bx = startX + (BALL_GOAL_X - startX) * k;
     const by = startY + (112 - startY) * k - Math.sin(k * Math.PI) * 50;
     drawBall(ctx, bx, by, 9 * (1 - k * 0.18), spin + k * 7);
@@ -632,6 +777,15 @@ function paintFrame(ctx: CanvasRenderingContext2D, staticLayer: HTMLCanvasElemen
       ctx.font = '800 13px system-ui, Segoe UI, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(s.finalText, GOAL_X + 73, 110);
+      ctx.restore();
+    }
+    if (successElapsed > SUCCESS_RUN_END + 720) {
+      ctx.save();
+      ctx.globalAlpha = clamp((successElapsed - SUCCESS_RUN_END - 720) / 360, 0, 1);
+      ctx.fillStyle = 'rgba(255,255,255,.92)';
+      ctx.font = '900 14px system-ui, Segoe UI, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('GOAL  •  COMPLETE', CELEBRATION_X, 28);
       ctx.restore();
     }
   } else if (s.juggling) {
@@ -677,6 +831,10 @@ function paintFrame(ctx: CanvasRenderingContext2D, staticLayer: HTMLCanvasElemen
     drawBall(ctx, foot[0] + 6, foot[1] - 8 - bounce, 9, spin);
   }
 
+  // Repaint the front frame after the scorer crosses it so the run reads as
+  // passing behind the goal instead of sliding over the net.
+  if (s.done && successElapsed >= SUCCESS_RUN_START) drawGoalForeground(ctx);
+
   if (s.failed) {
     ctx.save();
     ctx.fillStyle = s.cancelled ? 'rgba(51,65,85,.8)' : 'rgba(127,29,29,.78)';
@@ -694,9 +852,14 @@ function paintFrame(ctx: CanvasRenderingContext2D, staticLayer: HTMLCanvasElemen
  * FIFA loading-screen style silhouette: sprint cycle with knee lift + forward lean,
  * or freestyle-trick poses while juggling. Returns anchor points for the ball.
  */
-function drawSilhouettePlayer(ctx: CanvasRenderingContext2D, s: EngineState, cx: number, ts: number) {
+function drawSilhouettePlayer(ctx: CanvasRenderingContext2D, s: EngineState, cx: number, ts: number, successElapsed = -1) {
   const juggling = !s.done && !s.failed && s.juggling;
-  const running = !s.done && !s.failed && !juggling && s.active;
+  const successRunning = s.done && successElapsed >= SUCCESS_RUN_START && successElapsed < SUCCESS_RUN_END;
+  const celebrating = s.done && successElapsed >= SUCCESS_RUN_END;
+  const celebrationJump = celebrating ? clamp((successElapsed - SUCCESS_RUN_END) / 980, 0, 1) : 0;
+  const celebrationLand = celebrating ? clamp((successElapsed - SUCCESS_RUN_END - 780) / 520, 0, 1) : 0;
+  const yaw = celebrating && celebrationJump < 1 ? Math.cos(celebrationJump * Math.PI) : celebrating ? -1 : 1;
+  const running = (!s.done && !s.failed && !juggling && s.active) || successRunning;
   const skill = juggling ? ((s.skillIndex % SYN_TRICKS.length) + SYN_TRICKS.length) % SYN_TRICKS.length : -1;
   const y0 = GROUND;
   const sp = ts / 96;
@@ -704,10 +867,11 @@ function drawSilhouettePlayer(ctx: CanvasRenderingContext2D, s: EngineState, cx:
   const co = running ? Math.cos(sp) : 0;
   const liftF = running ? Math.max(0, sw) : 0;
   const liftB = running ? Math.max(0, -sw) : 0;
-  const kickT = s.done ? clamp((ts - s.kickStart) / 720, 0, 1) : 0;
+  const kickT = s.done && successElapsed < SUCCESS_RUN_START ? clamp(successElapsed / 720, 0, 1) : 0;
   const kick = Math.sin(kickT * Math.PI);
-  const bob = juggling ? Math.abs(Math.sin(ts / 300)) * 1.3 : running ? Math.abs(co) * 2.2 : 0;
-  const SC = 0.72;
+  const celebrationLift = celebrating ? Math.sin(celebrationJump * Math.PI) * 50 : 0;
+  const bob = celebrating ? celebrationLift : juggling ? Math.abs(Math.sin(ts / 300)) * 1.3 : running ? Math.abs(co) * 2.2 : 0;
+  const SC = running ? 0.76 : celebrating ? 0.74 : 0.72;
   const trk = juggling ? SYN_TRICKS[skill] || SYN_TRICKS[0] : null;
   let jlean = 0.03;
   if (trk) {
@@ -715,10 +879,10 @@ function drawSilhouettePlayer(ctx: CanvasRenderingContext2D, s: EngineState, cx:
     else if (trk.t === 'chest' || trk.t === 'stallFoot' || trk.t === 'stallKnee') jlean = -0.05;
     else if (trk.t === 'arc' || trk.t === 'heel') jlean = 0.06;
   }
-  const lean = juggling ? jlean : running ? 0.08 : s.done ? 0.05 : 0;
+  const lean = juggling ? jlean : running ? 0.14 : celebrating ? 0.01 : s.done ? 0.09 : 0.03;
 
   const T = (p: number[]): [number, number] => {
-    let x = cx + (p[0] - cx) * SC;
+    let x = cx + (p[0] - cx) * SC * yaw;
     let yy = y0 + (p[1] - y0) * SC;
     const dx = x - cx;
     const dy = yy - y0;
@@ -786,14 +950,26 @@ function drawSilhouettePlayer(ctx: CanvasRenderingContext2D, s: EngineState, cx:
       case 'stallFoot': ankN = [cx + 18, y0 - 30]; kneeN = [cx + 16, y0 - 44]; armsOut(); break;
       case 'stallKnee': kneeN = [cx + 12, y0 - 48]; ankN = [cx + 16, y0 - 30]; armsOut(); break;
     }
+  } else if (celebrating) {
+    const armDrop = smoothStep(celebrationLand);
+    const legSpread = 16 + armDrop * 24;
+    hipN = [cx + 13, y0 - 57]; hipR = [cx - 13, y0 - 57];
+    kneeN = [cx + legSpread * 0.72, y0 - 34]; kneeR = [cx - legSpread * 0.72, y0 - 34];
+    ankN = [cx + legSpread, y0 - 8]; ankR = [cx - legSpread, y0 - 8];
+    shN = [cx + 20, y0 - 109]; shR = [cx - 20, y0 - 109];
+    elbN = [cx + 31 + armDrop * 7, y0 - 127 + armDrop * 34];
+    handN = [cx + 17 + armDrop * 37, y0 - 148 + armDrop * 77];
+    elbR = [cx - 31 - armDrop * 7, y0 - 127 + armDrop * 34];
+    handR = [cx - 17 - armDrop * 37, y0 - 148 + armDrop * 77];
+    headC = [cx, y0 - 136];
   } else {
-    hipN = [cx + 15, y0 - 57]; hipR = [cx - 13, y0 - 58];
-    kneeN = [cx + 19 + sw * 14, y0 - 33 - liftF * 20 - kick * 10]; kneeR = [cx - 17 - sw * 14, y0 - 33 - liftB * 20];
-    ankN = [cx + 24 + sw * 30 + kick * 26, y0 - 8 - liftF * 14 - kick * 8]; ankR = [cx - 22 - sw * 30, y0 - 8 - liftB * 14];
-    shN = [cx + 22, y0 - 108]; shR = [cx - 18, y0 - 110];
-    elbN = [cx + 30 - sw * 16, y0 - 86]; handN = [cx + 24 - sw * 24, y0 - 66];
-    elbR = [cx - 26 + sw * 16, y0 - 86]; handR = [cx - 20 + sw * 24, y0 - 66];
-    headC = [cx + 8, y0 - 134];
+    hipN = [cx + 13, y0 - 57]; hipR = [cx - 8, y0 - 58];
+    kneeN = [cx + 21 + sw * 15, y0 - 33 - liftF * 22 - kick * 10]; kneeR = [cx - 13 - sw * 15, y0 - 33 - liftB * 22];
+    ankN = [cx + 27 + sw * 32 + kick * 28, y0 - 8 - liftF * 15 - kick * 8]; ankR = [cx - 18 - sw * 32, y0 - 8 - liftB * 15];
+    shN = [cx + 20, y0 - 109]; shR = [cx - 10, y0 - 108];
+    elbN = [cx + 32 - sw * 18, y0 - 86]; handN = [cx + 30 - sw * 27, y0 - 65];
+    elbR = [cx - 20 + sw * 18, y0 - 86]; handR = [cx - 17 + sw * 27, y0 - 65];
+    headC = [cx + 13, y0 - 135];
   }
 
   const gT = T([cx, y0 - 152]);
@@ -854,7 +1030,12 @@ function drawSilhouettePlayer(ctx: CanvasRenderingContext2D, s: EngineState, cx:
   limb(kneeR, ankR, 11);
   boot(ankR, liftB < 0.15);
 
-  fillPoly([[cx - 22, y0 - 108], [cx + 4, y0 - 116], [cx + 24, y0 - 108], [cx + 26, y0 - 80], [cx + 22, y0 - 56], [cx - 2, y0 - 50], [cx - 24, y0 - 56], [cx - 27, y0 - 82]]);
+  const torso = juggling
+    ? [[cx - 22, y0 - 108], [cx + 4, y0 - 116], [cx + 24, y0 - 108], [cx + 26, y0 - 80], [cx + 22, y0 - 56], [cx - 2, y0 - 50], [cx - 24, y0 - 56], [cx - 27, y0 - 82]]
+    : celebrating
+      ? [[cx - 21, y0 - 108], [cx, y0 - 116], [cx + 21, y0 - 108], [cx + 23, y0 - 80], [cx + 17, y0 - 56], [cx, y0 - 51], [cx - 17, y0 - 56], [cx - 23, y0 - 80]]
+    : [[cx - 13, y0 - 108], [cx + 7, y0 - 116], [cx + 25, y0 - 106], [cx + 21, y0 - 81], [cx + 15, y0 - 56], [cx - 1, y0 - 51], [cx - 15, y0 - 58], [cx - 18, y0 - 82]];
+  fillPoly(torso);
 
   limb(hipN, kneeN, 16);
   limb(kneeN, ankN, 12);
@@ -874,9 +1055,10 @@ function drawSilhouettePlayer(ctx: CanvasRenderingContext2D, s: EngineState, cx:
     ctx.fill();
   });
   const nz = T([headC[0] + 14, headC[1] + 2]);
+  const noseDirection = yaw < 0 ? -1 : 1;
   ctx.beginPath();
   ctx.moveTo(nz[0], nz[1] - 3 * SC);
-  ctx.lineTo(nz[0] + 5 * SC, nz[1]);
+  ctx.lineTo(nz[0] + 5 * SC * noseDirection, nz[1]);
   ctx.lineTo(nz[0], nz[1] + 3 * SC);
   ctx.closePath();
   ctx.fill();
@@ -1017,4 +1199,9 @@ function clamp(value: number, min: number, max: number) {
 function easeOut(value: number) {
   const pct = clamp(value, 0, 1);
   return 1 - Math.pow(1 - pct, 3);
+}
+
+function smoothStep(value: number) {
+  const pct = clamp(value, 0, 1);
+  return pct * pct * (3 - 2 * pct);
 }

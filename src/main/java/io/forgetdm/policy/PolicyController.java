@@ -37,6 +37,7 @@ public class PolicyController {
     }
 
     @PostMapping public MaskingPolicyEntity create(@RequestBody MaskingPolicyEntity p) {
+        p.setName(PolicyNameRules.normalize(p.getName()));
         MaskingPolicyEntity saved = policies.save(p);
         audit.log("system", "POLICY_CREATED", saved.getName());
         return saved;

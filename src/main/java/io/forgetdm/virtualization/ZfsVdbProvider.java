@@ -569,6 +569,7 @@ public class ZfsVdbProvider {
             vdb.setCurrentSnapshotId(snapshot.getId());
             vdb.setDataSourceId(ds.getId());
             vdb.setJdbcUrl(jdbcUrl);
+            vdb.setSchemaName(snapshot.getSchemaName());
             vdb.setUsername(username);
             vdb.setPassword(password);
             vdb.setStoragePath("zfs:" + clone);
@@ -680,6 +681,7 @@ public class ZfsVdbProvider {
         vdb.setCurrentSnapshotId(snapshot.getId());
         vdb.setDataSourceId(ds.getId());
         vdb.setJdbcUrl(jdbcUrl);
+        vdb.setSchemaName(snapshot.getSchemaName());
         vdb.setUsername(username);
         vdb.setPassword(password);
         vdb.setStoragePath("zfs:" + clone);

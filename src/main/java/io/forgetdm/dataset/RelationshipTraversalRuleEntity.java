@@ -47,7 +47,7 @@ public class RelationshipTraversalRuleEntity {
     @Column(name = "rel_ref_id")
     private Long relRefId;
 
-    /** BOTH | Q1_ONLY | Q2_ONLY | NONE */
+    /** INHERIT | BOTH | Q1_ONLY | Q2_ONLY | NONE */
     @Column(name = "traverse_direction", nullable = false)
     private String traverseDirection = "BOTH";
 

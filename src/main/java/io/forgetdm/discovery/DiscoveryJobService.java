@@ -34,9 +34,19 @@ public class DiscoveryJobService {
         return start(dataSourceId, schemaName, selectedTypes, Set.of());
     }
 
-    public JobSnapshot start(Long dataSourceId, String schemaName, Set<String> selectedTypes,
-                             Set<String> selectedTables) {
+    public synchronized JobSnapshot start(Long dataSourceId, String schemaName, Set<String> selectedTypes,
+                                          Set<String> selectedTables) {
         if (dataSourceId == null) throw ApiException.bad("dataSourceId is required");
+        DiscoveryJob active = jobs.values().stream()
+                .filter(DiscoveryJob::active)
+                .filter(job -> job.matchesScope(dataSourceId, schemaName))
+                .findFirst()
+                .orElse(null);
+        if (active != null) {
+            throw ApiException.bad("Discovery scan " + active.jobId
+                    + " is already running for this data source and schema. Wait for it to finish before regenerating.");
+        }
+        discovery.validateScanScope(dataSourceId, schemaName, selectedTables);
         AccessPrincipal caller = AccessContext.current().orElse(null);
         String token = AccessContext.currentToken().orElse(null);
         String owner = caller == null ? "system" : caller.username();
@@ -272,6 +282,17 @@ public class DiscoveryJobService {
                     ownerUsername,
                     status, startedAt, finishedAt, tables.size(), completedTables, currentTable, currentColumn,
                     findings, percent(), message, error, tableSnapshots);
+        }
+
+        synchronized boolean active() {
+            return "PENDING".equals(status) || "RUNNING".equals(status);
+        }
+
+        synchronized boolean matchesScope(Long requestedDataSourceId, String requestedSchema) {
+            if (!dataSourceId.equals(requestedDataSourceId)) return false;
+            String schema = blankNull(requestedSchema);
+            if (schema == null || requestedSchemaName == null) return true;
+            return eq(schema, requestedSchemaName) || eq(schema, schemaName);
         }
 
         private int percent() {

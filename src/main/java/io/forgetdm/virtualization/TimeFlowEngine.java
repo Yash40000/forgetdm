@@ -164,6 +164,7 @@ public class TimeFlowEngine {
                     }
                 }
                 target.commit();
+                verifyMaterialization(target, dialect, manifest, schema);
             } finally {
                 target.setAutoCommit(auto);
             }
@@ -376,6 +377,38 @@ public class TimeFlowEngine {
             }
         }
         return false;
+    }
+
+    /**
+     * A provision is successful only when the captured schema and every manifest table
+     * are visible through the target driver's metadata. This catches default-schema and
+     * identifier-case mistakes before a VDB is advertised as ACTIVE.
+     */
+    private static void verifyMaterialization(Connection target, SqlDialect dialect,
+                                              SnapshotManifest manifest, String schema) throws SQLException {
+        if (schema != null && !schema.isBlank() && dialect != SqlDialect.MYSQL && !schemaExists(target, schema)) {
+            throw ApiException.bad("Provisioned schema '" + schema + "' is not visible on the target connection");
+        }
+
+        Set<String> visible = new HashSet<>();
+        DatabaseMetaData metadata = target.getMetaData();
+        String catalog = dialect == SqlDialect.MYSQL ? schema : null;
+        String schemaPattern = dialect == SqlDialect.MYSQL ? null : schema;
+        try (ResultSet rs = metadata.getTables(catalog, schemaPattern, "%", new String[]{"TABLE"})) {
+            while (rs.next()) {
+                String table = rs.getString("TABLE_NAME");
+                if (table != null) visible.add(table.toLowerCase(Locale.ROOT));
+            }
+        }
+
+        List<String> missing = manifest.tables().stream()
+                .map(SnapshotManifest.TableManifest::name)
+                .filter(name -> !visible.contains(name.toLowerCase(Locale.ROOT)))
+                .toList();
+        if (!missing.isEmpty()) {
+            throw ApiException.bad("Provisioned schema '" + String.valueOf(schema)
+                    + "' is missing table(s): " + String.join(", ", missing));
+        }
     }
 
     private static String sqlServerObjectName(String schema, String table) {

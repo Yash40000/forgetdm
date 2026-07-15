@@ -1,8 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Alert, Badge, Button, Card, Group, Loader, Paper, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
+import { ActionIcon, Alert, Badge, Button, Card, Drawer, Group, Loader, Select, SimpleGrid, Stack, Text, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { IconFlask, IconSearch, IconX } from '@tabler/icons-react';
 
 import { apiPost } from '@/lib/api';
 import type { GeneratorSpec, SyntheticDraft } from '../types';
@@ -188,7 +189,7 @@ const FALLBACK_DETAILS: Record<string, Partial<CatalogItem>> = {
 export function GeneratorCatalogPanel({ generators, draft }: GeneratorCatalogPanelProps) {
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string | null>('ALL');
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [tryOpened, setTryOpened] = useState(false);
   const [tryState, setTryState] = useState<TryState>({
     generator: '',
     param1: '',
@@ -218,12 +219,11 @@ export function GeneratorCatalogPanel({ generators, draft }: GeneratorCatalogPan
     });
   }, [catalog, category, search]);
   const selectedItem = useMemo(
-    () => catalog.find((item) => item.name === expanded) || filtered[0] || catalog[0] || null,
-    [catalog, expanded, filtered]
+    () => catalog.find((item) => item.name === tryState.generator) || null,
+    [catalog, tryState.generator]
   );
 
   const openTry = (item: CatalogItem) => {
-    setExpanded(item.name);
     setTryState((current) =>
       current.generator === item.name
         ? current
@@ -236,12 +236,12 @@ export function GeneratorCatalogPanel({ generators, draft }: GeneratorCatalogPan
             values: [],
             loading: false,
             error: ''
-          }
+        }
     );
+    setTryOpened(true);
   };
 
   const runPreview = async (item: CatalogItem) => {
-    setExpanded(item.name);
     setTryState((current) => ({
       ...current,
       generator: item.name,
@@ -273,237 +273,165 @@ export function GeneratorCatalogPanel({ generators, draft }: GeneratorCatalogPan
   };
 
   return (
-    <Card className="forge-card syn-catalog-studio" p="md">
-      <Stack gap="md">
-        <Group justify="space-between" align="flex-start">
-          <div>
-            <Text fw={850}>Generator catalogue</Text>
-            <Text size="sm" c="dimmed">
-              Same engine, calmer view: select a generator, inspect params, and try sample output before using it in a design.
-            </Text>
-          </div>
-          <Badge variant="light">{catalog.length} generators</Badge>
-        </Group>
+    <>
+      <Card className="forge-card syn-catalog-studio syn-catalog-browser-only" p="md">
+        <Stack gap="lg">
+          <Group justify="space-between" align="flex-start">
+            <div>
+              <Text fw={850} size="lg">Browse generators</Text>
+              <Text size="sm" c="dimmed">
+                Find the data shape you need, then open its test panel to generate seeded sample values.
+              </Text>
+            </div>
+            <Badge variant="light">{filtered.length} of {catalog.length}</Badge>
+          </Group>
 
-        <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
-          <div className="syn-preview-metric">
-            <span>{draft ? 'Used in design' : 'Categories'}</span>
-            <b>{draft ? Array.from(usage.values()).reduce((total, count) => total + count, 0) : categories.length - 1}</b>
+          <div className="syn-catalog-filter-bar">
+            <span className="syn-catalog-section-icon"><IconSearch size={17} /></span>
+            <TextInput
+              {...technicalInputProps}
+              aria-label="Search generators"
+              placeholder="Search by name, category, parameter, or example"
+              value={search}
+              onChange={(event) => setSearch(safeInputValue(event))}
+            />
+            <Select
+              aria-label="Generator category"
+              data={categories.map((value) => ({ value, label: value === 'ALL' ? 'All categories' : value }))}
+              value={category}
+              onChange={(value) => setCategory(value || 'ALL')}
+            />
           </div>
-          <div className="syn-preview-metric">
-            <span>Selected</span>
-            <b>{selectedItem?.name || '-'}</b>
-          </div>
-          <div className="syn-preview-metric">
-            <span>Matches</span>
-            <b>{filtered.length}</b>
-          </div>
-        </SimpleGrid>
 
-        <section className="masking-two-column syn-catalog-layout">
-          <Paper className="masking-panel syn-catalog-preview-panel" p="md">
-            {selectedItem ? (
-              <Stack gap="sm">
-                <Group justify="space-between" align="flex-start">
-                  <div>
-                    <Text size="xs" c="dimmed" fw={850} tt="uppercase">
-                      Generator preview
-                    </Text>
-                    <Text fw={850} size="lg">
-                      {selectedItem.name}
-                    </Text>
-                    <Text size="sm" c="dimmed">
-                      {selectedItem.description}
-                    </Text>
+          {!filtered.length ? (
+            <Alert color="yellow" variant="light">
+              No generators match this filter.
+            </Alert>
+          ) : (
+            <div className="syn-generator-grid is-browser">
+              {filtered.map((item) => (
+                <article key={item.name} className="syn-generator-card">
+                  <Group justify="space-between" align="flex-start" wrap="nowrap">
+                    <div>
+                      <Text fw={850}>{item.name}</Text>
+                      <Text size="sm" c="dimmed" className="syn-generator-description">
+                        {item.description}
+                      </Text>
+                    </div>
+                    <Badge size="xs" variant="light">{item.category}</Badge>
+                  </Group>
+                  <div className="syn-generator-example">
+                    <span>Example</span>
+                    <code>{item.example || 'Generated at run time'}</code>
                   </div>
-                  <Badge variant="light">{selectedItem.category}</Badge>
-                </Group>
-                <SimpleGrid cols={{ base: 1, sm: 3 }} spacing="sm">
-                  <GeneratorDetail label="Param 1" value={selectedItem.param1 || 'Not used'} />
-                  <GeneratorDetail label="Param 2" value={selectedItem.param2 || 'Not used'} />
-                  <GeneratorDetail label="Usage" value={usageText(selectedItem)} />
-                </SimpleGrid>
-                <div className="syn-generator-example">
-                  <span>Example</span>
-                  <code>{selectedItem.example || 'No example provided'}</code>
-                </div>
-                <div className="syn-generator-try">
-                  <SimpleGrid cols={{ base: 1, sm: 2 }}>
-                    <TextInput
-                      {...technicalInputProps}
-                      label="Param 1 value"
-                      placeholder={selectedItem.param1 || 'optional'}
-                      value={tryState.generator === selectedItem.name ? tryState.param1 : ''}
-                      onChange={(event) => {
-                        const value = safeInputValue(event);
-                        setTryState((current) => ({ ...current, generator: selectedItem.name, param1: value }));
-                      }}
-                    />
-                    <TextInput
-                      {...technicalInputProps}
-                      label="Param 2 value"
-                      placeholder={selectedItem.param2 || 'optional'}
-                      value={tryState.generator === selectedItem.name ? tryState.param2 : ''}
-                      onChange={(event) => {
-                        const value = safeInputValue(event);
-                        setTryState((current) => ({ ...current, generator: selectedItem.name, param2: value }));
-                      }}
-                    />
-                    <TextInput
-                      {...technicalInputProps}
-                      label="Seed"
-                      inputMode="numeric"
-                      value={tryState.generator === selectedItem.name ? tryState.seed : '42'}
-                      onChange={(event) => {
-                        const value = safeInputValue(event);
-                        setTryState((current) => ({ ...current, generator: selectedItem.name, seed: value }));
-                      }}
-                    />
-                    <TextInput
-                      {...technicalInputProps}
-                      label="Rows"
-                      inputMode="numeric"
-                      value={tryState.generator === selectedItem.name ? tryState.rows : '6'}
-                      onChange={(event) => {
-                        const value = safeInputValue(event);
-                        setTryState((current) => ({ ...current, generator: selectedItem.name, rows: value }));
-                      }}
-                    />
-                  </SimpleGrid>
-                  <Group justify="space-between" mt="sm">
-                    <Text size="xs" c="dimmed">
-                      Preview uses the same backend generator engine.
-                    </Text>
-                    <Button
-                      size="xs"
-                      onClick={() => {
-                        openTry(selectedItem);
-                        void runPreview(selectedItem);
-                      }}
-                      disabled={tryState.loading}
-                    >
-                      {tryState.generator === selectedItem.name && tryState.loading ? <Loader size="xs" /> : 'Try now'}
+                  <div className="syn-generator-meta">
+                    {[item.param1 && `Param 1: ${item.param1}`, item.param2 && `Param 2: ${item.param2}`]
+                      .filter(Boolean)
+                      .join('  |  ') || 'No parameters required'}
+                  </div>
+                  <Group justify="space-between" align="center" gap="xs" mt="auto">
+                    {item.used ? (
+                      <Badge size="xs" color="green" variant="light">Used {item.used}</Badge>
+                    ) : (
+                      <Text size="xs" c="dimmed">Available in table design</Text>
+                    )}
+                    <Button size="compact-sm" variant="light" leftSection={<IconFlask size={14} />} onClick={() => openTry(item)}>
+                      Try
                     </Button>
                   </Group>
-                  {tryState.generator === selectedItem.name && tryState.error ? (
-                    <Alert color="red" variant="light" mt="sm">
-                      {tryState.error}
-                    </Alert>
-                  ) : null}
-                  {tryState.generator === selectedItem.name && tryState.values.length ? (
-                    <div className="syn-generator-preview">
-                      {tryState.values.map((value, index) => (
-                        <code key={`${selectedItem.name}-${index}`}>{value || 'null'}</code>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              </Stack>
-            ) : (
-              <Alert color="yellow" variant="light">
-                No generator selected.
-              </Alert>
-            )}
-          </Paper>
+                </article>
+              ))}
+            </div>
+          )}
+        </Stack>
+      </Card>
 
-          <Paper className="masking-panel" p="md">
-            <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
-              <TextInput
-                {...technicalInputProps}
-                label="Search generators"
-                placeholder="name, category, parameter, example"
-                value={search}
-                onChange={(event) => setSearch(safeInputValue(event))}
-              />
-              <Select
-                label="Category"
-                data={categories.map((value) => ({ value, label: value === 'ALL' ? 'All categories' : value }))}
-                value={category}
-                onChange={(value) => setCategory(value || 'ALL')}
-              />
-            </SimpleGrid>
-            {!filtered.length ? (
-              <Alert color="yellow" variant="light" mt="sm">
-                No generators match this filter.
-              </Alert>
-            ) : (
-              <div className="masking-function-grid syn-generator-grid is-studio">
-                {filtered.map((item) => (
-                  <article
-                    key={item.name}
-                    role="button"
-                    tabIndex={0}
-                    className={`masking-function-card syn-generator-card ${selectedItem?.name === item.name ? 'is-active' : ''}`}
-                    onClick={() => {
-                      setExpanded(item.name);
-                      openTry(item);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        setExpanded(item.name);
-                        openTry(item);
-                      }
-                    }}
-                  >
-                    <Group justify="space-between" align="flex-start" wrap="nowrap">
-                      <div>
-                        <Text fw={850}>{item.name}</Text>
-                        <Text size="xs" c="dimmed" className="syn-generator-description">
-                          {item.description}
-                        </Text>
-                      </div>
-                      <Badge size="xs" variant="light">
-                        {item.category}
-                      </Badge>
-                    </Group>
-                    <div className="syn-generator-meta">
-                      <span>{[item.param1 && `p1: ${item.param1}`, item.param2 && `p2: ${item.param2}`].filter(Boolean).join(' | ') || 'No params'}</span>
-                    </div>
-                    <Group justify="space-between" align="center" gap="xs" mt="xs">
-                      {item.used ? (
-                        <Badge size="xs" color="green" variant="light">
-                          used {item.used}
-                        </Badge>
-                      ) : (
-                        <Badge size="xs" color="gray" variant="light">
-                          reference
-                        </Badge>
-                      )}
-                      <Button
-                        size="compact-xs"
-                        variant="light"
-                        loading={tryState.generator === item.name && tryState.loading}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          openTry(item);
-                          void runPreview(item);
-                        }}
-                      >
-                        Try
-                      </Button>
-                    </Group>
-                  </article>
+      <Drawer
+        opened={tryOpened}
+        onClose={() => setTryOpened(false)}
+        position="right"
+        size="lg"
+        zIndex={500}
+        withCloseButton={false}
+        overlayProps={{ backgroundOpacity: 0.35, blur: 2 }}
+      >
+        {selectedItem ? (
+          <Stack gap="lg" className="syn-generator-drawer">
+            <div>
+              <Group justify="space-between" align="flex-start" wrap="nowrap">
+                <div>
+                  <Text fw={900} size="xl">{selectedItem.name}</Text>
+                  <Text size="sm" c="dimmed">{selectedItem.description}</Text>
+                </div>
+                <Group gap="xs" wrap="nowrap">
+                  <Badge variant="light">{selectedItem.category}</Badge>
+                  <ActionIcon variant="subtle" color="gray" aria-label="Close generator test" onClick={() => setTryOpened(false)}>
+                    <IconX size={18} />
+                  </ActionIcon>
+                </Group>
+              </Group>
+            </div>
+
+            <div className="syn-generator-try">
+              <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
+                {selectedItem.param1 ? (
+                  <TextInput
+                    {...technicalInputProps}
+                    label={`Param 1 - ${selectedItem.param1}`}
+                    placeholder="Optional"
+                    value={tryState.param1}
+                    onChange={(event) => setTryState((current) => ({ ...current, param1: safeInputValue(event) }))}
+                  />
+                ) : null}
+                {selectedItem.param2 ? (
+                  <TextInput
+                    {...technicalInputProps}
+                    label={`Param 2 - ${selectedItem.param2}`}
+                    placeholder="Optional"
+                    value={tryState.param2}
+                    onChange={(event) => setTryState((current) => ({ ...current, param2: safeInputValue(event) }))}
+                  />
+                ) : null}
+                <TextInput
+                  {...technicalInputProps}
+                  label="Seed"
+                  inputMode="numeric"
+                  value={tryState.seed}
+                  onChange={(event) => setTryState((current) => ({ ...current, seed: safeInputValue(event) }))}
+                />
+                <TextInput
+                  {...technicalInputProps}
+                  label="Sample rows"
+                  inputMode="numeric"
+                  value={tryState.rows}
+                  onChange={(event) => setTryState((current) => ({ ...current, rows: safeInputValue(event) }))}
+                />
+              </SimpleGrid>
+              <Group justify="space-between" mt="sm">
+                <Text size="xs" c="dimmed">Runs through the same backend engine used by generation jobs.</Text>
+                <Button onClick={() => void runPreview(selectedItem)} disabled={tryState.loading}>
+                  {tryState.loading ? <Loader size="xs" /> : 'Generate sample'}
+                </Button>
+              </Group>
+            </div>
+
+            {tryState.error ? <Alert color="red" variant="light">{tryState.error}</Alert> : null}
+            {tryState.values.length ? (
+              <div className="syn-generator-preview">
+                {tryState.values.map((value, index) => (
+                  <code key={`${selectedItem.name}-${index}`}>{value || 'null'}</code>
                 ))}
               </div>
+            ) : (
+              <div className="syn-generator-drawer-empty">
+                <IconFlask size={22} />
+                <Text size="sm" c="dimmed">Generated values will appear here.</Text>
+              </div>
             )}
-          </Paper>
-        </section>
-      </Stack>
-    </Card>
-  );
-}
-
-function GeneratorDetail({ label, value, monospace = false }: { label: string; value: string; monospace?: boolean }) {
-  return (
-    <div className="syn-generator-detail">
-      <Text size="xs" c="dimmed" fw={800} tt="uppercase">
-        {label}
-      </Text>
-      <Text size="sm" className={monospace ? 'ds-dtype' : undefined}>
-        {value}
-      </Text>
-    </div>
+          </Stack>
+        ) : null}
+      </Drawer>
+    </>
   );
 }
 
@@ -537,13 +465,6 @@ function buildCatalog(generators: GeneratorSpec[], usage: Map<string, number>) {
     });
   }
   return Array.from(byName.values()).sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
-}
-
-function usageText(item: CatalogItem) {
-  if (item.name === 'LITERAL') return 'Put the literal value in Param 1.';
-  if (item.name === 'LOOKUP') return 'Use with FK-linked tables to copy values from the parent row.';
-  if (item.param1 || item.param2) return 'Set parameters on the column row when this generator is selected.';
-  return 'Select this generator on any column that needs this data shape.';
 }
 
 function generatorUsage(draft?: SyntheticDraft | null) {

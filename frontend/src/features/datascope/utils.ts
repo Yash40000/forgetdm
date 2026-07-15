@@ -18,6 +18,9 @@ export type CreateBlueprintForm = {
   schemaName: string;
 };
 
+export const DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH = 8;
+export const DATASCOPE_BLUEPRINT_NAME_MAX_LENGTH = 64;
+
 export type CatalogEntry = {
   schema?: string | null;
   table?: string | null;
@@ -203,7 +206,7 @@ export function normalizeProfilesForSave(rows: TableProfile[], blueprint: DataSe
     targetTableName:
       row.targetTableName && !equalsIgnoreCase(row.targetTableName, row.tableName) ? row.targetTableName.trim() : null,
     sourceSchemaName:
-      row.sourceSchemaName && !equalsIgnoreCase(row.sourceSchemaName, blueprint.schemaName || '')
+      row.sourceSchemaName && (row.sourceDataSourceId || !equalsIgnoreCase(row.sourceSchemaName, blueprint.schemaName || ''))
         ? row.sourceSchemaName.trim()
         : null,
     filterExpr: emptyToNull(row.filterExpr || row.filterSql || ''),

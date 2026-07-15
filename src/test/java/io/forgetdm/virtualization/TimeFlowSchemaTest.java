@@ -47,6 +47,20 @@ class TimeFlowSchemaTest {
         }
     }
 
+    @Test
+    void quotedDefaultSchemaSurvivesLowerCaseH2ModeWhenVdbIsReopened() throws Exception {
+        String baseUrl = "jdbc:h2:mem:timeflow-reopen-schema;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE;DB_CLOSE_DELAY=-1";
+        SnapshotManifest manifest = new SnapshotManifest(1, "OMD1", List.of(table("ACCOUNTS", "ACCOUNT_ID")), List.of());
+
+        try (Connection c = DriverManager.getConnection(baseUrl, "sa", "")) {
+            new TimeFlowEngine(new ChunkStore()).materialize(c, SqlDialect.H2, manifest);
+        }
+        try (Connection reopened = DriverManager.getConnection(baseUrl + ";INIT=SET SCHEMA \"OMD1\"", "sa", "")) {
+            assertEquals("OMD1", reopened.getSchema());
+            assertTrue(tableExists(reopened, "OMD1", "ACCOUNTS"));
+        }
+    }
+
     private static SnapshotManifest.TableManifest table(String table, String id) {
         return new SnapshotManifest.TableManifest(
                 table,

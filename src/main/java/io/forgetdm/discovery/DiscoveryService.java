@@ -11,6 +11,7 @@ import io.forgetdm.policy.MaskingPolicyEntity;
 import io.forgetdm.policy.MaskingPolicyRepository;
 import io.forgetdm.policy.MaskingRuleEntity;
 import io.forgetdm.policy.MaskingRuleRepository;
+import io.forgetdm.policy.PolicyNameRules;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
 
@@ -112,40 +113,24 @@ public class DiscoveryService {
             // refresh only the machine SUGGESTED ones. (A re-scan must not wipe an analyst's review work.)
             List<ClassificationEntity> existing = classifications.findByDataSourceIdAndSchemaName(dataSourceId, schema);
             Set<String> locked = new HashSet<>();
-            List<ClassificationEntity> stale = new ArrayList<>();
+            Map<String, ClassificationEntity> refreshable = new LinkedHashMap<>();
             for (ClassificationEntity e : existing) {
                 boolean tableInScope = selectedTableKeys.isEmpty()
                         || selectedTableKeys.contains(normalizeName(e.getTableName()));
                 boolean typeInScope = selected.isEmpty() || selected.contains(normalizeType(e.getPiiType()));
-                if (!tableInScope || !typeInScope) continue;
-                if ("SUGGESTED".equals(e.getStatus())) stale.add(e);
-                else {
+                if (!tableInScope) continue;
+                // A classification is unique per physical column. If a narrower profile excludes the
+                // existing type, preserve and lock that column instead of inserting a second type into
+                // the same unique key during regeneration.
+                if (shouldLockExistingClassification(typeInScope, e.getStatus())) {
                     locked.add(colKey(e.getTableName(), e.getColumnName()));
-                    found.add(e);
+                    if (typeInScope && !"SUGGESTED".equals(e.getStatus())) found.add(e);
+                    continue;
                 }
+                refreshable.put(colKey(e.getTableName(), e.getColumnName()), e);
             }
-            classifications.deleteAll(stale);
-            // Flush the deletes NOW. Otherwise Hibernate orders the fresh INSERTs below before these
-            // DELETEs at commit, and re-inserting the same (data_source, table, column) collides with the
-            // not-yet-deleted stale row on uq_class — which is why a second scan of the same source failed.
-            classifications.flush();
 
-            List<String> tables = new ArrayList<>();
-            try (ResultSet rs = c.getMetaData().getTables(null, schema, "%", new String[]{"TABLE"})) {
-                while (rs.next()) {
-                    String table = rs.getString("TABLE_NAME");
-                    if (!table.toLowerCase().startsWith("flyway_")) tables.add(table);
-                }
-            }
-            if (!selectedTableKeys.isEmpty()) {
-                Set<String> discovered = new HashSet<>();
-                for (String table : tables) discovered.add(normalizeName(table));
-                List<String> missing = selectedTableKeys.stream().filter(name -> !discovered.contains(name)).sorted().toList();
-                if (!missing.isEmpty()) {
-                    throw ApiException.bad("Table focus contains table(s) not found in schema " + schema + ": " + String.join(", ", missing));
-                }
-                tables.removeIf(table -> !selectedTableKeys.contains(normalizeName(table)));
-            }
+            List<String> tables = selectScanTables(scannableTables(c, schema), selectedTableKeys, schema);
             scanProgress.tablesDiscovered(List.copyOf(tables));
             int tableIndex = 0;
             for (String table : tables) {
@@ -166,7 +151,10 @@ public class DiscoveryService {
                     }
                     Scored scored = classify(c, schema, table, col.getKey(), col.getValue(), nameHints, valueHints);
                     if (scored != null) {
-                        ClassificationEntity e = new ClassificationEntity();
+                        String key = colKey(table, col.getKey());
+                        // Refresh the existing machine suggestion in place so rescans never collide with uq_class.
+                        ClassificationEntity e = refreshable.remove(key);
+                        if (e == null) e = new ClassificationEntity();
                         e.setDataSourceId(dataSourceId);
                         e.setSchemaName(schema);
                         e.setTableName(table);
@@ -181,6 +169,8 @@ public class DiscoveryService {
                         e.setSuggestedParam1(defaultParam1(fn, scored.piiType));
                         e.setSuggestedParam2(defaultParam2(fn, scored.piiType));
                         e.setSampleValue(scored.sample);
+                        e.setStatus("SUGGESTED");
+                        e.setDiscoveredAt(java.time.Instant.now());
                         found.add(classifications.save(e));
                         tableFindings++;
                         scanProgress.findingDiscovered(table, col.getKey(), scored.piiType);
@@ -189,12 +179,55 @@ public class DiscoveryService {
                 }
                 scanProgress.tableCompleted(table, tableFindings);
             }
+            // Suggestions still present were in scope but were not rediscovered. Reviewed and
+            // out-of-scope classifications were locked above and are never removed here.
+            if (!refreshable.isEmpty()) classifications.deleteAll(refreshable.values());
         } catch (ApiException e) { throw e; }
         catch (Exception e) { throw ApiException.bad("Discovery scan failed: " + e.getMessage()); }
 
         audit.log("system", "DISCOVERY_SCAN", "datasource=" + ds.getName() + " schema=" + schemaName
                 + " piiTypes=" + selected + " tables=" + selectedTableKeys + " findings=" + found.size());
         return found;
+    }
+
+    public List<String> validateScanScope(Long dataSourceId, String schemaName, Set<String> selectedTables) {
+        DataSourceEntity ds = dataSources.get(dataSourceId);
+        try (Connection c = connections.openPooled(ds)) {
+            String schema = DataSourceService.normalizeSchema(c, schemaName);
+            return List.copyOf(selectScanTables(scannableTables(c, schema), normalizeNames(selectedTables), schema));
+        } catch (ApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw ApiException.bad("Unable to validate discovery schema: " + e.getMessage());
+        }
+    }
+
+    private static List<String> scannableTables(Connection c, String schema) throws SQLException {
+        List<String> tables = new ArrayList<>();
+        try (ResultSet rs = c.getMetaData().getTables(null, schema, "%", new String[]{"TABLE"})) {
+            while (rs.next()) {
+                String table = rs.getString("TABLE_NAME");
+                if (!table.toLowerCase(Locale.ROOT).startsWith("flyway_")) tables.add(table);
+            }
+        }
+        return tables;
+    }
+
+    private static List<String> selectScanTables(List<String> available, Set<String> selectedTableKeys, String schema) {
+        List<String> tables = new ArrayList<>(available);
+        if (!selectedTableKeys.isEmpty()) {
+            Set<String> discovered = new HashSet<>();
+            for (String table : tables) discovered.add(normalizeName(table));
+            List<String> missing = selectedTableKeys.stream().filter(name -> !discovered.contains(name)).sorted().toList();
+            if (!missing.isEmpty()) {
+                throw ApiException.bad("Table focus contains table(s) not found in schema " + schema + ": " + String.join(", ", missing));
+            }
+            tables.removeIf(table -> !selectedTableKeys.contains(normalizeName(table)));
+        }
+        if (tables.isEmpty()) {
+            throw ApiException.bad("Schema " + schema + " contains no scannable tables. Add tables or select another schema before starting discovery.");
+        }
+        return tables;
     }
 
     @Transactional
@@ -315,6 +348,7 @@ public class DiscoveryService {
 
     @Transactional
     public MaskingPolicyEntity generatePolicy(Long dataSourceId, String schemaName, String policyName) {
+        String cleanPolicyName = PolicyNameRules.normalize(policyName);
         DataSourceEntity ds = dataSources.get(dataSourceId);
         String schema = schemaName;
         if (schema == null || schema.isBlank()) {
@@ -326,7 +360,7 @@ public class DiscoveryService {
                 : classifications.findByDataSourceIdAndSchemaNameAndStatus(dataSourceId, schema, "APPROVED");
         if (approved.isEmpty()) throw ApiException.bad("No APPROVED classifications for data source " + dataSourceId);
         MaskingPolicyEntity p = new MaskingPolicyEntity();
-        p.setName(policyName);
+        p.setName(cleanPolicyName);
         p.setDataSourceId(dataSourceId);
         p.setSchemaName(schema);
         p.setDescription("Auto-generated from discovery of data source " + dataSourceId + (schema == null ? "" : " schema " + schema));
@@ -342,7 +376,7 @@ public class DiscoveryService {
             r.setParam2(cl.getSuggestedParam2() == null ? defaultParam2(cl.getSuggestedFunction(), cl.getPiiType()) : cl.getSuggestedParam2());
             rules.save(r);
         }
-        audit.log("system", "POLICY_GENERATED", policyName + " (" + approved.size() + " rules)");
+        audit.log("system", "POLICY_GENERATED", cleanPolicyName + " (" + approved.size() + " rules)");
         return p;
     }
 
@@ -728,6 +762,10 @@ public class DiscoveryService {
         return out;
     }
 
+    static boolean shouldLockExistingClassification(boolean typeInScope, String status) {
+        return !typeInScope || !"SUGGESTED".equals(status);
+    }
+
     private static Set<String> normalizeNames(Set<String> names) {
         if (names == null) return Set.of();
         Set<String> out = new HashSet<>();
@@ -830,7 +868,20 @@ public class DiscoveryService {
         if ("NATIONAL_ID".equals(fn)) return "GENERIC";
         if ("IP_ADDRESS".equals(fn)) return "SAFE_TEST_RANGE";
         if ("MAC_ADDRESS".equals(fn)) return "LOCAL_ADMIN";
-        if ("TOKENIZE".equals(fn)) return "USR_";
+        if ("TOKENIZE".equals(fn)) return switch (String.valueOf(pii)) {
+            case "MEDICAL_RECORD_NUMBER" -> "MRN_";
+            case "HEALTH_PLAN_ID" -> "HPL_";
+            case "PRESCRIPTION_ID" -> "RX_";
+            case "BIOMETRIC_ID" -> "BIO_";
+            case "GENETIC_DATA" -> "GEN_";
+            case "DEVICE_ID" -> "DEV_";
+            case "COOKIE_ID" -> "CK_";
+            case "PERSON_ID" -> "PID_";
+            case "VEHICLE_ID" -> "VEH_";
+            case "URL" -> "URL_";
+            default -> "USR_";
+        };
+        if ("NUMERIC_NOISE".equals(fn) && "AGE".equals(pii)) return "ABS:2";
         if ("SECURE_LOOKUP".equals(fn) && "GENDER".equals(pii)) return "F|M|X";
         return null;
     }
@@ -844,6 +895,7 @@ public class DiscoveryService {
         if ("IBAN".equals(fn)) return "PRESERVE_FORMAT";
         if ("NATIONAL_ID".equals(fn)) return "PRESERVE_FORMAT";
         if ("TOKENIZE".equals(fn)) return "24";
+        if ("NUMERIC_NOISE".equals(fn) && "AGE".equals(pii)) return "0:120";
         if ("SECURE_LOOKUP".equals(fn)) return "UPPER";
         return null;
     }

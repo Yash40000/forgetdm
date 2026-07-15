@@ -10,7 +10,7 @@ import jakarta.persistence.*;
  *   INHERIT       — use the Access Definition's global Q1/Q2 setting (default)
  *   FOLLOW_PARENT — rows constrained by FK join to the parent PK set (standard FK traversal)
  *   INDEPENDENT   — rows selected using this table's own filter_expr, not via FK join;
- *                   table still participates in further Q1/Q2 expansion for its own FK references
+ *                   its table-level Q1/Q2 traversal controls are disabled
  */
 @Entity
 @Table(name = "table_profiles")

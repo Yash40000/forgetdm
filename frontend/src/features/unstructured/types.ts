@@ -7,6 +7,7 @@ export type UnstructuredRule = {
   param2: string;
   selector: string;
   enabled: boolean;
+  valueGroup?: number;
 };
 
 export type UnstructuredProfile = {

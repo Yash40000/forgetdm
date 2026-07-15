@@ -72,6 +72,21 @@ final class SyntheticRangeChecks {
                                                : "; overflowing values will be clamped.")));
                     }
                 }
+                case "CREDIT_CARD_VISA", "CREDIT_CARD_MC", "CREDIT_CARD_AMEX" -> {
+                    int digits = "CREDIT_CARD_AMEX".equals(gen) ? 15 : 16;
+                    BigDecimal smallestValue = BigDecimal.TEN.pow(digits - 1);
+                    if (capacity.compareTo(smallestValue) < 0) {
+                        int precision = sizes.getOrDefault(col, 0);
+                        int scale = scales.getOrDefault(col, 0);
+                        int integerDigits = Math.max(0, precision - Math.max(0, scale));
+                        issues.add(new RangeIssue(t.name(), c.name(), true,
+                                t.name() + "." + c.name() + ": " + gen + " produces " + digits
+                                        + "-digit payment-card values, but the target numeric column provides only "
+                                        + integerDigits + " integer digits (precision " + precision + ", scale " + scale + "). "
+                                        + "Use a character target for card numbers, widen the numeric target with scale 0, "
+                                        + "or choose SEQUENCE when this is a technical identifier."));
+                    }
+                }
                 default -> { }
             }
         }

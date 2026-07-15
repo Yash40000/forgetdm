@@ -1,9 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ActionIcon, Badge, Button, Checkbox, Group, Paper, Select, SimpleGrid, Stack, Tabs, Text, TextInput, Tooltip } from '@mantine/core';
+import { ActionIcon, Badge, Button, Checkbox, Drawer, Group, Modal, Paper, Select, SimpleGrid, Stack, Tabs, Text, TextInput, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconLink, IconPlus, IconRefresh, IconShieldCheck, IconTrash } from '@tabler/icons-react';
+import { IconEdit, IconLink, IconPlus, IconRefresh, IconShieldCheck, IconTrash, IconX } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch, apiPatch, apiPost } from '@/lib/api';
@@ -12,7 +12,7 @@ import { NameInput } from '@/components/name-input';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { keys } from '@/lib/keys';
 import type { MaskingPolicy, MaskingRule } from '@/lib/types';
-import { EmptyPanel, InlineDanger, MaskingHeader, MaskingMetric, ParamControl } from './components';
+import { EmptyPanel, InlineDanger, MaskingHeader, ParamControl } from './components';
 import { useDataSources, useDiscoveryFindings, useMaskingFunctions, useMaskingLookupReferences, useMaskingScripts, useMaskingValueLists, usePolicies, usePolicyRules } from './hooks';
 import type { DiscoveryFinding, PolicyDraft, RuleDraft } from './types';
 import {
@@ -57,6 +57,8 @@ export function MaskingPoliciesPage() {
   const dataSources = useMemo(() => dataSourcesQuery.data || [], [dataSourcesQuery.data]);
   const [policyDraft, setPolicyDraft] = useState<PolicyDraft>(emptyPolicyDraft);
   const [selectedPolicyId, setSelectedPolicyId] = useState<number | null>(null);
+  const [createOpened, setCreateOpened] = useState(false);
+  const [editorOpened, setEditorOpened] = useState(false);
   const [ruleDraft, setRuleDraft] = useState<RuleDraft>(emptyRuleDraft);
   const [policySearch, setPolicySearch] = useState('');
   const [mapDataSourceId, setMapDataSourceId] = useState('');
@@ -64,7 +66,7 @@ export function MaskingPoliciesPage() {
   const [mapContextDirty, setMapContextDirty] = useState(false);
   const [selectedFindingIds, setSelectedFindingIds] = useState<number[]>([]);
 
-  const effectivePolicyId = selectedPolicyId ?? policies[0]?.id ?? null;
+  const effectivePolicyId = selectedPolicyId;
   const selectedPolicy = policies.find((policy) => policy.id === effectivePolicyId) || null;
   const rulesQuery = usePolicyRules(effectivePolicyId);
   const rules = rulesQuery.data || [];
@@ -97,6 +99,8 @@ export function MaskingPoliciesPage() {
       notifications.show({ color: 'green', title: 'Policy created', message: created.name });
       setPolicyDraft(emptyPolicyDraft);
       setSelectedPolicyId(created.id);
+      setCreateOpened(false);
+      setEditorOpened(true);
       setMapContextDirty(false);
       setRuleDraft(emptyRuleDraft);
       queryClient.invalidateQueries({ queryKey: keys.policies.all });
@@ -109,6 +113,7 @@ export function MaskingPoliciesPage() {
     onSuccess: () => {
       notifications.show({ color: 'green', title: 'Policy deleted', message: 'Rules were removed with the policy.' });
       setSelectedPolicyId(null);
+      setEditorOpened(false);
       queryClient.invalidateQueries({ queryKey: keys.policies.all });
     },
     onError: (error) => notifications.show({ color: 'red', title: 'Could not delete policy', message: (error as Error).message })
@@ -214,6 +219,7 @@ export function MaskingPoliciesPage() {
 
   const selectPolicy = (policy: MaskingPolicy) => {
     setSelectedPolicyId(policy.id);
+    setEditorOpened(true);
     setMapContextDirty(false);
     setSelectedFindingIds([]);
     setRuleDraft((current) => ({ ...current, schemaName: policy.schemaName || '' }));
@@ -234,12 +240,19 @@ export function MaskingPoliciesPage() {
       {confirmElement}
       <MaskingHeader
         eyebrow="Mask"
-        title="Masking Policy"
-        description="Create the reusable column-to-function contract that DataScope, business entities, and provision runs execute. Policies stay calm on the surface, but every rule is explicit."
+        title="Masking Policies"
+        description="Govern reusable masking rules for discovery, DataScope, and provision runs."
         action={
-          <Button leftSection={<IconRefresh size={16} />} variant="default" onClick={() => policiesQuery.refetch()}>
-            Refresh
-          </Button>
+          <Group gap="xs">
+            <Tooltip label="Refresh policies">
+              <ActionIcon size="lg" variant="default" aria-label="Refresh policies" onClick={() => policiesQuery.refetch()}>
+                <IconRefresh size={17} />
+              </ActionIcon>
+            </Tooltip>
+            <Button leftSection={<IconPlus size={16} />} onClick={() => setCreateOpened(true)}>
+              New policy
+            </Button>
+          </Group>
         }
       />
 
@@ -249,60 +262,98 @@ export function MaskingPoliciesPage() {
         title="Masking Policy could not load all backend data"
       />
 
-      <SimpleGrid cols={{ base: 1, md: 4 }} spacing="sm">
-        <MaskingMetric label="Policies" value={policies.length} detail="Reusable contracts" />
-        <MaskingMetric label="Selected rules" value={rules.length} detail={selectedPolicy?.name || 'Open a policy'} />
-        <MaskingMetric label="Functions" value={functions.length} detail="Available mask actions" />
-        <MaskingMetric label="Scripts" value={scripts.length} detail="SCRIPT exits available" />
-      </SimpleGrid>
-
-      <Paper className="forge-card masking-panel" p="md">
-        <Group justify="space-between" align="flex-start">
+      <Paper className="forge-card masking-panel" p={0}>
+        <div className="masking-panel-head">
           <div>
-            <Text fw={780}>Create policy</Text>
-            <Text size="sm" c="dimmed">
-              Optional data source and schema make discovery binding faster, but policies can stay reusable across contexts.
-            </Text>
+            <Group gap="xs">
+              <Text fw={800}>Policy inventory</Text>
+              <Badge variant="light">{filteredPolicies.length}</Badge>
+            </Group>
+            <Text size="sm" c="dimmed">Open a policy only when its rules need attention.</Text>
           </div>
-          <Badge variant="light">Governed reusable rule set</Badge>
-        </Group>
-        <div className="masking-policy-create-grid">
-          <NameInput label="Policy name" value={policyDraft.name} placeholder="customer360-mask" onChange={(value) => setPolicyDraft({ ...policyDraft, name: value })} />
+          <TextInput
+            placeholder="Search name, schema, or description"
+            value={policySearch}
+            onChange={(event) => setPolicySearch(safeInputValue(event))}
+            w={360}
+          />
+        </div>
+        {filteredPolicies.length ? (
+          <div className="forge-grid-panel">
+            <table className="forge-table masking-policy-inventory">
+              <thead>
+                <tr>
+                  <th>Policy</th>
+                  <th>Scope</th>
+                  <th>Status</th>
+                  <th>Created</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredPolicies.map((policy) => (
+                  <tr key={policy.id}>
+                    <td>
+                      <Text fw={780}>{policy.name}</Text>
+                      <Text size="xs" c="dimmed">{policy.description || 'Reusable masking rule set'}</Text>
+                    </td>
+                    <td>
+                      <Text size="sm">{policy.schemaName || 'Any schema'}</Text>
+                      <Text size="xs" c="dimmed">
+                        {policy.dataSourceId ? dataSources.find((source) => source.id === policy.dataSourceId)?.name || `Source ${policy.dataSourceId}` : 'Any data source'}
+                      </Text>
+                    </td>
+                    <td><Badge variant="light" color="green">{policy.status || 'ACTIVE'}</Badge></td>
+                    <td><Text size="sm">{formatDate(policy.createdAt)}</Text></td>
+                    <td>
+                      <Group gap={4} wrap="nowrap">
+                        <Button size="xs" variant="subtle" leftSection={<IconEdit size={15} />} onClick={() => selectPolicy(policy)}>
+                          Open
+                        </Button>
+                        <Tooltip label={`Delete ${policy.name}`}>
+                          <ActionIcon variant="subtle" color="red" aria-label={`Delete ${policy.name}`} onClick={() => void removePolicy(policy)}>
+                            <IconTrash size={16} />
+                          </ActionIcon>
+                        </Tooltip>
+                      </Group>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <EmptyPanel title="No policies found" detail="Create a policy, or generate one from PII Discovery." />
+        )}
+      </Paper>
+
+      <Drawer opened={createOpened} onClose={() => setCreateOpened(false)} position="right" size="lg" title="New masking policy">
+        <Stack gap="md">
+          <Text size="sm" c="dimmed">
+            Bind to a data source and schema when the policy is application-specific, or leave both blank to keep it reusable.
+          </Text>
+          <NameInput
+            label="Policy name"
+            description="8 to 120 characters"
+            value={policyDraft.name}
+            placeholder="CUSTOMER360-MASK"
+            maxLength={120}
+            onChange={(value) => setPolicyDraft({ ...policyDraft, name: value })}
+          />
           <Select label="Data source" data={dataSourceOptions} value={policyDraft.dataSourceId || null} clearable searchable onChange={(value) => setPolicyDraft({ ...policyDraft, dataSourceId: value || '' })} />
           <TextInput label="Schema" value={policyDraft.schemaName} placeholder="optional" onChange={(event) => setPolicyDraft({ ...policyDraft, schemaName: safeInputValue(event) })} {...technicalInputProps} />
           <TextInput label="Description" value={policyDraft.description} onChange={(event) => setPolicyDraft({ ...policyDraft, description: safeInputValue(event) })} />
-          <Button mt={22} leftSection={<IconPlus size={16} />} loading={createPolicy.isPending} disabled={!policyDraft.name.trim()} onClick={() => createPolicy.mutate()}>
-            Create
-          </Button>
-        </div>
-      </Paper>
-
-      <section className="masking-workspace">
-        <Paper className="forge-card masking-rail" p="md">
-          <Group justify="space-between">
-            <Text fw={780}>Policies</Text>
-            <Badge variant="light">{filteredPolicies.length}</Badge>
+          <Group justify="flex-end" mt="sm">
+            <Button variant="default" onClick={() => setCreateOpened(false)}>Cancel</Button>
+            <Button leftSection={<IconPlus size={16} />} loading={createPolicy.isPending} disabled={policyDraft.name.trim().length < 8} onClick={() => createPolicy.mutate()}>
+              Create policy
+            </Button>
           </Group>
-          <TextInput mt="sm" placeholder="Search policies..." value={policySearch} onChange={(event) => setPolicySearch(safeInputValue(event))} />
-          <Stack gap={4} mt="sm">
-            {filteredPolicies.map((policy) => (
-              <button
-                key={policy.id}
-                type="button"
-                className={`masking-policy-row ${policy.id === effectivePolicyId ? 'is-active' : ''}`}
-                onClick={() => selectPolicy(policy)}
-              >
-                <Text fw={760}>{policy.name}</Text>
-                <Text size="xs" c="dimmed">
-                  {policy.schemaName || 'Any schema'} · {policy.description || 'No description'}
-                </Text>
-              </button>
-            ))}
-            {!filteredPolicies.length ? <EmptyPanel title="No policies yet" detail="Create a policy, or generate one from PII Discovery." /> : null}
-          </Stack>
-        </Paper>
+        </Stack>
+      </Drawer>
 
-        <Paper className="forge-card masking-panel" p={0}>
+      <Modal opened={editorOpened && Boolean(selectedPolicy)} onClose={() => setEditorOpened(false)} fullScreen withCloseButton={false}>
+        <Paper className="masking-panel masking-policy-editor" p={0}>
           {selectedPolicy ? (
             <>
               <div className="masking-panel-head">
@@ -315,7 +366,12 @@ export function MaskingPoliciesPage() {
                     {selectedPolicy.description || 'No description'} · created {formatDate(selectedPolicy.createdAt)}
                   </Text>
                 </div>
-                <InlineDanger onClick={() => void removePolicy(selectedPolicy)}>Delete policy</InlineDanger>
+                <Group gap="xs">
+                  <InlineDanger onClick={() => void removePolicy(selectedPolicy)}>Delete policy</InlineDanger>
+                  <Button variant="default" leftSection={<IconX size={16} />} onClick={() => setEditorOpened(false)}>
+                    Close workspace
+                  </Button>
+                </Group>
               </div>
               <Tabs defaultValue="rules" classNames={{ list: 'forge-tabs-list' }}>
                 <Tabs.List px="md">
@@ -442,10 +498,10 @@ export function MaskingPoliciesPage() {
               </Tabs>
             </>
           ) : (
-            <EmptyPanel title="Open or create a policy" detail="Select a policy from the left rail to edit rules, bind discovery findings, and prepare it for DataScope." />
+            <EmptyPanel title="Policy unavailable" detail="Close this workspace and open a policy from the inventory." />
           )}
         </Paper>
-      </section>
+      </Modal>
     </main>
   );
 }

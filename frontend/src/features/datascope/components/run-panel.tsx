@@ -13,11 +13,12 @@ import {
   Select,
   SimpleGrid,
   Stack,
+  Tabs,
   Text,
   TextInput
 } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconAlertTriangle, IconPlayerPlay, IconTestPipe } from '@tabler/icons-react';
+import { IconAdjustments, IconAlertTriangle, IconDeviceFloppy, IconHistory, IconPlayerPlay, IconTestPipe } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { useConfirm } from '@/components/confirm';
@@ -54,6 +55,8 @@ export type ProvisionForm = {
   exchangeValidate: boolean;
 };
 
+export type RunPanelSection = 'build' | 'history' | 'saved';
+
 const emptyProvisionForm = (blueprint: DataSetDefinition): ProvisionForm => ({
   name: `${blueprint.name || 'datascope'}-provision`,
   policyId: blueprint.policyId ? String(blueprint.policyId) : '',
@@ -80,7 +83,8 @@ export function RunPanel({
   policies,
   dataSources,
   drift,
-  savedJobs
+  savedJobs,
+  initialSection = 'build'
 }: {
   blueprint: DataSetDefinition;
   profiles: TableProfile[];
@@ -88,6 +92,7 @@ export function RunPanel({
   dataSources: DataSource[];
   drift?: DriftReport;
   savedJobs: SavedDataScopeJob[];
+  initialSection?: RunPanelSection;
 }) {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
@@ -98,6 +103,7 @@ export function RunPanel({
   const [saveName, setSaveName] = useState('');
   const [saveDescription, setSaveDescription] = useState('');
   const [busyAction, setBusyAction] = useState<'launch' | 'save' | null>(null);
+  const [activeSection, setActiveSection] = useState<RunPanelSection>(initialSection);
 
   const previewPlan = useMutation({
     mutationFn: () =>
@@ -355,6 +361,16 @@ export function RunPanel({
     <Stack gap="md">
       {confirmElement}
 
+      <Tabs value={activeSection} onChange={(value) => setActiveSection((value || 'build') as RunPanelSection)} keepMounted>
+        <Tabs.List className="forge-tabs-list datascope-run-tabs">
+          <Tabs.Tab value="build" leftSection={<IconAdjustments size={15} />}>Build &amp; launch</Tabs.Tab>
+          <Tabs.Tab value="history" leftSection={<IconHistory size={15} />}>Run history</Tabs.Tab>
+          <Tabs.Tab value="saved" leftSection={<IconDeviceFloppy size={15} />}>Saved jobs {savedJobs.length ? `(${savedJobs.length})` : ''}</Tabs.Tab>
+        </Tabs.List>
+
+        <Tabs.Panel value="build" pt="md">
+          <Stack gap="md">
+
       <Paper className="forge-card" p="md">
         <Stack gap="sm">
           <Group justify="space-between" align="flex-start">
@@ -431,20 +447,11 @@ export function RunPanel({
                 Launch goes through the maker-checker gate when governance requires approval.
               </Text>
             </div>
-            <Group gap="xs">
-              <Button variant="light" disabled={!!busyAction} onClick={openSaveModal}>
-                Save as job
-              </Button>
-              <Button leftSection={<IconPlayerPlay size={16} />} loading={busyAction === 'launch'} disabled={busyAction === 'save'} onClick={() => void launch()}>
-                Launch provision
-              </Button>
-            </Group>
           </Group>
           <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
             <NameInput label="Run name" value={form.name} onChange={(value) => setForm({ ...form, name: value })} />
             <Select
               label="Default masking policy"
-              description="Per-table policies in the map override this."
               data={[{ value: '', label: 'No default policy' }].concat(policies.map((p) => ({ value: String(p.id), label: p.name })))}
               value={form.policyId}
               searchable
@@ -549,24 +556,47 @@ export function RunPanel({
               />
             </SimpleGrid>
           ) : null}
+          <Group className="ds-provision-run-actions" justify="flex-end" gap="xs">
+            <Button variant="light" disabled={!!busyAction} onClick={openSaveModal}>
+              Save as job
+            </Button>
+            <Button
+              leftSection={<IconPlayerPlay size={16} />}
+              loading={busyAction === 'launch'}
+              disabled={busyAction === 'save'}
+              onClick={() => void launch()}
+            >
+              Launch provision
+            </Button>
+          </Group>
         </Stack>
       </Paper>
+          </Stack>
+        </Tabs.Panel>
 
-      <Paper className="forge-card" p="md">
-        <ProvisionJobMonitor datasetId={blueprint.id} />
-      </Paper>
+        <Tabs.Panel value="history" pt="md">
+          <Paper className="forge-card" p="md"><ProvisionJobMonitor datasetId={blueprint.id} /></Paper>
+        </Tabs.Panel>
 
-      <Paper className="forge-card" p="md">
-        <Stack gap="sm">
-          <div>
-            <Text fw={800}>Saved jobs</Text>
-            <Text size="sm" c="dimmed">
-              Reusable, schedulable runs. Load pulls saved settings back into the designer above.
-            </Text>
-          </div>
-          <SavedJobsPanel jobs={savedJobs} blueprint={blueprint} onLoad={loadFromSpec} />
-        </Stack>
-      </Paper>
+        <Tabs.Panel value="saved" pt="md">
+          <Paper className="forge-card" p="md">
+            <Stack gap="sm">
+              <div>
+                <Text fw={800}>Saved jobs</Text>
+                <Text size="sm" c="dimmed">Reusable, schedulable runs. Load restores settings into Build &amp; launch.</Text>
+              </div>
+              <SavedJobsPanel
+                jobs={savedJobs}
+                blueprint={blueprint}
+                onLoad={(spec) => {
+                  loadFromSpec(spec);
+                  setActiveSection('build');
+                }}
+              />
+            </Stack>
+          </Paper>
+        </Tabs.Panel>
+      </Tabs>
 
       <Modal opened={saveOpened} onClose={() => setSaveOpened(false)} title="Save DataScope job">
         <Stack gap="sm">

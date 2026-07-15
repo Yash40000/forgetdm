@@ -32,7 +32,12 @@ public class SubsetService {
     }
 
     // ---- model ----
-    public record FkEdge(String childTable, String childColumn, String parentTable, String parentColumn) {}
+    public record FkEdge(String childTable, String childColumn, String parentTable, String parentColumn,
+                         String source, Long relRefId) {
+        public FkEdge(String childTable, String childColumn, String parentTable, String parentColumn) {
+            this(childTable, childColumn, parentTable, parentColumn, "DB", null);
+        }
+    }
     public record TableCriterion(String table, String filter, Integer rowLimit) {}
 
     /**
@@ -41,7 +46,12 @@ public class SubsetService {
      */
     public record UserRelEdge(String parentTable, String parentColumn,
                               String childTable,  String childColumn,
-                              String relName) {}
+                              String relName, Long relRefId) {
+        public UserRelEdge(String parentTable, String parentColumn,
+                           String childTable, String childColumn, String relName) {
+            this(parentTable, parentColumn, childTable, childColumn, relName, null);
+        }
+    }
 
     /**
      * Per-table directive from an Access Definition.
@@ -158,8 +168,9 @@ public class SubsetService {
                     continue;
                 }
                 edges.add(new FkEdge(ue.childTable(), ue.childColumn(),
-                                     ue.parentTable(), ue.parentColumn()));
+                                     ue.parentTable(), ue.parentColumn(), "USER", ue.relRefId()));
             }
+            edges = selectRelationshipEdges(edges, traversalDirections);
 
             SubsetPlan plan = new SubsetPlan();
             plan.driverTable = driverTable;
@@ -232,8 +243,7 @@ public class SubsetService {
                     // Should parent's children be expanded?
                     // Per-relationship traversal rule takes precedence over per-table Q2 override.
                     TableDirective parentDir = dmap.get(e.parentTable().toLowerCase(Locale.ROOT));
-                    String edgeKeyQ2 = e.parentTable().toLowerCase(Locale.ROOT) + "->" + e.childTable().toLowerCase(Locale.ROOT);
-                    String dirQ2 = traversalDirections.get(edgeKeyQ2);
+                    String dirQ2 = traversalDirection(traversalDirections, e);
                     boolean q2 = dirQ2 != null ? ("BOTH".equals(dirQ2) || "Q2_ONLY".equals(dirQ2)) : resolveQ2(parentDir, globalQ2, deferPhase);
                     if (!q2) continue;
                     // Is child excluded?
@@ -263,8 +273,7 @@ public class SubsetService {
                     // Should child's parents be expanded?
                     // Per-relationship traversal rule takes precedence over per-table Q1 override.
                     TableDirective childDir = dmap.get(e.childTable().toLowerCase(Locale.ROOT));
-                    String edgeKeyQ1 = e.parentTable().toLowerCase(Locale.ROOT) + "->" + e.childTable().toLowerCase(Locale.ROOT);
-                    String dirQ1 = traversalDirections.get(edgeKeyQ1);
+                    String dirQ1 = traversalDirection(traversalDirections, e);
                     boolean q1 = dirQ1 != null ? ("BOTH".equals(dirQ1) || "Q1_ONLY".equals(dirQ1)) : resolveQ1(childDir, globalQ1, deferPhase);
                     if (!q1) continue;
                     // Is parent excluded?
@@ -724,6 +733,60 @@ public class SubsetService {
             case "DEFER" -> deferPhase;
             default -> globalDefault;
         };
+    }
+
+    /**
+     * Select one concrete relationship for each parent/child pair. Explicit source-specific
+     * rules win. Otherwise the catalog FK is preferred; when none exists, the tool-defined
+     * relationship is selected automatically. NONE removes the edge from traversal and order.
+     */
+    static List<FkEdge> selectRelationshipEdges(List<FkEdge> edges, Map<String, String> directions) {
+        if (edges == null || edges.isEmpty()) return List.of();
+        Map<String, LinkedHashMap<String, List<FkEdge>>> grouped = new LinkedHashMap<>();
+        for (FkEdge edge : edges) {
+            grouped.computeIfAbsent(relationshipPairKey(edge), ignored -> new LinkedHashMap<>())
+                    .computeIfAbsent(relationshipRuleKey(edge), ignored -> new ArrayList<>())
+                    .add(edge);
+        }
+
+        Map<String, String> configured = directions == null ? Map.of() : directions;
+        List<FkEdge> selected = new ArrayList<>();
+        for (Map.Entry<String, LinkedHashMap<String, List<FkEdge>>> pairEntry : grouped.entrySet()) {
+            LinkedHashMap<String, List<FkEdge>> candidates = pairEntry.getValue();
+            boolean hasSpecificChoice = candidates.keySet().stream().anyMatch(configured::containsKey);
+            if (hasSpecificChoice) {
+                for (Map.Entry<String, List<FkEdge>> candidate : candidates.entrySet()) {
+                    String direction = configured.get(candidate.getKey());
+                    if (direction != null && !"NONE".equalsIgnoreCase(direction)) selected.addAll(candidate.getValue());
+                }
+                continue;
+            }
+
+            if ("NONE".equalsIgnoreCase(configured.get(pairEntry.getKey()))) continue;
+            List<FkEdge> preferred = candidates.entrySet().stream()
+                    .filter(entry -> entry.getKey().contains(":DB"))
+                    .map(Map.Entry::getValue)
+                    .findFirst()
+                    .orElseGet(() -> candidates.values().iterator().next());
+            selected.addAll(preferred);
+        }
+        return selected;
+    }
+
+    private static String traversalDirection(Map<String, String> directions, FkEdge edge) {
+        String direction = directions.get(relationshipRuleKey(edge));
+        if (direction == null) direction = directions.get(relationshipPairKey(edge));
+        return "INHERIT".equalsIgnoreCase(direction) ? null : direction;
+    }
+
+    private static String relationshipPairKey(FkEdge edge) {
+        return edge.parentTable().toLowerCase(Locale.ROOT) + "->" + edge.childTable().toLowerCase(Locale.ROOT);
+    }
+
+    private static String relationshipRuleKey(FkEdge edge) {
+        String source = edge.source() == null ? "DB" : edge.source().toUpperCase(Locale.ROOT);
+        String key = relationshipPairKey(edge) + ":" + source;
+        return edge.relRefId() == null ? key : key + ":" + edge.relRefId();
     }
 
     private static boolean hasDeferredDirectives(Collection<TableDirective> directives) {

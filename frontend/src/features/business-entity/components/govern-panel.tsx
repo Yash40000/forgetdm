@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { Badge, Button, Group, Modal, Select, SimpleGrid, Stack, Text, Textarea, TextInput } from '@mantine/core';
+import { Badge, Button, Group, Modal, Select, SimpleGrid, Stack, Tabs, Text, Textarea, TextInput } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
+import { IconBook2, IconHistory, IconRefresh } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { apiPost } from '@/lib/api';
@@ -88,7 +89,7 @@ export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDeta
   };
 
   return (
-    <Stack gap="lg">
+    <Stack gap="md">
       <div>
         <Group justify="space-between" align="flex-end" mb="xs">
           <div>
@@ -99,9 +100,6 @@ export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDeta
               Releases, runs, exports, and promotions need a second pair of eyes — requesters can never approve their own request.
             </Text>
           </div>
-          <Button size="xs" variant="light" loading={syncCatalog.isPending} onClick={() => syncCatalog.mutate()}>
-            Sync catalog
-          </Button>
         </Group>
         <SimpleGrid cols={{ base: 1, sm: 3, lg: 5 }} mb="xs">
           <Select size="xs" label="Action" data={['RELEASE', 'RUN', 'EXPORT', 'PROMOTE']} value={form.action} onChange={(value) => setForm({ ...form, action: value || 'RELEASE' })} />
@@ -151,95 +149,122 @@ export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDeta
         )}
       </div>
 
-      <div>
-        <Text fw={650} size="sm" mb={6}>
-          Catalog
-        </Text>
-        {catalogAssets.length ? (
-          catalogAssets.slice(0, 12).map((asset, index) => (
-            <div className="be-line-row" key={index}>
-              <span className="be-dot" style={{ background: statusDot(str(asset.certificationStatus, 'ACTIVE')) }} aria-hidden />
-              <div className="be-line-body">
-                <Text size="sm" fw={600}>
-                  {str(asset.displayName)}
-                </Text>
-                <Text size="xs" c="dimmed">
-                  {str(asset.assetType)} · {str(asset.certificationStatus, '-')} · quality {str(asset.qualityScore, '-')}
-                </Text>
+      <div className="be-govern-data-grid">
+        <section className="be-operational-panel" aria-labelledby="be-catalog-heading">
+          <Group className="be-operational-panel-head" justify="space-between" align="center" wrap="nowrap">
+            <Group gap={9} wrap="nowrap">
+              <span className="be-operational-icon"><IconBook2 size={16} /></span>
+              <div>
+                <Text id="be-catalog-heading" fw={650} size="sm">Catalog</Text>
+                <Text size="xs" c="dimmed">Ownership, lineage, certification, and quality.</Text>
               </div>
-            </div>
-          ))
-        ) : (
-          <Text size="sm" c="dimmed">
-            Catalog is empty — run Sync catalog above.
-          </Text>
-        )}
-      </div>
+            </Group>
+            <Button
+              size="compact-xs"
+              variant="subtle"
+              leftSection={<IconRefresh size={13} />}
+              loading={syncCatalog.isPending}
+              onClick={() => syncCatalog.mutate()}
+            >
+              Sync
+            </Button>
+          </Group>
+          <Group className="be-operational-summary" gap={6} wrap="wrap">
+            <Badge size="sm" variant="light" color="blue">{catalogAssets.length} assets</Badge>
+            <Badge size="sm" variant="light" color="teal">
+              {catalogAssets.filter((asset) => str(asset.certificationStatus).toUpperCase() === 'CERTIFIED').length} certified
+            </Badge>
+          </Group>
+          <div className="be-operational-list">
+            {catalogAssets.length ? (
+              catalogAssets.map((asset, index) => (
+                <div className="be-line-row" key={str(asset.id, String(index))}>
+                  <span className="be-dot" style={{ background: statusDot(str(asset.certificationStatus, 'ACTIVE')) }} aria-hidden />
+                  <div className="be-line-body">
+                    <Group gap={6} wrap="nowrap">
+                      <Text size="sm" fw={600} truncate="end">{str(asset.displayName, 'Catalog asset')}</Text>
+                      <Badge size="xs" variant="light" color="gray">{str(asset.assetType, 'ASSET')}</Badge>
+                    </Group>
+                    <Text size="xs" c="dimmed">
+                      {str(asset.certificationStatus, 'Uncertified')} · quality {str(asset.qualityScore, 'not scored')}
+                    </Text>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="be-operational-empty">
+                <IconBook2 size={22} />
+                <Text fw={600} size="sm">Catalog has not been synchronized</Text>
+                <Text size="xs" c="dimmed">Sync to capture the current members, ownership, lineage, and quality evidence.</Text>
+                <Button size="compact-xs" variant="light" onClick={() => syncCatalog.mutate()}>Sync catalog</Button>
+              </div>
+            )}
+          </div>
+        </section>
 
-      <div>
-        <Text fw={650} size="sm" mb={6}>
-          Evidence
-        </Text>
-        <Text size="xs" c="dimmed" mb="xs">
-          Read-only audit trail: runs, loader decisions, immutable versions, promotions.
-        </Text>
-        {executionRuns.slice(0, 10).map((run, index) => (
-          <div className="be-line-row" key={`run-${index}`}>
-            <span className="be-dot" style={{ background: statusDot(str(run.status ?? run.engineStatus)) }} aria-hidden />
-            <div className="be-line-body">
-              <Text size="sm" fw={600}>
-                {str(run.engine, 'RUN')} · plan #{str(run.executionPlanId, '-')}
-              </Text>
-              <Text size="xs" c="dimmed">
-                run {str(run.engineRunId, '-')} · {str(run.status ?? run.engineStatus, '-')}
-              </Text>
+        <section className="be-operational-panel" aria-labelledby="be-evidence-heading">
+          <Group className="be-operational-panel-head" gap={9} wrap="nowrap">
+            <span className="be-operational-icon"><IconHistory size={16} /></span>
+            <div>
+              <Text id="be-evidence-heading" fw={650} size="sm">Evidence</Text>
+              <Text size="xs" c="dimmed">Read-only runs, releases, promotions, and loader decisions.</Text>
             </div>
-          </div>
-        ))}
-        {packageVersions.slice(0, 6).map((version, index) => (
-          <div className="be-line-row" key={`ver-${index}`}>
-            <span className="be-dot" style={{ background: statusDot(str(version.status)) }} aria-hidden />
-            <div className="be-line-body">
-              <Text size="sm" fw={600}>
-                Package #{str(version.packageId, '-')} · v{str(version.versionNumber, '-')}
-              </Text>
-              <Text size="xs" c="dimmed">
-                hash {str(version.artifactHash).slice(0, 12) || '-'} · retention {str(version.retentionUntil, '-')}
-              </Text>
+          </Group>
+          <Tabs className="be-evidence-tabs" defaultValue={executionRuns.length ? 'runs' : packageVersions.length ? 'versions' : promotions.length ? 'promotions' : 'loaders'}>
+            <Tabs.List grow>
+              <Tabs.Tab value="runs">Runs <Badge size="xs" variant="light">{executionRuns.length}</Badge></Tabs.Tab>
+              <Tabs.Tab value="versions">Versions <Badge size="xs" variant="light">{packageVersions.length}</Badge></Tabs.Tab>
+              <Tabs.Tab value="promotions">Promotions <Badge size="xs" variant="light">{promotions.length}</Badge></Tabs.Tab>
+              <Tabs.Tab value="loaders">Loaders <Badge size="xs" variant="light">{loaderStrategies.length}</Badge></Tabs.Tab>
+            </Tabs.List>
+            <div className="be-operational-list be-evidence-list">
+              <Tabs.Panel value="runs">
+                {executionRuns.length ? executionRuns.map((run, index) => (
+                  <div className="be-line-row" key={`run-${str(run.id, String(index))}`}>
+                    <span className="be-dot" style={{ background: statusDot(str(run.status ?? run.engineStatus)) }} aria-hidden />
+                    <div className="be-line-body">
+                      <Text size="sm" fw={600}>{str(run.engine, 'RUN')} · plan #{str(run.executionPlanId, '-')}</Text>
+                      <Text size="xs" c="dimmed">run {str(run.engineRunId, '-')} · {str(run.status ?? run.engineStatus, '-')}</Text>
+                    </div>
+                  </div>
+                )) : <EvidenceEmpty label="No execution evidence has been recorded yet." />}
+              </Tabs.Panel>
+              <Tabs.Panel value="versions">
+                {packageVersions.length ? packageVersions.map((version, index) => (
+                  <div className="be-line-row" key={`ver-${str(version.id, String(index))}`}>
+                    <span className="be-dot" style={{ background: statusDot(str(version.status)) }} aria-hidden />
+                    <div className="be-line-body">
+                      <Text size="sm" fw={600}>Package #{str(version.packageId, '-')} · v{str(version.versionNumber, '-')}</Text>
+                      <Text size="xs" c="dimmed">hash {str(version.artifactHash).slice(0, 12) || '-'} · retention {str(version.retentionUntil, '-')}</Text>
+                    </div>
+                  </div>
+                )) : <EvidenceEmpty label="No immutable package versions have been released." />}
+              </Tabs.Panel>
+              <Tabs.Panel value="promotions">
+                {promotions.length ? promotions.map((promotion, index) => (
+                  <div className="be-line-row" key={`promo-${str(promotion.id, String(index))}`}>
+                    <span className="be-dot" style={{ background: statusDot(str(promotion.status)) }} aria-hidden />
+                    <div className="be-line-body">
+                      <Text size="sm" fw={600}>{str(promotion.fromEnvironment, '-')} → {str(promotion.toEnvironment, '-')}</Text>
+                      <Text size="xs" c="dimmed">package #{str(promotion.packageId, '-')} · approval {str(promotion.approvedRequestId, '-')}</Text>
+                    </div>
+                  </div>
+                )) : <EvidenceEmpty label="No environment promotions have been recorded." />}
+              </Tabs.Panel>
+              <Tabs.Panel value="loaders">
+                {loaderStrategies.length ? loaderStrategies.map((strategy, index) => (
+                  <div className="be-line-row" key={`loader-${str(strategy.id, String(index))}`}>
+                    <span className="be-dot" style={{ background: '#94a3b8' }} aria-hidden />
+                    <div className="be-line-body">
+                      <Text size="sm" fw={600}>{str(strategy.table, 'table')} · {str(strategy.engine, '-')}</Text>
+                      <Text size="xs" c="dimmed">{str(strategy.strategy, '-')} · fallback {str(strategy.fallback, '-')}</Text>
+                    </div>
+                  </div>
+                )) : <EvidenceEmpty label="No loader strategy decisions have been captured." />}
+              </Tabs.Panel>
             </div>
-          </div>
-        ))}
-        {promotions.slice(0, 6).map((promotion, index) => (
-          <div className="be-line-row" key={`promo-${index}`}>
-            <span className="be-dot" style={{ background: statusDot(str(promotion.status)) }} aria-hidden />
-            <div className="be-line-body">
-              <Text size="sm" fw={600}>
-                {str(promotion.fromEnvironment, '-')} → {str(promotion.toEnvironment, '-')}
-              </Text>
-              <Text size="xs" c="dimmed">
-                package #{str(promotion.packageId, '-')} · approval {str(promotion.approvedRequestId, '-')}
-              </Text>
-            </div>
-          </div>
-        ))}
-        {loaderStrategies.slice(0, 6).map((strategy, index) => (
-          <div className="be-line-row" key={`loader-${index}`}>
-            <span className="be-dot" style={{ background: '#94a3b8' }} aria-hidden />
-            <div className="be-line-body">
-              <Text size="sm" fw={600}>
-                {str(strategy.table, 'table')} · {str(strategy.engine, '-')}
-              </Text>
-              <Text size="xs" c="dimmed">
-                {str(strategy.strategy, '-')} · fallback {str(strategy.fallback, '-')}
-              </Text>
-            </div>
-          </div>
-        ))}
-        {!executionRuns.length && !packageVersions.length && !promotions.length && !loaderStrategies.length ? (
-          <Text size="sm" c="dimmed">
-            No evidence recorded yet — it appears here after the first runs and promotions.
-          </Text>
-        ) : null}
+          </Tabs>
+        </section>
       </div>
 
       <Modal opened={Boolean(decisionDraft)} onClose={() => !decisionBusy && setDecisionDraft(null)} closeOnClickOutside={!decisionBusy} closeOnEscape={!decisionBusy} title={decisionDraft?.decision === 'reject' ? 'Reject governance request' : 'Approve governance request'}>
@@ -283,5 +308,15 @@ export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDeta
         </Stack>
       </Modal>
     </Stack>
+  );
+}
+
+function EvidenceEmpty({ label }: { label: string }) {
+  return (
+    <div className="be-operational-empty">
+      <IconHistory size={22} />
+      <Text fw={600} size="sm">No evidence in this category</Text>
+      <Text size="xs" c="dimmed">{label}</Text>
+    </div>
   );
 }

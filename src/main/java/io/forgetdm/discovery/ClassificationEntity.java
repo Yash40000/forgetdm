@@ -47,4 +47,5 @@ public class ClassificationEntity {
     public String getSampleValue() { return sampleValue; }
     public void setSampleValue(String v) { sampleValue = v; }
     public Instant getDiscoveredAt() { return discoveredAt; }
+    public void setDiscoveredAt(Instant v) { discoveredAt = v; }
 }

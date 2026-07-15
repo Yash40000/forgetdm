@@ -162,6 +162,7 @@ public class SyntheticProfileService {
             }
         }
 
+        if ("PADDED_SEQUENCE".equals(gen) && p1.isBlank()) p1 = "12";
         out.put("generator", gen);
         out.put("param1", p1);
         out.put("param2", p2);

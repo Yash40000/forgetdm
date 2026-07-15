@@ -25,9 +25,13 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.TextNode;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 import org.w3c.dom.Element;
 import org.w3c.dom.Node;
@@ -60,6 +64,7 @@ public class UnstructuredMaskingService {
     private final long maxUploadBytes;
     private final int maxExtractedChars;
     private final long retentionHours;
+    private final Tika tika = new Tika();
     private final ExecutorService executor = Executors.newFixedThreadPool(3, r -> {
         Thread t = new Thread(r, "forgetdm-unstructured-mask"); t.setDaemon(true); return t;
     });
@@ -143,8 +148,19 @@ public class UnstructuredMaskingService {
         Long id = saved.getId(); String effectiveSeed = seed == null ? "" : seed;
         audit.record(actor(), "UNSTRUCTURED_JOB_QUEUED", "MASKING", "UNSTRUCTURED_JOB", String.valueOf(id),
                 saved.getOriginalFilename(), "SUCCESS", "profile=" + profile.getName() + " sha256=" + stored.sha256(), null);
-        executor.submit(() -> process(id, effectiveSeed));
+        submitAfterCommit(id, effectiveSeed);
         return saved;
+    }
+
+    private void submitAfterCommit(Long id, String seed) {
+        Runnable submit = () -> executor.submit(() -> process(id, seed));
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { submit.run(); }
+            });
+        } else {
+            submit.run();
+        }
     }
 
     public List<UnstructuredJobEntity> listJobs() {
@@ -190,13 +206,12 @@ public class UnstructuredMaskingService {
     }
 
     private void process(Long id, String seed) {
-        UnstructuredJobEntity job = getJob(id);
         try {
+            UnstructuredJobEntity job = getJob(id);
             update(job, "RUNNING", "DETECT", 5, "Detecting content type without trusting the filename");
             UnstructuredProfileEntity profile = getProfile(job.getProfileId());
             List<Rule> rules = parseRules(profile.getRulesJson());
-            String mediaType;
-            try (InputStream in = source(job)) { mediaType = new Tika().detect(in, job.getOriginalFilename()); }
+            String mediaType = detectMediaType(job);
             job = getJob(id); job.setDetectedFormat(mediaType); jobs.save(job);
             checkCanceled(id);
 
@@ -215,22 +230,30 @@ public class UnstructuredMaskingService {
             audit.record(job.getCreatedBy(), "UNSTRUCTURED_JOB_COMPLETED", "MASKING", "UNSTRUCTURED_JOB", String.valueOf(id),
                     job.getOriginalFilename(), "SUCCESS", "findings=" + job.getFindingsCount() + " strategy=" + job.getOutputStrategy(), job.getFindingsJson());
         } catch (Canceled e) {
-            job = getJob(id); job.setStatus("CANCELED"); job.setStage("CANCELED"); job.setMessage("Canceled; encrypted source and incomplete output were destroyed");
+            UnstructuredJobEntity job = getJob(id); job.setStatus("CANCELED"); job.setStage("CANCELED"); job.setMessage("Canceled; encrypted source and incomplete output were destroyed");
             job.setFinishedAt(Instant.now()); jobs.save(job); vault.delete(job.getSourceStorageKey()); vault.delete(job.getOutputStorageKey()); clearSource(job);
-        } catch (Exception e) {
-            job = getJob(id); job.setStatus("FAILED"); job.setStage("FAILED"); job.setProgress(Math.min(job.getProgress(), 99));
-            job.setMessage("Masking failed closed; no unmasked output was released"); job.setErrorMessage(safeError(e)); job.setFinishedAt(Instant.now()); jobs.save(job);
+        } catch (Throwable e) {
+            failJob(id, e, "Masking failed closed; no unmasked output was released");
+        }
+    }
+
+    private void failJob(Long id, Throwable error, String message) {
+        jobs.findById(id).ifPresent(job -> {
+            job.setStatus("FAILED"); job.setStage("FAILED"); job.setProgress(Math.min(job.getProgress(), 99));
+            job.setMessage(message); job.setErrorMessage(safeError(error)); job.setFinishedAt(Instant.now()); jobs.save(job);
             vault.delete(job.getSourceStorageKey()); vault.delete(job.getOutputStorageKey()); clearSource(job);
             audit.record(job.getCreatedBy(), "UNSTRUCTURED_JOB_FAILED", "MASKING", "UNSTRUCTURED_JOB", String.valueOf(id),
-                    job.getOriginalFilename(), "FAILURE", safeError(e), null);
-        }
+                    job.getOriginalFilename(), "FAILURE", safeError(error), null);
+        });
     }
 
     private Processed processFormat(UnstructuredJobEntity job, String mediaType, List<Rule> rules, MaskingEngine engine) throws Exception {
         String lowerName = job.getOriginalFilename().toLowerCase(Locale.ROOT);
         Map<String, Long> findings = new LinkedHashMap<>();
         if (isJson(mediaType, lowerName)) {
+            update(job, "RUNNING", "EXTRACT", 30, "Reading structured JSON content");
             JsonNode root; try (InputStream in = source(job)) { root = json.readTree(in); }
+            update(job, "RUNNING", "MASK", 58, "Masking JSON values while preserving keys and structure");
             maskJson(root, "$", rules, engine, findings, new long[]{0});
             byte[] bytes = json.writerWithDefaultPrettyPrinter().writeValueAsBytes(root);
             return new Processed(bytes, "json", "NATIVE_JSON", bytes.length, findings);
@@ -239,7 +262,9 @@ public class UnstructuredMaskingService {
         if (isXml(mediaType, lowerName)) return processXml(job, rules, engine, findings);
         if (isHtml(mediaType, lowerName)) return processHtml(job, rules, engine, findings);
         if (mediaType.startsWith("text/") || lowerName.endsWith(".log") || lowerName.endsWith(".txt")) {
+            update(job, "RUNNING", "EXTRACT", 34, "Reading plain text within the configured safety limit");
             String text; try (InputStream in = source(job)) { text = readBounded(in); }
+            update(job, "RUNNING", "MASK", 66, "Applying contextual and profile masking rules");
             MaskResult result = maskText(text, "$", rules, engine, findings);
             return new Processed(result.text().getBytes(StandardCharsets.UTF_8), extension(lowerName, "txt"), "NATIVE_TEXT", text.length(), findings);
         }
@@ -329,11 +354,22 @@ public class UnstructuredMaskingService {
             Matcher matcher = Pattern.compile(rule.pattern(), Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE).matcher(current);
             StringBuffer out = new StringBuffer(); long count = 0;
             while (matcher.find()) {
-                String value = matcher.group();
+                int valueGroup = rule.valueGroup();
+                String value = matcher.group(valueGroup);
                 if ("CREDIT_CARD".equals(rule.piiType()) && !PiiPatterns.looksLikeCard(value)) continue;
                 String replacement = engine.mask(parseFunction(rule.function()), "unstructured." + rule.piiType().toLowerCase(Locale.ROOT),
                         value, blankToNull(rule.param1()), blankToNull(rule.param2()), new MaskContext(++rowIndex));
-                matcher.appendReplacement(out, Matcher.quoteReplacement(replacement == null ? "" : replacement)); count++;
+                String replacementValue = replacement == null ? "" : replacement;
+                if (valueGroup == 0) {
+                    matcher.appendReplacement(out, Matcher.quoteReplacement(replacementValue));
+                } else {
+                    String match = matcher.group();
+                    int relativeStart = matcher.start(valueGroup) - matcher.start();
+                    int relativeEnd = matcher.end(valueGroup) - matcher.start();
+                    String replacedMatch = match.substring(0, relativeStart) + replacementValue + match.substring(relativeEnd);
+                    matcher.appendReplacement(out, Matcher.quoteReplacement(replacedMatch));
+                }
+                count++;
             }
             matcher.appendTail(out); current = out.toString();
             if (count > 0) findings.merge(rule.piiType(), count, Long::sum);
@@ -354,6 +390,14 @@ public class UnstructuredMaskingService {
         return handler.toString();
     }
 
+    private String detectMediaType(UnstructuredJobEntity job) throws Exception {
+        // Tika only needs a header sample for type detection. Bounding this read prevents a malformed
+        // or very large upload from holding the worker indefinitely at the first progress stage.
+        try (InputStream in = source(job)) {
+            return tika.detect(in.readNBytes(64 * 1024), job.getOriginalFilename());
+        }
+    }
+
     private InputStream source(UnstructuredJobEntity job) { return vault.open(job.getSourceStorageKey(), job.getSourceKeySalt(), job.getSourceIv()); }
     private String readBounded(InputStream in) throws Exception {
         ByteArrayOutputStream out = new ByteArrayOutputStream(); byte[] buf = new byte[8192]; int n; long total = 0;
@@ -369,7 +413,8 @@ public class UnstructuredMaskingService {
             for (JsonNode r : root) out.add(new Rule(r.path("name").asText(r.path("piiType").asText("Rule")),
                     r.path("piiType").asText("CUSTOM").toUpperCase(Locale.ROOT), r.path("pattern").asText(),
                     r.path("function").asText("REDACT").toUpperCase(Locale.ROOT), r.path("param1").asText(""),
-                    r.path("param2").asText(""), r.path("selector").asText(""), r.path("enabled").asBoolean(true)));
+                    r.path("param2").asText(""), r.path("selector").asText(""), r.path("enabled").asBoolean(true),
+                    Math.max(0, r.path("valueGroup").asInt(0))));
             return out;
         } catch (ApiException e) { throw e; }
         catch (Exception e) { throw ApiException.bad("Profile rules are not valid JSON: " + e.getMessage()); }
@@ -380,7 +425,12 @@ public class UnstructuredMaskingService {
             if (rule.pattern() == null || rule.pattern().isBlank()) throw ApiException.bad(rule.name() + " needs a regular expression");
             if (rule.pattern().length() > 1000) throw ApiException.bad(rule.name() + " pattern is too long");
             if (rule.pattern().matches(".*(\\+|\\*|\\{[^}]+})\\)[+*].*")) throw ApiException.bad(rule.name() + " contains a nested quantifier that could stall document processing");
-            try { Pattern.compile(rule.pattern()); } catch (Exception e) { throw ApiException.bad(rule.name() + " has an invalid pattern: " + e.getMessage()); }
+            try {
+                Pattern pattern = Pattern.compile(rule.pattern());
+                if (rule.valueGroup() > pattern.matcher("").groupCount())
+                    throw ApiException.bad(rule.name() + " valueGroup " + rule.valueGroup() + " does not exist in its pattern");
+            } catch (ApiException e) { throw e; }
+            catch (Exception e) { throw ApiException.bad(rule.name() + " has an invalid pattern: " + e.getMessage()); }
             parseFunction(rule.function());
         }
     }
@@ -388,6 +438,19 @@ public class UnstructuredMaskingService {
     private String canonicalRules(List<Rule> rules) { try { return json.writeValueAsString(rules); } catch (Exception e) { throw ApiException.bad("Could not save profile rules"); } }
 
     private synchronized void ensureDefaultProfile() {
+        Optional<UnstructuredProfileEntity> baseline = profiles.findByNameIgnoreCase("Enterprise PII baseline");
+        if (baseline.isPresent()) {
+            UnstructuredProfileEntity profile = baseline.get();
+            List<Rule> existing = parseRules(profile.getRulesJson());
+            Set<String> names = new HashSet<>(); existing.forEach(rule -> names.add(rule.name()));
+            List<Rule> additions = defaultRules().stream().filter(rule -> !names.contains(rule.name())).toList();
+            if (!additions.isEmpty() && "system".equalsIgnoreCase(profile.getCreatedBy())) {
+                List<Rule> upgraded = new ArrayList<>(existing); upgraded.addAll(additions);
+                profile.setRulesJson(canonicalRules(upgraded)); profile.setVersionNo(profile.getVersionNo() + 1);
+                profile.setUpdatedAt(Instant.now()); profiles.save(profile);
+            }
+            return;
+        }
         if (profiles.count() > 0) return;
         UnstructuredProfileEntity profile = new UnstructuredProfileEntity(); profile.setName("Enterprise PII baseline");
         profile.setDescription("Format-aware deterministic masking for common personal, payment, banking, and network identifiers.");
@@ -396,14 +459,25 @@ public class UnstructuredMaskingService {
 
     private static List<Rule> defaultRules() {
         return List.of(
-                new Rule("Email address", "EMAIL", "(?<![A-Z0-9._%+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}(?![A-Z0-9])", "EMAIL", "", "", "", true),
-                new Rule("US Social Security number", "SSN", "(?<!\\d)\\d{3}-\\d{2}-\\d{4}(?!\\d)", "SSN", "", "", "", true),
-                new Rule("Payment card", "CREDIT_CARD", "(?<!\\d)(?:\\d[ -]?){12,19}(?!\\d)", "CREDIT_CARD", "", "", "", true),
-                new Rule("IBAN", "IBAN", "(?<![A-Z0-9])[A-Z]{2}\\d{2}[A-Z0-9]{10,30}(?![A-Z0-9])", "IBAN", "", "", "", true),
-                new Rule("IPv4 address", "IP_ADDRESS", "(?<!\\d)(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}(?!\\d)", "IP_ADDRESS", "", "", "", true),
-                new Rule("MAC address", "MAC_ADDRESS", "(?<![0-9A-F])(?:[0-9A-F]{2}[:-]){5}[0-9A-F]{2}(?![0-9A-F])", "MAC_ADDRESS", "", "", "", true),
-                new Rule("Phone number", "PHONE", "(?<!\\w)(?:\\+?1[ .-]?)?\\(?[2-9]\\d{2}\\)?[ .-]?[2-9]\\d{2}[ .-]?\\d{4}(?!\\w)", "PHONE", "", "", "", true)
+                new Rule("Contextual full name", "FULL_NAME", "(?:(?:my\\s+)?name\\s*(?:is|[:=])\\s*|(?:customer|client|patient)\\s+)([\\p{L}][\\p{L}'-]{1,49}(?:\\s+(?!my\\b|ssn\\b|social\\b|phone\\b|email\\b|card\\b|account\\b|dob\\b|address\\b)[\\p{L}][\\p{L}'-]{1,49}){0,3})(?=\\s*(?:[,;:]|\\bmy\\b|\\b(?:ssn|social|phone|email|card|account|dob|address)\\b|$))", "FULL_NAME", "", "", "", true, 1),
+                new Rule("Compact SSN after label", "SSN", "(?:ssn|social\\s+security(?:\\s+number)?)\\s*(?:is|[:=#-])?\\s*(\\d{9})(?!\\d)", "SSN", "", "", "", true, 1),
+                new Rule("Compact SSN before label", "SSN", "(?<!\\d)(\\d{9})\\s*(?:is\\s+)?(?:my\\s+)?(?:ssn|social\\s+security(?:\\s+number)?)", "SSN", "", "", "", true, 1),
+                new Rule("Email address", "EMAIL", "(?<![A-Z0-9._%+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}(?![A-Z0-9])", "EMAIL", "", "", "", true, 0),
+                new Rule("US Social Security number", "SSN", "(?<!\\d)\\d{3}-\\d{2}-\\d{4}(?!\\d)", "SSN", "", "", "", true, 0),
+                new Rule("Payment card", "CREDIT_CARD", "(?<!\\d)(?:\\d[ -]?){12,19}(?!\\d)", "CREDIT_CARD", "", "", "", true, 0),
+                new Rule("IBAN", "IBAN", "(?<![A-Z0-9])[A-Z]{2}\\d{2}[A-Z0-9]{10,30}(?![A-Z0-9])", "IBAN", "", "", "", true, 0),
+                new Rule("IPv4 address", "IP_ADDRESS", "(?<!\\d)(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)(?:\\.(?:25[0-5]|2[0-4]\\d|1?\\d?\\d)){3}(?!\\d)", "IP_ADDRESS", "", "", "", true, 0),
+                new Rule("MAC address", "MAC_ADDRESS", "(?<![0-9A-F])(?:[0-9A-F]{2}[:-]){5}[0-9A-F]{2}(?![0-9A-F])", "MAC_ADDRESS", "", "", "", true, 0),
+                new Rule("Phone number", "PHONE", "(?<!\\w)(?:\\+?1[ .-]?)?\\(?[2-9]\\d{2}\\)?[ .-]?[2-9]\\d{2}[ .-]?\\d{4}(?!\\w)", "PHONE", "", "", "", true, 0)
         );
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void failOrphanedJobsAfterRestart() {
+        for (UnstructuredJobEntity job : jobs.findByStatusIn(Set.of("QUEUED", "RUNNING"))) {
+            failJob(job.getId(), new IllegalStateException("The masking worker was interrupted by an application restart"),
+                    "Previous masking worker was interrupted; rerun the file to create a new governed output");
+        }
     }
 
     private void update(UnstructuredJobEntity job, String status, String stage, int progress, String message) {
@@ -442,7 +516,7 @@ public class UnstructuredMaskingService {
     private static String contentType(String name) { String n = name == null ? "" : name.toLowerCase(Locale.ROOT); if (n.endsWith(".json")) return "application/json"; if (n.endsWith(".xml")) return "application/xml"; if (n.endsWith(".html")) return "text/html"; if (n.endsWith(".csv")) return "text/csv"; return "text/plain"; }
     private static String safeFilename(String filename) { String s = filename == null ? "document" : filename.replace('\\', '/'); s = s.substring(s.lastIndexOf('/') + 1).replaceAll("[\\r\\n\\t]", "_"); return s.isBlank() ? "document" : s.substring(0, Math.min(500, s.length())); }
     private static String blankToNull(String v) { return v == null || v.isBlank() ? null : v; }
-    private static String safeError(Exception e) { String s = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage(); return s.length() > 4000 ? s.substring(0, 4000) : s; }
+    private static String safeError(Throwable e) { String s = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage(); return s.length() > 4000 ? s.substring(0, 4000) : s; }
     private static String actor() { return AccessContext.current().map(p -> p.username()).orElse("system"); }
     private static void requirePayloadAccess(UnstructuredJobEntity job) {
         AccessContext.current().ifPresent(p -> {
@@ -451,7 +525,8 @@ public class UnstructuredMaskingService {
         });
     }
 
-    public record Rule(String name, String piiType, String pattern, String function, String param1, String param2, String selector, boolean enabled) {}
+    public record Rule(String name, String piiType, String pattern, String function, String param1, String param2,
+                       String selector, boolean enabled, int valueGroup) {}
     private record MaskResult(String text, long count, Map<String, Long> findings) {}
     private record Processed(byte[] bytes, String extension, String strategy, long charsProcessed, Map<String, Long> findings) {}
     private static final class Canceled extends RuntimeException {}

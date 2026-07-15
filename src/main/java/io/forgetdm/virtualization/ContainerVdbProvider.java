@@ -172,6 +172,7 @@ public class ContainerVdbProvider {
             vdb.setCurrentSnapshotId(snapshot.getId());
             vdb.setDataSourceId(ds.getId());
             vdb.setJdbcUrl(jdbcUrl);
+            vdb.setSchemaName(snapshot.getSchemaName());
             vdb.setUsername(origin.getUsername());
             vdb.setPassword(origin.getPassword());
             vdb.setStoragePath("container:" + containerName);

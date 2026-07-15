@@ -94,7 +94,7 @@ public class AgentController {
 
     @DeleteMapping("/data-store/documents/{id}")
     public Map<String, Object> deleteDocument(@PathVariable long id) {
-        store.deleteManualDocument(id);
+        store.removeDocument(id);
         return Map.of("ok", true);
     }
 }

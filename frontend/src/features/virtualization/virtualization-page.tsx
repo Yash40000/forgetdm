@@ -411,6 +411,11 @@ export function VirtualizationPage() {
                             <Badge size="xs" variant="light" color={vdb.provider === 'CONTAINER' ? 'grape' : 'blue'}>
                               {vdb.provider}
                             </Badge>
+                            {vdb.schemaName ? (
+                              <Badge size="xs" variant="outline" ml={4}>
+                                {vdb.schemaName}
+                              </Badge>
+                            ) : null}
                           </Table.Td>
                           <Table.Td>
                             <Badge variant="light" color={vdbStatusColor(vdb.status)}>

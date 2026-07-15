@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Badge, Button, Checkbox, Group, Select, SimpleGrid, Stack, Text, TextInput, Tooltip } from '@mantine/core';
+import { ActionIcon, Badge, Button, Group, Modal, Select, Stack, Switch, Text, TextInput, Tooltip } from '@mantine/core';
 import { NameInput } from '@/components/name-input';
 import { notifications } from '@mantine/notifications';
-import { IconDatabaseImport, IconPlus, IconStar, IconTrash } from '@tabler/icons-react';
+import { IconChevronDown, IconChevronRight, IconDatabaseImport, IconInfoCircle, IconPencil, IconPlus, IconStar, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch, apiPost, apiPut } from '@/lib/api';
@@ -38,6 +38,8 @@ export function ModelPanel({
   const [selectedBlueprintIds, setSelectedBlueprintIds] = useState<string[]>([]);
   const [selectedPrimaryId, setSelectedPrimaryId] = useState<string | null>(null);
   const [memberBlueprintFilter, setMemberBlueprintFilter] = useState('ALL');
+  const [editingMemberIndex, setEditingMemberIndex] = useState<number | null>(null);
+  const [blueprintsCollapsed, setBlueprintsCollapsed] = useState(false);
 
   useEffect(() => {
     if (dirty) return;
@@ -63,12 +65,20 @@ export function ModelPanel({
     setMembers((current) => current.map((member, i) => (i === index ? { ...member, ...patch } : member)));
   };
   const addMember = () => {
+    const index = members.length;
     setDirty(true);
     setMembers((current) => current.concat({ includeInSubset: true, includeInSynthetic: true }));
+    setMemberBlueprintFilter('ALL');
+    setEditingMemberIndex(index);
   };
   const removeMember = (index: number) => {
     setDirty(true);
     setMembers((current) => current.filter((_, i) => i !== index));
+    setEditingMemberIndex((current) => {
+      if (current === null) return null;
+      if (current === index) return null;
+      return current > index ? current - 1 : current;
+    });
   };
 
   const save = useMutation({
@@ -100,6 +110,7 @@ export function ModelPanel({
   });
 
   const sourceOptions = dataSources.map((source) => ({ value: String(source.id), label: source.name }));
+  const dataSourceById = useMemo(() => new Map(dataSources.map((source) => [source.id, source.name])), [dataSources]);
   const blueprintById = useMemo(() => new Map(blueprints.map((blueprint) => [blueprint.id, blueprint])), [blueprints]);
   const attachedBlueprints = useMemo(() => {
     const ids = new Set<number>();
@@ -131,6 +142,7 @@ export function ModelPanel({
     .map((member, index) => ({ member, index }))
     .filter(({ member }) => memberBlueprintFilter === 'ALL'
       || (memberBlueprintFilter === 'MANUAL' ? !member.datasetId : String(member.datasetId) === memberBlueprintFilter));
+  const editingMember = editingMemberIndex === null ? null : members[editingMemberIndex];
 
   const importBlueprints = useMutation({
     mutationFn: async ({ ids, primaryId }: { ids: number[]; primaryId?: number | null }) => {
@@ -193,17 +205,13 @@ export function ModelPanel({
   };
 
   return (
-    <Stack gap="lg">
+    <Stack gap="md">
       <div>
-        <Group justify="space-between" align="flex-end" mb="xs">
-          <div>
-            <Text fw={650} size="sm">
-              Definition
-            </Text>
-            <Text size="xs" c="dimmed">
-              The root table owns the business key; everything else on this page builds on it.
-            </Text>
-          </div>
+        <Group justify="space-between" align="center" mb={8} wrap="wrap">
+          <Group gap="sm">
+            <Text fw={700} size="sm">Definition</Text>
+            <Text size="xs" c="dimmed">Canonical identity, ownership, and root table.</Text>
+          </Group>
           <Group gap="xs">
             {dirty ? (
               <Badge color="yellow" variant="light">
@@ -215,18 +223,20 @@ export function ModelPanel({
             </Button>
           </Group>
         </Group>
-        <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
-          <NameInput label="Name" value={form.name} onChange={(value) => patchForm({ name: value })} />
-          <TextInput label="Domain" placeholder="Retail banking" value={form.domain} onChange={(e) => patchForm({ domain: e.currentTarget.value })} />
+        <div className="be-definition-grid">
+          <NameInput size="sm" label="Name" value={form.name} onChange={(value) => patchForm({ name: value })} />
+          <TextInput size="sm" label="Domain" placeholder="Retail banking" value={form.domain} onChange={(e) => patchForm({ domain: e.currentTarget.value })} />
           <Select
+            size="sm"
             label="Status"
             data={['ACTIVE', 'DRAFT', 'RETIRED']}
             value={form.status}
             onChange={(value) => patchForm({ status: value || 'ACTIVE' })}
           />
-          <TextInput label="Owner" placeholder="current user" value={form.ownerUsername} onChange={(e) => patchForm({ ownerUsername: e.currentTarget.value })} />
+          <TextInput size="sm" label="Owner" placeholder="current user" value={form.ownerUsername} onChange={(e) => patchForm({ ownerUsername: e.currentTarget.value })} />
           <TextInput
             {...technicalInputProps}
+            size="sm"
             label="Root table"
             placeholder="customers"
             value={form.rootTable}
@@ -234,45 +244,68 @@ export function ModelPanel({
           />
           <TextInput
             {...technicalInputProps}
-            label="Business key column(s)"
-            description="Comma-separated for composite keys."
+            size="sm"
+            label={
+              <span className="be-definition-label">
+                Business key columns
+                <Tooltip label="Use commas for composite keys, for example customer_id,region_id." withArrow>
+                  <IconInfoCircle size={13} />
+                </Tooltip>
+              </span>
+            }
             placeholder="customer_id"
             value={form.businessKeyColumns}
             onChange={(e) => patchForm({ businessKeyColumns: e.currentTarget.value })}
           />
           <TextInput
+            size="sm"
+            className="be-definition-description"
             label="Description"
             placeholder="What this entity represents"
             value={form.description}
             onChange={(e) => patchForm({ description: e.currentTarget.value })}
           />
-        </SimpleGrid>
+        </div>
       </div>
 
       <div>
-        <Group justify="space-between" align="flex-end" mb="xs">
+        <Group justify="space-between" align="center" mb={blueprintsCollapsed ? 0 : 'xs'}>
           <div>
             <Group gap={8}>
               <Text fw={650} size="sm">Application blueprints</Text>
               <Badge variant="light" color="blue">{attachedBlueprints.length} attached</Badge>
             </Group>
-            <Text size="xs" c="dimmed">
-              Combine DataScope blueprints from different applications. The primary blueprint owns the canonical root and business key.
-            </Text>
+            {!blueprintsCollapsed ? (
+              <Text size="xs" c="dimmed">
+                Combine DataScope blueprints from different applications. The primary blueprint owns the canonical root and business key.
+              </Text>
+            ) : null}
           </div>
-          <Tooltip label={dirty ? 'Save pending model edits before importing metadata.' : 'Import tables and relationships from one or more DataScope blueprints.'}>
-            <Button
-              size="xs"
-              variant="light"
-              leftSection={<IconDatabaseImport size={14} />}
-              disabled={dirty || blueprints.length === attachedIds.size}
-              onClick={() => setAttachOpened(true)}
-            >
-              Attach blueprints
-            </Button>
-          </Tooltip>
+          <Group gap={5} wrap="nowrap">
+            <Tooltip label={dirty ? 'Save pending model edits before importing metadata.' : 'Import tables and relationships from one or more DataScope blueprints.'}>
+              <Button
+                size="xs"
+                variant="light"
+                leftSection={<IconDatabaseImport size={14} />}
+                disabled={dirty || blueprints.length === attachedIds.size}
+                onClick={() => setAttachOpened(true)}
+              >
+                Attach blueprints
+              </Button>
+            </Tooltip>
+            <Tooltip label={blueprintsCollapsed ? 'Expand application blueprints' : 'Minimize application blueprints'}>
+              <ActionIcon
+                size="lg"
+                variant="subtle"
+                aria-label={blueprintsCollapsed ? 'Expand application blueprints' : 'Minimize application blueprints'}
+                onClick={() => setBlueprintsCollapsed((current) => !current)}
+              >
+                {blueprintsCollapsed ? <IconChevronRight size={16} /> : <IconChevronDown size={16} />}
+              </ActionIcon>
+            </Tooltip>
+          </Group>
         </Group>
-        {attachedBlueprints.length ? (
+        {!blueprintsCollapsed && attachedBlueprints.length ? (
           <div className="be-blueprint-list">
             {attachedBlueprints.map((blueprint) => (
               <div className="be-blueprint-row" key={blueprint.id}>
@@ -298,11 +331,11 @@ export function ModelPanel({
               </div>
             ))}
           </div>
-        ) : (
+        ) : !blueprintsCollapsed ? (
           <div className="be-empty-inline">
             Attach the first DataScope blueprint to import its profile tables, keys, and declared relationships.
           </div>
-        )}
+        ) : null}
       </div>
 
       <div>
@@ -333,59 +366,67 @@ export function ModelPanel({
           </Group>
         </Group>
         {members.length ? (
-          <div className="be-member-grid">
-            <div className="be-member-grid-head">
-              <span>Role</span>
-              <span>Blueprint</span>
-              <span>Data source</span>
-              <span>Schema</span>
-              <span>Table</span>
+          <div className="be-member-inventory">
+            <div className="be-member-inventory-head" aria-hidden>
+              <span>Member</span>
+              <span>Physical table</span>
               <span>Key column(s)</span>
-              <span>Joins to role</span>
+              <span>Parent link</span>
               <span>Use</span>
               <span />
             </div>
-            {visibleMembers.map(({ member, index }) => (
-              <div className="be-member-grid-row" key={member.id ?? `new-${index}`}>
-                <TextInput size="xs" placeholder="customer" value={member.logicalRole || ''} onChange={(e) => patchMember(index, { logicalRole: e.currentTarget.value })} />
-                <Select
-                  size="xs"
-                  searchable
-                  clearable
-                  placeholder="manual"
-                  data={attachedBlueprintOptions}
-                  value={member.datasetId ? String(member.datasetId) : null}
-                  onChange={(value) => patchMember(index, { datasetId: value ? Number(value) : null })}
-                />
-                <Select
-                  size="xs"
-                  searchable
-                  placeholder="source"
-                  data={sourceOptions}
-                  value={member.dataSourceId ? String(member.dataSourceId) : null}
-                  onChange={(value) => patchMember(index, { dataSourceId: value ? Number(value) : null })}
-                />
-                <TextInput {...technicalInputProps} size="xs" placeholder="schema" value={member.schemaName || ''} onChange={(e) => patchMember(index, { schemaName: e.currentTarget.value })} />
-                <TextInput {...technicalInputProps} size="xs" placeholder="table" value={member.tableName || ''} onChange={(e) => patchMember(index, { tableName: e.currentTarget.value })} />
-                <TextInput {...technicalInputProps} size="xs" placeholder="id or k1,k2" value={member.keyColumns || ''} onChange={(e) => patchMember(index, { keyColumns: e.currentTarget.value })} />
-                <Select
-                  size="xs"
-                  searchable
-                  clearable
-                  placeholder="root member"
-                  data={parentRoleOptions.filter((option) => option.value !== member.logicalRole)}
-                  value={member.joinToRole || null}
-                  onChange={(value) => patchMember(index, { joinToRole: value || null })}
-                />
-                <Group gap={8} wrap="nowrap">
-                  <Checkbox size="xs" label="Subset" checked={member.includeInSubset !== false} onChange={(e) => patchMember(index, { includeInSubset: e.currentTarget.checked })} />
-                  <Checkbox size="xs" label="Synth" checked={member.includeInSynthetic !== false} onChange={(e) => patchMember(index, { includeInSynthetic: e.currentTarget.checked })} />
-                </Group>
-                <Button size="compact-xs" variant="subtle" color="red" onClick={() => removeMember(index)}>
-                  Remove
-                </Button>
-              </div>
-            ))}
+            {visibleMembers.map(({ member, index }) => {
+              const blueprintName = member.datasetId ? blueprintById.get(member.datasetId)?.name : null;
+              const sourceName = member.dataSourceId ? dataSourceById.get(member.dataSourceId) : null;
+              const physicalTable = [member.schemaName, member.tableName].filter(Boolean).join('.');
+              const useCount = Number(member.includeInSubset !== false) + Number(member.includeInSynthetic !== false);
+              return (
+                <div className="be-member-inventory-row" key={member.id ?? `new-${index}`}>
+                  <div className="be-member-cell">
+                    <Text fw={650} size="sm" truncate="end">
+                      {member.logicalRole || member.tableName || `Member ${index + 1}`}
+                    </Text>
+                    <Text size="xs" c="dimmed" truncate="end">{blueprintName || 'Manual member'}</Text>
+                  </div>
+                  <div className="be-member-cell">
+                    <Text size="sm" ff="monospace" truncate="end">{physicalTable || 'Table not set'}</Text>
+                    <Text size="xs" c="dimmed" truncate="end">{sourceName || 'Source not set'}</Text>
+                  </div>
+                  <Text className="be-member-value" size="sm" ff="monospace" c={member.keyColumns ? undefined : 'dimmed'} truncate="end">
+                    {member.keyColumns || 'Not set'}
+                  </Text>
+                  <Text className="be-member-value" size="sm" c={member.joinToRole ? undefined : 'dimmed'} truncate="end">
+                    {member.joinToRole || 'Root member'}
+                  </Text>
+                  <Group className="be-member-uses" gap={5} wrap="wrap">
+                    {member.includeInSubset !== false ? <Badge size="xs" variant="light" color="blue">Subset</Badge> : null}
+                    {member.includeInSynthetic !== false ? <Badge size="xs" variant="light" color="teal">Synthetic</Badge> : null}
+                    {!useCount ? <Text size="xs" c="dimmed">Disabled</Text> : null}
+                  </Group>
+                  <Group className="be-member-actions" gap={2} justify="flex-end" wrap="nowrap">
+                    <Button
+                      size="compact-xs"
+                      variant="subtle"
+                      leftSection={<IconPencil size={13} />}
+                      onClick={() => setEditingMemberIndex(index)}
+                    >
+                      Edit
+                    </Button>
+                    <Tooltip label="Remove member">
+                      <ActionIcon
+                        size="sm"
+                        color="red"
+                        variant="subtle"
+                        aria-label={`Remove ${member.logicalRole || member.tableName || `member ${index + 1}`}`}
+                        onClick={() => removeMember(index)}
+                      >
+                        <IconTrash size={14} />
+                      </ActionIcon>
+                    </Tooltip>
+                  </Group>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <Text size="sm" c="dimmed">
@@ -393,6 +434,111 @@ export function ModelPanel({
           </Text>
         )}
       </div>
+
+      <Modal
+        opened={editingMemberIndex !== null && !!editingMember}
+        onClose={() => setEditingMemberIndex(null)}
+        title={editingMember?.logicalRole || editingMember?.tableName || 'Configure member table'}
+        size="lg"
+        centered
+      >
+        {editingMember && editingMemberIndex !== null ? (
+          <Stack gap="md">
+            <Text size="xs" c="dimmed">
+              Define the physical table, its entity key, and how it participates in provisioning. Changes stay in the model draft until you save.
+            </Text>
+            <div className="be-member-editor-grid">
+              <TextInput
+                size="sm"
+                label="Member role"
+                placeholder="customer_accounts"
+                value={editingMember.logicalRole || ''}
+                onChange={(event) => patchMember(editingMemberIndex, { logicalRole: event.currentTarget.value })}
+              />
+              <Select
+                size="sm"
+                searchable
+                clearable
+                label="Application blueprint"
+                placeholder="Manual member"
+                data={attachedBlueprintOptions}
+                value={editingMember.datasetId ? String(editingMember.datasetId) : null}
+                onChange={(value) => patchMember(editingMemberIndex, { datasetId: value ? Number(value) : null })}
+              />
+              <Select
+                size="sm"
+                searchable
+                clearable
+                label="Data source"
+                placeholder="Select a source"
+                data={sourceOptions}
+                value={editingMember.dataSourceId ? String(editingMember.dataSourceId) : null}
+                onChange={(value) => patchMember(editingMemberIndex, { dataSourceId: value ? Number(value) : null })}
+              />
+              <TextInput
+                {...technicalInputProps}
+                size="sm"
+                label="Schema"
+                placeholder="public"
+                value={editingMember.schemaName || ''}
+                onChange={(event) => patchMember(editingMemberIndex, { schemaName: event.currentTarget.value })}
+              />
+              <TextInput
+                {...technicalInputProps}
+                size="sm"
+                label="Table"
+                placeholder="customers"
+                value={editingMember.tableName || ''}
+                onChange={(event) => patchMember(editingMemberIndex, { tableName: event.currentTarget.value })}
+              />
+              <TextInput
+                {...technicalInputProps}
+                size="sm"
+                label="Key column(s)"
+                description="Use commas for a composite key."
+                placeholder="customer_id"
+                value={editingMember.keyColumns || ''}
+                onChange={(event) => patchMember(editingMemberIndex, { keyColumns: event.currentTarget.value })}
+              />
+              <Select
+                className="be-member-editor-wide"
+                size="sm"
+                searchable
+                clearable
+                label="Parent member"
+                description="Leave blank for the entity root."
+                placeholder="Root member"
+                data={parentRoleOptions.filter((option) => option.value !== editingMember.logicalRole)}
+                value={editingMember.joinToRole || null}
+                onChange={(value) => patchMember(editingMemberIndex, { joinToRole: value || null })}
+              />
+            </div>
+            <Group className="be-member-use-switches" gap="xl">
+              <Switch
+                label="Use for subset provisioning"
+                checked={editingMember.includeInSubset !== false}
+                onChange={(event) => patchMember(editingMemberIndex, { includeInSubset: event.currentTarget.checked })}
+              />
+              <Switch
+                label="Use for synthetic generation"
+                checked={editingMember.includeInSynthetic !== false}
+                onChange={(event) => patchMember(editingMemberIndex, { includeInSynthetic: event.currentTarget.checked })}
+              />
+            </Group>
+            <Group justify="space-between">
+              <Button
+                color="red"
+                variant="subtle"
+                leftSection={<IconTrash size={14} />}
+                onClick={() => removeMember(editingMemberIndex)}
+              >
+                Remove member
+              </Button>
+              <Button onClick={() => setEditingMemberIndex(null)}>Done</Button>
+            </Group>
+          </Stack>
+        ) : null}
+      </Modal>
 
       <BlueprintBrowser
         opened={attachOpened}

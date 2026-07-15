@@ -12,7 +12,7 @@ import { NameInput } from '@/components/name-input';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { keys } from '@/lib/keys';
 import type { MaskPreview, MaskingScript } from '@/lib/types';
-import { EmptyPanel, MaskingHeader, MaskingMetric, PreviewResult } from './components';
+import { EmptyPanel, MaskingHeader, PreviewResult } from './components';
 import { useMaskingScripts } from './hooks';
 import type { ScriptDraft } from './types';
 import { formatDate, safeInputValue, scriptHints, scriptSamples, technicalInputProps } from './utils';
@@ -137,15 +137,16 @@ export function MaskingScriptsPage() {
     <main className="forge-page masking-page">
       {confirmElement}
       <MaskingHeader
-        eyebrow="Mask"
+        eyebrow="Governed transformation code"
         title="Masking Scripts"
-        description="Governed Lua exits for rules that need business-specific masking logic. Scripts are sandboxed, deterministic, and referenced by policy rules as function SCRIPT."
+        description="Write, test, and govern deterministic Lua masking exits for policy rules."
         action={
           <Group gap="xs">
-            <Button leftSection={<IconRefresh size={16} />} variant="default" onClick={() => scriptsQuery.refetch()}>
+            <Badge variant="light">{scripts.length} saved</Badge>
+            <Button size="sm" leftSection={<IconRefresh size={16} />} variant="default" onClick={() => scriptsQuery.refetch()}>
               Refresh
             </Button>
-            <Button leftSection={<IconEdit size={16} />} onClick={() => setBrowseOpen(true)}>
+            <Button size="sm" leftSection={<IconEdit size={16} />} onClick={() => setBrowseOpen(true)}>
               Browse existing
             </Button>
           </Group>
@@ -157,12 +158,6 @@ export function MaskingScriptsPage() {
         onRetry={() => scriptsQuery.refetch()}
         title="Masking scripts could not be loaded"
       />
-
-      <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm">
-        <MaskingMetric label="Scripts" value={scripts.length} detail="Saved reusable exits" />
-        <MaskingMetric label="Global" value={scripts.filter((item) => item.visibility !== 'PRIVATE').length} detail="Usable by jobs" />
-        <MaskingMetric label="Private" value={scripts.filter((item) => item.visibility === 'PRIVATE').length} detail="Draft/private scripts" />
-      </SimpleGrid>
 
       <section className="masking-script-workbench">
         <Paper className="forge-card masking-panel" p="md">

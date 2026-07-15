@@ -8,9 +8,10 @@ import {
   Button,
   Checkbox,
   Collapse,
-  Drawer,
   Group,
   Loader,
+  Menu,
+  Modal,
   NumberInput,
   Paper,
   Radio,
@@ -20,6 +21,7 @@ import {
   Stack,
   Text,
   TextInput,
+  Textarea,
   Tooltip
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
@@ -28,10 +30,14 @@ import {
   IconAdjustmentsHorizontal,
   IconAlertTriangle,
   IconArrowRight,
+  IconCheck,
   IconChevronDown,
+  IconClock,
   IconDatabase,
   IconFolderOpen,
-  IconPlus
+  IconPlus,
+  IconWorld,
+  IconX
 } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef } from '@tanstack/react-table';
@@ -52,15 +58,12 @@ import {
   isProfileIncluded,
   normalizeProfilesForSave,
   numberOrNull,
-  policyName,
   profileIdentityKey,
   profileIdentityKeyFor,
-  Q_MODE_OPTIONS,
   qModePatch,
   qModeValue,
   resolveDataSourceInput,
   sameNumber,
-  sourceName,
   targetKey,
   technicalInputProps,
   type TableMapDefaults
@@ -96,6 +99,7 @@ export function TableMapWorkspace({
   const [defaults, setDefaults] = useState<TableMapDefaults>(blueprintDefaults);
   const [draftRows, setDraftRows] = useState<TableProfile[]>(rows);
   const [dirty, setDirty] = useState(false);
+  const [sourceReferenceDrafts, setSourceReferenceDrafts] = useState<Record<number, string>>({});
   const [selectedCatalogTables, setSelectedCatalogTables] = useState<string[]>([]);
   const [sourceBrowseOpened, sourceBrowse] = useDisclosure(false);
   const [targetBrowseOpened, targetBrowse] = useDisclosure(false);
@@ -121,6 +125,7 @@ export function TableMapWorkspace({
     if (dirty) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setDraftRows(rows);
+    setSourceReferenceDrafts({});
   }, [rows, dirty]);
   useEffect(() => {
     if (dirty) return;
@@ -143,6 +148,7 @@ export function TableMapWorkspace({
   const dropRow = (index: number) => {
     setDirty(true);
     setDraftRows((current) => current.filter((_, idx) => idx !== index));
+    setSourceReferenceDrafts((current) => shiftIndexedRecord(current, index));
   };
   const updateDefault = (patch: Partial<TableMapDefaults>) => {
     setDirty(true);
@@ -156,6 +162,38 @@ export function TableMapWorkspace({
   const commonTargetId =
     resolveDataSourceInput(defaults.targetDataSourceId, dataSources) ||
     (!defaults.targetDataSourceId.trim() ? blueprint.targetDataSourceId || null : null);
+  const sourceReferenceResults = draftRows.map((profile, index) =>
+    parseSourceTableReference(
+      sourceReferenceDrafts[index] ?? formatSourceTableReference(profile, commonSourceId, defaults.sourceSchemaName, dataSources),
+      commonSourceId,
+      defaults.sourceSchemaName,
+      dataSources
+    )
+  );
+  const firstSourceReferenceError = sourceReferenceResults.find((result) => result.error)?.error || null;
+  const resolvedDraftRows = draftRows.map((profile, index) => {
+    const parsed = sourceReferenceResults[index];
+    return {
+      ...profile,
+      tableName: parsed?.tableName || profile.tableName,
+      sourceDataSourceId: parsed && !parsed.error ? parsed.sourceDataSourceId : profile.sourceDataSourceId,
+      sourceSchemaName: parsed && !parsed.error ? parsed.sourceSchemaName : profile.sourceSchemaName
+    };
+  });
+  const commitSourceReference = (index: number) => {
+    const parsed = sourceReferenceResults[index];
+    if (!parsed || parsed.error) return;
+    patchRow(index, {
+      tableName: parsed.tableName,
+      sourceDataSourceId: parsed.sourceDataSourceId,
+      sourceSchemaName: parsed.sourceSchemaName
+    });
+    setSourceReferenceDrafts((current) => {
+      const next = { ...current };
+      delete next[index];
+      return next;
+    });
+  };
   const effectiveBlueprint = useMemo(
     () => ({
       ...blueprint,
@@ -207,12 +245,14 @@ export function TableMapWorkspace({
       if (sourceSchemaDefaultError) throw new Error(sourceSchemaDefaultError);
       if (targetSchemaDefaultError) throw new Error(targetSchemaDefaultError);
       if (driverMissing) throw new Error('Driver table is not in this profile anymore. Pick another driver before saving.');
+      if (firstSourceReferenceError) throw new Error(firstSourceReferenceError);
       await apiPut<DataSetDefinition>(`/api/datasets/${blueprint.id}`, definitionPayload(blueprint, defaults, dataSources));
-      return apiPut<TableProfile[]>(`/api/datasets/${blueprint.id}/profiles`, normalizeProfilesForSave(draftRows, effectiveBlueprint));
+      return apiPut<TableProfile[]>(`/api/datasets/${blueprint.id}/profiles`, normalizeProfilesForSave(resolvedDraftRows, effectiveBlueprint));
     },
     onSuccess: async (savedRows) => {
       notifications.show({ color: 'green', title: 'DataScope profile saved', message: 'Defaults and table mappings were updated.' });
       setDraftRows(savedRows);
+      setSourceReferenceDrafts({});
       await queryClient.invalidateQueries({ queryKey: keys.datascope.blueprints });
       await queryClient.invalidateQueries({ queryKey: keys.datascope.blueprint(blueprint.id) });
       await queryClient.invalidateQueries({ queryKey: keys.datascope.profiles(blueprint.id) });
@@ -223,9 +263,6 @@ export function TableMapWorkspace({
     }
   });
 
-  const sourceOptions = dataSources
-    .filter((item) => ['SOURCE', 'BOTH'].includes(String(item.role || '').toUpperCase()))
-    .map((item) => ({ value: String(item.id), label: `${item.name} (${item.kind})` }));
   const sourceCandidates = dataSources.filter((item) => ['SOURCE', 'BOTH'].includes(String(item.role || '').toUpperCase()));
   const targetCandidates = dataSources.filter((item) => ['TARGET', 'BOTH'].includes(String(item.role || '').toUpperCase()));
   const sourceSchemaNames = (sourceSchemasQuery.data || []).map((entry) => catalogName(entry, 'schema')).filter(Boolean);
@@ -234,8 +271,7 @@ export function TableMapWorkspace({
     policies.map((item) => ({ value: String(item.id), label: item.name }))
   );
 
-  const duplicates = duplicateTargets(draftRows);
-  const included = draftRows.filter(isProfileIncluded);
+  const duplicates = duplicateTargets(resolvedDraftRows);
   const profiledTableKeys = useMemo(
     () => new Set(draftRows.map((profile) => profileIdentityKey(profile, effectiveBlueprint)).filter(Boolean)),
     [draftRows, effectiveBlueprint]
@@ -334,17 +370,28 @@ export function TableMapWorkspace({
     setSelectedCatalogTables([]);
   };
 
+  const addManualTable = () => {
+    setDirty(true);
+    setDraftRows((current) => current.concat({
+      datasetId: blueprint.id,
+      sourceDataSourceId: null,
+      sourceSchemaName: null,
+      tableName: '',
+      targetTableName: null,
+      policyId: blueprint.policyId || null,
+      included: false,
+      filterExpr: null,
+      rowLimit: null,
+      referentialStrategy: 'INHERIT',
+      note: null
+    }));
+    mapDrawer.open();
+  };
+
   const renderSaveButton = () => (
-    <Group gap="xs">
-      {dirty ? (
-        <Badge color="yellow" variant="light">
-          unsaved changes
-        </Badge>
-      ) : null}
-      <Button loading={saveWorkspace.isPending} disabled={!!duplicates.size} onClick={() => saveWorkspace.mutate()}>
-        Save profile setup
-      </Button>
-    </Group>
+    <Button loading={saveWorkspace.isPending} disabled={!!duplicates.size} onClick={() => saveWorkspace.mutate()}>
+      Save table map
+    </Button>
   );
 
   const browseButton = (label: string, action: () => void, disabled = false, loadingState = false) => (
@@ -537,16 +584,9 @@ export function TableMapWorkspace({
           <div>
             <Text fw={850}>Table Profile Setup</Text>
             <Text size="sm" c="dimmed">
-              Pick only the source tables that belong in this DataScope, then open the full Optim-style table map.
+              Choose the source path and add only the tables that belong in this DataScope. Table Map becomes available after the first table is added.
             </Text>
           </div>
-          <Group gap="xs">
-            <Badge variant="light">{included.length} included</Badge>
-            <Button variant="light" disabled={!draftRows.length} onClick={mapDrawer.open}>
-              Open table map
-            </Button>
-            {renderSaveButton()}
-          </Group>
         </Group>
 
         {duplicates.size ? (
@@ -604,6 +644,9 @@ export function TableMapWorkspace({
                 <Button variant="light" disabled={!selectedCatalogTables.length} onClick={() => setSelectedCatalogTables([])}>
                   Clear
                 </Button>
+                <Button variant="light" leftSection={<IconPlus size={16} />} onClick={addManualTable}>
+                  Add manually
+                </Button>
                 <Button leftSection={<IconPlus size={16} />} disabled={!selectedCatalogTables.length} onClick={addSelectedTables}>
                   Add selected
                 </Button>
@@ -635,117 +678,42 @@ export function TableMapWorkspace({
           </Stack>
         </Paper>
 
-        <div>
-          <Group justify="space-between" align="flex-end" mb="xs">
+        {draftRows.length ? (
+          <section className="ds-profile-map-step">
+            <Group justify="space-between" align="center" wrap="wrap">
             <div>
               <Group gap="xs">
                 <Badge size="sm" variant="filled" color="blue">
                   3
                 </Badge>
-                <Text fw={800}>Review included tables</Text>
+                <Text fw={800}>Table map</Text>
               </Group>
               <Text size="sm" c="dimmed">
-                Select Use for tables that should run, choose an optional driver, then open Table Map for detailed mappings.
+                Configure Use, driver, source and target overrides, policy, row limits, filters, traversal behavior, and column maps in one place.
               </Text>
             </div>
-            <Badge variant="light">{draftRows.length} profiled</Badge>
-          </Group>
-          <div className="forge-grid-panel">
-            <table className="forge-table">
-            <thead>
-              <tr>
-                <th>Use</th>
-                <th>Driver</th>
-                <th>Profile table</th>
-                <th>Source</th>
-                <th>Target table</th>
-                <th>Policy</th>
-                <th>Controls</th>
-              </tr>
-            </thead>
-            <tbody>
-              {draftRows.length ? (
-                draftRows.map((profile, idx) => (
-                  <tr key={`${profile.tableName}-${idx}`}>
-                    <td>
-                      <Checkbox
-                        aria-label={`Use ${profile.tableName}`}
-                        checked={isProfileIncluded(profile)}
-                        onChange={(event) => patchRow(idx, { included: event.currentTarget.checked })}
-                      />
-                    </td>
-                    <td>
-                      <Radio
-                        aria-label={`Use ${profile.tableName} as driver`}
-                        name="ds-driver-table"
-                        checked={equalsIgnoreCase(defaults.driverTable, profile.tableName)}
-                        onChange={() => updateDefault({ driverTable: profile.tableName })}
-                      />
-                    </td>
-                    <td>
-                      <Group gap={6} wrap="nowrap">
-                        <Text fw={750}>{profile.tableName}</Text>
-                        {equalsIgnoreCase(defaults.driverTable, profile.tableName) ? (
-                          <Badge size="xs" variant="light" color="blue">
-                            driver
-                          </Badge>
-                        ) : null}
-                      </Group>
-                      <Text size="xs" c="dimmed">
-                        {isProfileIncluded(profile) ? 'selected for run' : 'not selected'}
-                      </Text>
-                    </td>
-                    <td>
-                      <Text size="sm">{sourceName(profile.sourceDataSourceId || commonSourceId, dataSources)}</Text>
-                      <Text size="xs" c="dimmed">
-                        {profile.sourceSchemaName || defaults.sourceSchemaName || 'default schema'}
-                      </Text>
-                    </td>
-                    <td>{profile.targetTableName || profile.tableName}</td>
-                    <td>{profile.policyId ? policyName(profile.policyId, policies) : 'No table policy'}</td>
-                    <td>
-                      <Group gap="xs">
-                        <Button size="xs" variant="light" onClick={mapDrawer.open}>
-                          Map
-                        </Button>
-                        <Button size="xs" variant="subtle" color="red" onClick={() => dropRow(idx)}>
-                          Remove
-                        </Button>
-                      </Group>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={7}>
-                    <Text c="dimmed">No tables are in this profile yet. Add selected tables above before opening Table Map.</Text>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-            </table>
-          </div>
-        </div>
+              <Button onClick={mapDrawer.open}>Open table map</Button>
+            </Group>
+          </section>
+        ) : null}
       </Stack>
 
-      <Drawer opened={mapOpened} onClose={mapDrawer.close} title="Table Map" size="95%" position="right">
+      <Modal opened={mapOpened} onClose={mapDrawer.close} title="Table Map" fullScreen>
         <Stack gap="md">
           <Paper className="forge-card" p="md">
             <Group justify="space-between" align="flex-start">
               <div>
                 <Text fw={850}>Optim-style table map</Text>
                 <Text size="sm" c="dimmed">
-                  One row per profiled table. Use common defaults at the top, then override individual source/table settings as needed.
+                  One row per profiled table. For another system, enter the source as DB_ALIAS,SCHEMA.TABLE; invalid aliases, schemas, and tables are rejected when this map is saved.
                 </Text>
               </div>
               <Group gap="xs">
-                <Badge variant="light">{included.length} included</Badge>
                 {renderSaveButton()}
               </Group>
             </Group>
             <Stack gap="sm" mt="sm">
               {renderConnectionDefaults()}
-              {renderSubsetControls()}
             </Stack>
           </Paper>
 
@@ -763,8 +731,6 @@ export function TableMapWorkspace({
                     <tr>
                       <th>Use</th>
                       <th>Driver</th>
-                      <th>Source DB</th>
-                      <th>Schema</th>
                       <th>Source table</th>
                       <th>Target table</th>
                       <th>Policy</th>
@@ -777,16 +743,20 @@ export function TableMapWorkspace({
                       <th title="Q2 parent-to-child: cascade from this table's rows down to its children? Global = the Q2 default above; Yes/No forces it; Defer = cascade only after the primary closure finishes (tames FK cycles).">
                         Q2 children
                       </th>
-                      <th>Note</th>
                       <th>Column map</th>
                       <th>Remove</th>
                     </tr>
                   </thead>
                   <tbody>
                     {draftRows.map((profile, idx) => {
-                      const target = profile.targetTableName || profile.tableName;
+                      const sourceReference = sourceReferenceDrafts[idx] ?? formatSourceTableReference(profile, commonSourceId, defaults.sourceSchemaName, dataSources);
+                      const sourceResult = sourceReferenceResults[idx];
+                      const effectiveSourceTable = sourceResult?.tableName || profile.tableName;
+                      const target = profile.targetTableName || effectiveSourceTable;
                       const duplicate = duplicates.has(targetKey(target));
                       const tableOverrides = overrides.filter((item) => equalsIgnoreCase(item.tableName, profile.tableName));
+                      const referentialStrategy = profile.referentialStrategy || profile.strategy || 'INHERIT';
+                      const isIndependent = referentialStrategy === 'INDEPENDENT';
                       return (
                         <tr key={`${profile.tableName}-${idx}`}>
                           <td>
@@ -805,35 +775,17 @@ export function TableMapWorkspace({
                             />
                           </td>
                           <td>
-                            <Select
-                              data={sourceOptions}
-                              value={String(profile.sourceDataSourceId || commonSourceId || '')}
-                              searchable
-                              onChange={(value) =>
-                                patchRow(idx, { sourceDataSourceId: sameNumber(value, commonSourceId) ? null : numberOrNull(value) })
-                              }
-                            />
-                          </td>
-                          <td>
                             <TextInput
                               {...technicalInputProps}
-                              value={profile.sourceSchemaName || defaults.sourceSchemaName || ''}
-                              placeholder="default"
-                              onChange={(event) =>
-                                patchRow(idx, {
-                                  sourceSchemaName:
-                                    event.currentTarget.value && !equalsIgnoreCase(event.currentTarget.value, defaults.sourceSchemaName)
-                                      ? event.currentTarget.value
-                                      : null
-                                })
-                              }
-                            />
-                          </td>
-                          <td>
-                            <TextInput
-                              {...technicalInputProps}
-                              value={profile.tableName}
-                              onChange={(event) => patchRow(idx, { tableName: event.currentTarget.value })}
+                              className="ds-source-reference-input"
+                              placeholder="table or DB_ALIAS,SCHEMA.TABLE"
+                              value={sourceReference}
+                              error={sourceResult?.error || null}
+                              onChange={(event) => {
+                                setDirty(true);
+                                setSourceReferenceDrafts((current) => ({ ...current, [idx]: event.currentTarget.value }));
+                              }}
+                              onBlur={() => commitSourceReference(idx)}
                             />
                           </td>
                           <td>
@@ -863,9 +815,13 @@ export function TableMapWorkspace({
                             />
                           </td>
                           <td>
-                            <TextInput
+                            <Textarea
                               {...technicalInputProps}
+                              className="ds-filter-condition"
                               placeholder="status = 'ACTIVE'"
+                              autosize
+                              minRows={1}
+                              maxRows={3}
                               value={profile.filterExpr || profile.filterSql || ''}
                               onChange={(event) => patchRow(idx, { filterExpr: emptyToNull(event.currentTarget.value) })}
                             />
@@ -877,29 +833,36 @@ export function TableMapWorkspace({
                                 { value: 'FOLLOW_PARENT', label: 'Follow parent' },
                                 { value: 'INDEPENDENT', label: 'Independent start' }
                               ]}
-                              value={profile.referentialStrategy || profile.strategy || 'INHERIT'}
-                              onChange={(value) => patchRow(idx, { referentialStrategy: value || 'INHERIT' })}
+                              value={referentialStrategy}
+                              onChange={(value) => {
+                                const nextStrategy = value || 'INHERIT';
+                                patchRow(
+                                  idx,
+                                  nextStrategy === 'INDEPENDENT'
+                                    ? {
+                                        referentialStrategy: nextStrategy,
+                                        ...qModePatch('q1', 'global'),
+                                        ...qModePatch('q2', 'global')
+                                      }
+                                    : { referentialStrategy: nextStrategy }
+                                );
+                              }}
                             />
                           </td>
                           <td>
-                            <Select
-                              data={Q_MODE_OPTIONS}
+                            <QModeButton
+                              label="Q1 parents"
                               value={qModeValue(profile.q1Mode, profile.q1Override)}
                               onChange={(value) => patchRow(idx, qModePatch('q1', value))}
+                              disabled={isIndependent}
                             />
                           </td>
                           <td>
-                            <Select
-                              data={Q_MODE_OPTIONS}
+                            <QModeButton
+                              label="Q2 children"
                               value={qModeValue(profile.q2Mode, profile.q2Override)}
                               onChange={(value) => patchRow(idx, qModePatch('q2', value))}
-                            />
-                          </td>
-                          <td>
-                            <TextInput
-                              value={profile.note || ''}
-                              placeholder="optional"
-                              onChange={(event) => patchRow(idx, { note: emptyToNull(event.currentTarget.value) })}
+                              disabled={isIndependent}
                             />
                           </td>
                           <td className="ds-map-actions">
@@ -908,7 +871,7 @@ export function TableMapWorkspace({
                                 size="xs"
                                 variant="light"
                                 onClick={() => {
-                                  setColumnProfile(profile);
+                                  setColumnProfile(resolvedDraftRows[idx]);
                                   columnDrawer.open();
                                 }}
                               >
@@ -937,7 +900,7 @@ export function TableMapWorkspace({
             </Alert>
           )}
         </Stack>
-      </Drawer>
+      </Modal>
 
       <DataSourceBrowseModal
         opened={sourceBrowseOpened}
@@ -980,5 +943,108 @@ export function TableMapWorkspace({
         overrides={overrides}
       />
     </>
+  );
+}
+
+type ParsedSourceTableReference = {
+  tableName: string;
+  sourceDataSourceId: number | null;
+  sourceSchemaName: string | null;
+  error?: string;
+};
+
+function formatSourceTableReference(
+  profile: TableProfile,
+  defaultSourceId: number | null,
+  defaultSchema: string,
+  dataSources: DataSource[]
+) {
+  const hasOverride = Boolean(profile.sourceDataSourceId || profile.sourceSchemaName);
+  if (!hasOverride) return profile.tableName;
+  const sourceId = profile.sourceDataSourceId || defaultSourceId;
+  const alias = dataSources.find((source) => source.id === sourceId)?.name || (sourceId ? String(sourceId) : 'UNKNOWN');
+  const schema = profile.sourceSchemaName || defaultSchema;
+  return `${alias},${schema}.${profile.tableName}`;
+}
+
+function parseSourceTableReference(
+  value: string,
+  defaultSourceId: number | null,
+  defaultSchema: string,
+  dataSources: DataSource[]
+): ParsedSourceTableReference {
+  const reference = value.trim();
+  if (!reference) return { tableName: '', sourceDataSourceId: null, sourceSchemaName: null, error: 'Source table is required.' };
+  if (!reference.includes(',')) {
+    if (reference.includes('.')) {
+      return { tableName: '', sourceDataSourceId: null, sourceSchemaName: null, error: 'Use DB_ALIAS,SCHEMA.TABLE for an override.' };
+    }
+    if (!defaultSourceId) {
+      return { tableName: '', sourceDataSourceId: null, sourceSchemaName: null, error: 'Choose the default source database first.' };
+    }
+    return { tableName: reference, sourceDataSourceId: null, sourceSchemaName: null };
+  }
+
+  const comma = reference.indexOf(',');
+  const alias = reference.slice(0, comma).trim();
+  const qualifiedTable = reference.slice(comma + 1).trim();
+  const dot = qualifiedTable.indexOf('.');
+  const schema = dot > 0 ? qualifiedTable.slice(0, dot).trim() : '';
+  const tableName = dot > 0 ? qualifiedTable.slice(dot + 1).trim() : '';
+  if (!alias || !schema || !tableName || tableName.includes(',') || tableName.includes('.')) {
+    return { tableName: '', sourceDataSourceId: null, sourceSchemaName: null, error: 'Use the exact format DB_ALIAS,SCHEMA.TABLE.' };
+  }
+  const source = dataSources.find((candidate) => {
+    const role = String(candidate.role || '').toUpperCase();
+    return ['SOURCE', 'BOTH'].includes(role) && (String(candidate.id) === alias || candidate.name.toLowerCase() === alias.toLowerCase());
+  });
+  if (!source) {
+    return { tableName: '', sourceDataSourceId: null, sourceSchemaName: null, error: `Unknown source DB alias "${alias}".` };
+  }
+  const sourceOverride = sameNumber(source.id, defaultSourceId) ? null : source.id;
+  const schemaOverride = sourceOverride || !equalsIgnoreCase(schema, defaultSchema) ? schema : null;
+  return { tableName, sourceDataSourceId: sourceOverride, sourceSchemaName: schemaOverride };
+}
+
+function shiftIndexedRecord<T>(record: Record<number, T>, removedIndex: number) {
+  const next: Record<number, T> = {};
+  Object.entries(record).forEach(([rawIndex, value]) => {
+    const index = Number(rawIndex);
+    if (index < removedIndex) next[index] = value;
+    if (index > removedIndex) next[index - 1] = value;
+  });
+  return next;
+}
+
+function QModeButton({
+  label,
+  value,
+  onChange,
+  disabled = false
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}) {
+  const selectedLabel = value === 'yes' ? 'Yes' : value === 'no' ? 'No' : value === 'defer' ? 'Defer' : 'Global';
+  const color = value === 'yes' ? 'green' : value === 'no' ? 'red' : value === 'defer' ? 'yellow' : 'gray';
+  const icon = value === 'yes' ? <IconCheck size={16} /> : value === 'no' ? <IconX size={16} /> : value === 'defer' ? <IconClock size={16} /> : <IconWorld size={16} />;
+  const title = disabled ? `${label}: disabled for an independent table` : `${label}: ${selectedLabel}`;
+  return (
+    <Menu withinPortal position="bottom-end" shadow="md">
+      <Menu.Target>
+        <ActionIcon variant="light" color={color} size={34} aria-label={title} title={title} disabled={disabled}>
+          {icon}
+        </ActionIcon>
+      </Menu.Target>
+      <Menu.Dropdown>
+        <Menu.Label>{label}</Menu.Label>
+        <Menu.Item leftSection={<IconWorld size={15} />} onClick={() => onChange('global')}>Use global setting</Menu.Item>
+        <Menu.Item color="green" leftSection={<IconCheck size={15} />} onClick={() => onChange('yes')}>Always include</Menu.Item>
+        <Menu.Item color="red" leftSection={<IconX size={15} />} onClick={() => onChange('no')}>Do not include</Menu.Item>
+        <Menu.Item color="yellow" leftSection={<IconClock size={15} />} onClick={() => onChange('defer')}>Defer until closure settles</Menu.Item>
+      </Menu.Dropdown>
+    </Menu>
   );
 }
