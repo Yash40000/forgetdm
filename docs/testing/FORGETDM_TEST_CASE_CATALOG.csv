@@ -196,3 +196,18 @@ OPS-002,Operations,Reverse proxy custom URL corporate CA proxy and firewall,P0,S
 OPS-003,Operations,Health readiness metrics logs alerts and support bundle,P0,System,Observability evidence
 OPS-004,Operations,HA failover DR restore failback RPO and RTO,P0,DR environment,Runbook evidence
 OPS-005,Operations,Upgrade preserves all governed artifacts and running-state reconciliation,P0,System,Upgrade report
+PROD-001,Product readiness,Every P0 case maps to automated or signed manual evidence,P0,All,Traceability report
+PROD-002,Product readiness,Supported scope and known limitations match observed behavior,P0,All,Release review
+PROD-003,Product readiness,Immutable release artifact reproduces signed test results,P0,All,Build provenance
+CERT-001,Certification,PostgreSQL reference lane completes exact-version certification pack,P0,PostgreSQL,Signed connector evidence
+CERT-002,Certification,Two banking enterprise lanes complete exact-version certification pack,P0,Db2 Oracle or SQL Server,Signed connector evidence
+PILOT-001,Customer proof,First representative banking pilot meets signed acceptance criteria,P0,Customer environment,Signed acceptance
+PILOT-002,Customer proof,Second independent banking pilot meets signed acceptance criteria,P0,Customer environment,Signed acceptance
+PILOT-003,Customer proof,Pilot limitations become tests fixes and full affected regression,P0,All,Defect traceability
+SUP-001,Support readiness,Severity response escalation and incident process tabletop,P0,Operations,Tabletop report
+SUP-002,Support readiness,Independent operator installs upgrades restores and diagnoses product,P0,Operations,Operator acceptance
+LEGAL-001,IP and legal,Source ownership contributor assignments and third-party licenses are clear,P0,All,Legal review
+LEGAL-002,IP and legal,SBOM trademark privacy terms and customer-data rights pass diligence,P0,All,Diligence report
+COMM-001,Commercial readiness,Pricing packaging contracts invoices and collected revenue reconcile,P0,Commercial,Financial evidence
+COMM-002,Commercial readiness,ARR retention margin concentration and support cost are verifiable,P0,Commercial,Financial evidence
+DD-001,Diligence,Sanitized evidence room reproduces every technical and commercial claim,P0,All,Independent diligence review

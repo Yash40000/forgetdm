@@ -423,3 +423,31 @@ evidence uses `docs/enterprise/connector-certification-evidence/TEMPLATE.md`.
 8. Complete security, accessibility, upgrade, backup/restore, and 24-hour endurance gates.
 9. Execute staged 1%/10%/1 TB/5 TB qualification on the intended production topology.
 10. Repeat the appropriate customer qualification pack before each banking deployment.
+
+## 19. Top-product and commercial-readiness gate
+
+Passing this test plan makes ForgeTDM a tested product; it does not by itself establish a market price.
+Commercial readiness also requires customer, support, legal, and buyer-diligence evidence. The target gate is
+defined in `docs/enterprise/FORGETDM_600K_PRODUCT_READINESS.md`.
+
+Before ForgeTDM is described as ready for a strategic value near USD 600,000:
+
+1. The mandatory technical release gate in section 17 must pass.
+2. At least PostgreSQL and two banking-relevant enterprise lanes among Db2 LUW, Oracle, and SQL Server must be
+   lab validated; unsupported lanes must be labeled honestly.
+3. Independent penetration testing, dependency review, privacy review, and remediation evidence must exist.
+4. Scale, cancellation, recovery, upgrade, backup/restore, and endurance evidence must exist on the intended
+   deployment model. Any 5 TB claim must pass section 13.
+5. At least two representative banking pilots must complete acceptance, with one referenceable customer or an
+   equivalent independently verifiable design partner.
+6. The product must demonstrate recurring commercial demand, preferably USD 100,000-150,000 ARR, or provide a
+   documented strategic-buyer case showing equivalent time-to-market and replacement-cost value.
+7. A named support owner, severity policy, response targets, onboarding process, release policy, and security
+   incident process must be operational rather than aspirational.
+8. Source ownership, third-party licenses, trademarks, customer data rights, contributor assignments, and the
+   absence of embedded secrets or unlicensed assets must pass legal diligence.
+9. The buyer/customer evidence room must reproduce every claim from immutable build, test, security, connector,
+   scale, pilot, support, and financial records.
+
+The target is a decision gate, not a valuation guarantee. Failed or missing evidence lowers the supported claim;
+it must never be replaced by marketing language.
