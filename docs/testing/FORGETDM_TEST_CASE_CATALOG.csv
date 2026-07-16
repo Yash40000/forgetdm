@@ -1,0 +1,198 @@
+Test_ID,Area,Scenario,Priority,Required_Lane,Primary_Evidence
+AUTH-001,Authentication,Valid login logout and session identity,P0,All,API assertions and audit
+AUTH-002,Authentication,Invalid credentials do not disclose account state,P0,All,Security test
+AUTH-003,Authentication,Expired session redirects once and preserves safe draft recovery,P0,UI,UI automation
+AUTH-004,Authentication,Disabled user and revoked token lose access immediately,P0,All,API assertions
+AUTH-005,Authentication,CSRF session fixation and secure cookie controls,P0,System,DAST and headers
+RBAC-001,Access control,Role and group permissions cover every UI and write API,P0,All,Authorization matrix
+RBAC-002,Access control,Cross-group object access is denied,P0,All,Negative API suite
+RBAC-003,Access control,Maker cannot approve own request,P0,All,Workflow evidence
+RBAC-004,Access control,Configured administrator bypass is explicit and audited,P0,All,Audit evidence
+RBAC-005,Access control,User group role CRUD and deletion dependency handling,P1,All,API and UI suite
+AUD-001,Audit,Every material create update delete run approval and export is recorded,P0,All,Audit query
+AUD-002,Audit,Audit actor time object version correlation and result are correct,P0,All,Audit assertions
+AUD-003,Audit,Audit CSV export honors filters authorization and sanitization,P1,All,Export validation
+AUD-004,Audit,Tamper verification detects modified audit chain,P0,All,Integrity test
+DSRC-001,Data source,Create edit delete source target and both roles,P0,Each bundled connector,UI and API
+DSRC-002,Data source,Connection test shows live success timeout TLS and auth failure,P0,Each connector,Diagnostic evidence
+DSRC-003,Data source,Type or browse validates source schema table and column,P0,Each connector,Metadata assertions
+DSRC-004,Data source,System schemas and vendor housekeeping objects are excluded,P1,Each connector,Catalog assertions
+DSRC-005,Data source,Quoted mixed-case reserved and long identifiers browse correctly,P0,Each connector,Schema pack
+DSRC-006,Data source,Connection pool bounds reconnect and shutdown release resources,P0,Each connector,Metrics and handles
+DSRC-007,Data source,Passwords tokens and JDBC secrets never appear in output,P0,All,Secret scan
+DSRC-008,Data source,Least privilege failures identify missing permission safely,P0,Each connector,Negative user
+DSRC-009,Data source,Four-thousand-table catalog remains bounded and searchable,P1,Reference connector,Performance trace
+DSRC-010,Data source,Native loader readiness reports exact client and safe fallback,P0,Native lanes,Readiness evidence
+DISC-001,PII discovery,Generic profile detects labeled PII corpus,P0,Reference connector,Precision recall report
+DISC-002,PII discovery,PCI and HIPAA profiles restrict included types,P0,Reference connector,Result assertions
+DISC-003,PII discovery,Custom profile exposes and includes all selected custom types,P0,Reference connector,Scope assertions
+DISC-004,PII discovery,PII type scope excludes unrelated finding types,P0,Reference connector,Result assertions
+DISC-005,PII discovery,Multi-table focus scans exactly selected tables,P0,Reference connector,Result assertions
+DISC-006,PII discovery,Zero-table schema is rejected before job creation,P0,Each connector,Negative API and UI
+DISC-007,PII discovery,Rescan upserts classifications without duplicate-key failure,P0,Reference connector,Repeated scan
+DISC-008,PII discovery,Table column datatype status and confidence remain separate filterable fields,P1,UI,UI automation
+DISC-009,PII discovery,Approve reject manual classification and bulk actions persist,P0,All,API and audit
+DISC-010,PII discovery,Custom pattern create test group scope and delete confirmation,P0,All,Pattern suite
+DISC-011,PII discovery,Impact graph matches physical and tool relationships,P1,Reference connector,Graph assertions
+DISC-012,PII discovery,Findings report download is complete scoped and sanitized,P0,All,Export assertions
+DISC-013,PII discovery,Scan progress table column counts cancel retry and failure are truthful,P0,Each connector,Event trace
+DISC-014,PII discovery,Sample values are bounded authorized and absent from logs,P0,All,Privacy review
+MASK-001,Masking,Every built-in function accepts valid parameters and rejects invalid parameters,P0,Unit and reference,Function matrix
+MASK-002,Masking,Null empty maximum-length Unicode and datatype-fit behavior,P0,Each connector,SQL assertions
+MASK-003,Masking,Seeded deterministic replay is identical across runs,P0,Cross-connector,Checksum
+MASK-004,Masking,Cross-table and cross-database values remain consistent,P0,Cross-connector,Join assertions
+MASK-005,Masking,First last and derived full name use masked row context correctly,P0,Reference connector,Value assertions
+MASK-006,Masking,Independent full-name masking remains independent and null stays null,P0,Reference connector,Value assertions
+MASK-007,Masking,All payment-card brands are Luhn-valid and unique for requested rows,P0,Reference connector,Validator
+MASK-008,Masking,Direct lookup hash lookup missing key and collision behavior,P0,Reference connector,Lookup assertions
+MASK-009,Masking,US address format state coverage and deterministic consistency,P1,Reference connector,Distribution report
+MASK-010,Masking,Lua script sandbox blocks file OS network and unsafe runtime access,P0,All,Security test
+MASK-011,Masking,Policy rule CRUD preview override version and name validation,P0,All,API and UI
+MASK-012,Masking,No-mask option provisions unchanged authorized data,P0,Each connector,Checksum
+MASK-013,Masking,In-place masking without PK uses safe strategy or explicit refusal,P0,Each connector,Negative and SQL
+MASK-014,Masking,LOB CLOB NCLOB BLOB and MAX masking streams without truncation,P0,Oracle SQLServer Db2 PostgreSQL,Length checksum
+MASK-015,Masking,Reject evidence contains no clear PII,P0,All,Log and artifact scan
+DSP-001,DataScope,Blueprint name minimum maximum and character rules,P1,All,Validation tests
+DSP-002,DataScope,Table profile starts empty and add selected or add all is accurate,P0,Each connector,UI API assertions
+DSP-003,DataScope,Duplicate target table mapping is prevented,P0,All,Negative UI API
+DSP-004,DataScope,Table map has one row per included table,P1,UI,Visual and DOM assertions
+DSP-005,DataScope,Automatic column map handles same-name and compatible fields,P0,Cross-connector,Map assertions
+DSP-006,DataScope,Manual column dropdown literal unused and no-mask actions persist,P0,All,Map assertions
+DSP-007,DataScope,Bulk action and individual override refresh immediately,P0,UI,UI automation
+DSP-008,DataScope,Conditional filter compiles validates and rejects bad syntax early,P0,Each connector,Dry run
+DSP-009,DataScope,Per-table row limit is enforced before later sampling,P0,All,Count assertions
+DSP-010,DataScope,Alias schema table source override validates before runtime,P0,Cross-connector,Negative and positive
+DSP-011,DataScope,Driver and optional maximum rows behave correctly,P0,All,Dry run counts
+DSP-012,DataScope,Q1 parent pull prevents orphans,P0,Each connector,Orphan query
+DSP-013,DataScope,Q2 child cascade includes dependent rows,P0,Each connector,Count query
+DSP-014,DataScope,Independent strategy disables Q1 and Q2,P0,All,UI and plan
+DSP-015,DataScope,Per-edge DB tool or none relationship selection is honored,P0,All,Traversal plan
+DSP-016,DataScope,Circular composite and self relationships terminate correctly,P0,Each connector,Closure assertions
+DSP-017,DataScope,Show-steps explanation matches actual extraction order,P1,All,Plan versus run
+DSP-018,DataScope,Dry-run counts match provision within documented concurrency tolerance,P0,Each connector,Count comparison
+DSP-019,DataScope,Insert append update upsert replace delete truncate and truncate-only semantics,P0,Each target,SQL assertions
+DSP-020,DataScope,Update-only run never deletes truncates or inserts unintended rows,P0,Each target,Before after checksum
+DSP-021,DataScope,Cancel stops work and records exact committed rows,P0,Each target,Job and SQL evidence
+DSP-022,DataScope,Saved job run delete load schedule and shell export work,P0,All,UI API shell
+DSP-023,DataScope,Admin and maker-checker launch paths enforce policy,P0,All,Workflow audit
+DSP-024,DataScope,SQL Server batches stay below 2100 parameters,P0,SQL Server,Trace and load
+DSP-025,DataScope,Db2 SQL syntax schema qualification and in-place provision succeed,P0,Db2 LUW,Real engine
+SYN-001,Synthetic,Generator catalog lists every function with usable test drawer,P1,UI,UI automation
+SYN-002,Synthetic,Reference list create import weights visibility and delete,P0,Reference connector,API UI assertions
+SYN-003,Synthetic,Source profiling imports selected tables only,P0,Each source,Design assertions
+SYN-004,Synthetic,Manual source table and multi-select browse validate names,P0,Each source,UI API assertions
+SYN-005,Synthetic,Sequence UUID range normal weighted date literal template and case generators,P0,Reference connector,Distribution suite
+SYN-006,Synthetic,Numeric precision scale and overflow boundaries fit target,P0,Each target,SQL boundary suite
+SYN-007,Synthetic,String char Unicode and length boundaries fit target,P0,Each target,SQL boundary suite
+SYN-008,Synthetic,Date timestamp and time-zone values fit vendor target,P0,Each target,SQL boundary suite
+SYN-009,Synthetic,PK unique composite key and tool-defined key enforcement,P0,Each target,Constraint queries
+SYN-010,Synthetic,FK parent-first generation and tool-defined relationship integrity,P0,Each target,Orphan queries
+SYN-011,Synthetic,Composite circular self and optional FK behavior,P0,Each target,Constraint queries
+SYN-012,Synthetic,CHECK constraints and cross-column business rules,P0,Each target,Rule queries
+SYN-013,Synthetic,First last and full name consistency with no numeric contamination,P0,Each target,Value assertions
+SYN-014,Synthetic,All payment-card brands Luhn and uniqueness at scale,P0,Reference target,Validator
+SYN-015,Synthetic,Seed replay matches across partitions targets DB and mainframe,P0,Cross-system,Checksums
+SYN-016,Synthetic,Forty-million-row generation remains heap bounded,P0,Performance,Heap metrics
+SYN-017,Synthetic,Table partition row stage progress is accurate and timely,P0,UI API,Event reconciliation
+SYN-018,Synthetic,Job and partition cancel retry do not duplicate data,P0,Each target,Failure injection
+SYN-019,Synthetic,Single and local-partitioned modes produce equivalent valid data,P0,Reference target,Checksums and rules
+SYN-020,Synthetic,Create delete truncate insert update upsert replace target semantics,P0,Each target,Before after SQL
+SYN-021,Synthetic,Fast load native loader and JDBC fallback reconcile rows,P0,Native lanes,Loader evidence
+SYN-022,Synthetic,Multi-target fan-out preserves identity and correlations,P0,Three engines,Cross-system queries
+SYN-023,Synthetic,Saved job name length CRUD approval run and shell export,P0,All,UI API shell
+SYN-024,Synthetic,New request prompts save discard or cancel dirty design,P1,UI,UI automation
+SYN-025,Synthetic,Reject limit skip-bad-row and error sanitization,P0,Each target,Reject report
+MAP-001,Mapping Designer,Add remove move resize compact source and target nodes,P1,UI,UI automation
+MAP-002,Mapping Designer,Input output port links persist after save reload and full screen,P0,UI,UI automation
+MAP-003,Mapping Designer,Select highlight and delete links,P1,UI,UI automation
+MAP-004,Mapping Designer,Join ports compile to correct selected join semantics,P0,Each dialect,SQL plan
+MAP-005,Mapping Designer,Expression filter router lookup aggregate sorter union and sequence,P0,Each dialect,Expected output
+MAP-006,Mapping Designer,Staging input auto-adds columns and supports rename datatype,P0,All,UI and plan
+MAP-007,Mapping Designer,Location-aware insertion and auto-layout avoid overlap and extremes,P1,UI,Visual test
+MAP-008,Mapping Designer,CSV JSON XML and database assets preview and map,P0,Files and DB,Expected output
+MAP-009,Mapping Designer,Strict validation catches type port cycle function and target errors,P0,All,Negative compile suite
+MAP-010,Mapping Designer,Save immutable version restore and unsaved draft protection,P0,All,Version assertions
+MAP-011,Mapping Designer,Preview load multi-source federated and download,P0,Cross-connector,Result assertions
+MAP-012,Mapping Designer,Cancel and failure recovery preserve evidence and clean temp files,P0,All,Failure injection
+BE-001,Business Entity,Entity CRUD name domain owner status root and key validation,P0,All,API UI assertions
+BE-002,Business Entity,Attach multiple application blueprints through browse,P0,Cross-connector,Model assertions
+BE-003,Business Entity,Member add edit remove collapse filter and application scope,P1,UI,UI automation
+BE-004,Business Entity,Identity crosswalk resolves one subject across three systems,P0,Three engines,Crosswalk assertions
+BE-005,Business Entity,Ambiguous missing stale and conflicting identity handling,P0,Three engines,Negative suite
+BE-006,Business Entity,Freshness default per-member watermark SLA cron and check,P0,Cross-connector,Freshness evidence
+BE-007,Business Entity,Snapshot reservation release rollback and conflict,P0,All,State and data assertions
+BE-008,Business Entity,Micro-DB capsule captures isolated governed entity instance,P0,Three engines,Capsule manifest
+BE-009,Business Entity,Multi-application fan-out writes all targets consistently,P0,Three engines,Cross-system validation
+BE-010,Business Entity,Visual flow validate publish debug run branches loops and errors,P0,All,Debugger evidence
+BE-011,Business Entity,Compensation and partial multi-target failure are safe,P0,Three engines,Failure injection
+BE-012,Business Entity,Operational package immutable versions retention promotion and rollback,P0,All,Package evidence
+BE-013,Business Entity,Maker-checker catalog lineage loader and release evidence,P0,All,Governance audit
+BE-014,Business Entity,Entity delete warns dependencies and cleans only owned state,P0,All,Negative and audit
+VDB-001,Virtualization,Create VDB and expose selected physical schema not public default,P0,PostgreSQL Db2,Metadata query
+VDB-002,Virtualization,Provision refresh rollback and time-flow preserve schema and data,P0,Supported lanes,Data assertions
+VDB-003,Virtualization,Delete releases H2 and database handles,P0,H2,File handle evidence
+VDB-004,Virtualization,Concurrent client isolation and authorization,P0,System,Concurrency suite
+VDB-005,Virtualization,Failure cleanup leaves no false success or missing-schema VDB,P0,Supported lanes,Failure injection
+MF-001,Mainframe,Copybook create edit save dropdown refresh and delete,P0,UI API,UI automation
+MF-002,Mainframe,Parser supports PIC REDEFINES OCCURS COMP and COMP-3,P0,Unit and zOS,Codec suite
+MF-003,Mainframe,Fixed variable RDW signed decimal and code-page round trip,P0,zOS lab,Byte-level checksum
+MF-004,Mainframe,Generated file field rules seed and row count are correct,P0,All,Decoder validation
+MF-005,Mainframe,Database and file shared CRF keys and names remain consistent,P0,Cross-system,Join validator
+MF-006,Mainframe,Field masking preserves record length datatype and integrity,P0,zOS lab,Byte-level validation
+MF-007,Mainframe,Zowe test reports live TLS trust hostname and RACF state,P0,zOS lab,Transport evidence
+MF-008,Mainframe,Dataset browse stat upload download and checksum,P0,zOS lab,Checksum
+MF-009,Mainframe,Interrupted large transfer resumes or fails safely,P0,zOS lab,Failure injection
+MF-010,Mainframe,Temporary and downloaded files obey retention and privacy controls,P0,System,File audit
+UNS-001,Unstructured,Plain prose detects and masks unlabeled name SSN email phone and address,P0,All,Expected text
+UNS-002,Unstructured,CSV JSON XML and HTML preserve structure while masking values,P0,All,Parser validation
+UNS-003,Unstructured,PDF and DOCX extraction masks supported text and documents limitations,P0,All,Document comparison
+UNS-004,Unstructured,Malformed encrypted oversized and MIME-mismatched files fail safely,P0,All,Negative upload suite
+UNS-005,Unstructured,Zip bomb path traversal macro and active-content defenses,P0,All,Security suite
+UNS-006,Unstructured,Progress advances accurately beyond 5 percent,P0,UI API,Event reconciliation
+UNS-007,Unstructured,Cancel download delete retention and temp cleanup,P0,All,Job and file evidence
+SS-001,Self service,Publish version enable disable governed product,P0,All,API UI audit
+SS-002,Self service,Questionnaire validates purpose environment volume variety and reservation,P0,All,Validation suite
+SS-003,Self service,Requester approve reject comment cancel fulfill lifecycle,P0,All,Workflow evidence
+SS-004,Self service,Guardrails block disabled disallowed oversized and unapproved requests,P0,All,Negative suite
+SS-005,Self service,Fulfillment launches real DataScope Synthetic Mapping Reservation and VDB engines,P0,All,Run correlation
+SS-006,Self service,Runner export contains no embedded secret and supports status cancel,P0,Shell,Shell test
+INT-001,Integration,Webhook signing filtering delivery retry dedupe and dead letter,P0,System,Receiver evidence
+INT-002,Integration,Jenkins and Azure DevOps contract starts monitors and cancels jobs,P1,System,Pipeline evidence
+INT-003,Integration,ServiceNow and Jira request status and ticket correlation,P1,System,Contract evidence
+AI-001,Private planning,Grounding sync indexes sanitized metadata only,P0,All,Catalog inspection
+AI-002,Private planning,Story compiler produces explainable supported plan,P0,All,Plan assertions
+AI-003,Private planning,Ungrounded destructive or unsupported request is refused,P0,All,Adversarial suite
+AI-004,Private planning,Plan approval revision execution cancellation and feedback,P0,All,Workflow evidence
+AI-005,Private planning,Data-store item name length alignment search filter and confirmed delete,P1,UI API,UI automation
+API-001,API,OpenAPI compatibility and request response schema validation,P0,All,Contract diff
+API-002,API,Input length enum pagination sorting filtering and bounded error tests,P0,All,API automation
+API-003,API,Duplicate request stale update idempotency and optimistic concurrency,P0,All,Concurrency suite
+DBM-001,Control database,Flyway clean install and upgrade from each supported release,P0,PostgreSQL,Migration logs
+DBM-002,Control database,Interrupted migration is recoverable and actionable,P0,PostgreSQL,Failure injection
+DBM-003,Control database,Backup restore preserves metadata audit secrets and files,P0,PostgreSQL,Restore validation
+SEC-001,Security,SAST dependency SBOM license secret image and DAST scans,P0,All,Scan reports
+SEC-002,Security,SQL command template XSS CSRF SSRF and path traversal tests,P0,All,Penetration report
+SEC-003,Security,File upload parser and archive adversarial tests,P0,All,Security suite
+SEC-004,Security,TLS secure headers rate limit lockout and error sanitization,P0,System,DAST and config
+SEC-005,Security,Encryption secret rotation backup protection and key recovery,P0,System,Operational evidence
+REL-001,Reliability,Backend crash during each long-running job type,P0,System,Recovery evidence
+REL-002,Reliability,Source target and control database outage during execution,P0,System,Failure injection
+REL-003,Reliability,Disk full read-only disk and native client crash,P0,System,Failure injection
+REL-004,Reliability,Concurrent same-target jobs respect collision and lease controls,P0,System,Concurrency evidence
+REL-005,Reliability,Twenty-four and seventy-two-hour endurance has bounded resources,P0,Performance,Telemetry
+PERF-001,Performance,API and UI p50 p95 p99 baseline,P1,System,Metrics
+PERF-002,Performance,One-hundred-thousand-row daily banking workload,P0,Reference connector,Benchmark report
+PERF-003,Performance,Ten-million-row streaming and partition workload,P0,Performance,Benchmark report
+PERF-004,Performance,One-hundred-million-row concurrency and metadata workload,P0,Performance,Benchmark report
+PERF-005,Performance,One-terabyte pre-scale qualification,P0,Performance,Signed evidence
+PERF-006,Performance,Five-terabyte end-to-end qualification with recovery,P0,Production topology,Signed evidence
+UX-001,UX,All routes render empty loading error and populated states,P1,All browsers,Visual automation
+UX-002,UX,Keyboard focus screen reader reduced motion and 200-percent zoom,P0,All browsers,Accessibility report
+UX-003,UX,No clipping overlap or unexpected horizontal scroll at supported viewports,P1,All browsers,Screenshots
+UX-004,UX,All themes including Soccer Pro preserve contrast and functionality,P1,All browsers,Visual snapshots
+UX-005,UX,Dirty-state save discard save-close and session recovery are consistent,P0,UI,UI automation
+OPS-001,Operations,Clean install no-demo profile and environment validation,P0,Windows Linux,Install evidence
+OPS-002,Operations,Reverse proxy custom URL corporate CA proxy and firewall,P0,System,Deployment evidence
+OPS-003,Operations,Health readiness metrics logs alerts and support bundle,P0,System,Observability evidence
+OPS-004,Operations,HA failover DR restore failback RPO and RTO,P0,DR environment,Runbook evidence
+OPS-005,Operations,Upgrade preserves all governed artifacts and running-state reconciliation,P0,System,Upgrade report
