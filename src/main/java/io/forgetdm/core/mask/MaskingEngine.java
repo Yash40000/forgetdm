@@ -5,6 +5,7 @@ import io.forgetdm.core.util.Luhn;
 import io.forgetdm.core.util.SeedLists;
 
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
@@ -100,7 +101,7 @@ public class MaskingEngine {
             case PHONE:      return phone(salt, value, param1, param2);
             case SSN:        return ssn(salt, value, param1, param2);
             case CREDIT_CARD:return creditCard(salt, value, param1, param2);
-            case DATE_SHIFT: return dateShift(salt, value, parseIntOr(param1, 365), param2);
+            case DATE_SHIFT: return dateShift(salt, value, param1, param2);
             case DOB_AGE_BAND: return dobAgeBand(salt, value, parseIntOr(param1, 5), param2);
             case ADDRESS_STREET: return applyCase(street(salt, value), caseMode(param1, param2));
             case ADDRESS_US: return usAddress(salt, value, param1, param2, ctx);
@@ -474,57 +475,99 @@ public class MaskingEngine {
         return digits;
     }
 
-    /** Card: default preserves BIN(6) + length + separators, regenerates middle, repairs Luhn digit. */
+    /**
+     * Card: preserves the requested card domain, applies a keyed decimal permutation, and repairs
+     * the Luhn digit. Unlike seeded random digit generation, a permutation cannot collapse two
+     * distinct valid PANs to the same masked PAN.
+     */
     private String creditCard(String salt, String value, String mode, String format) {
         String digits = value.replaceAll("\\D", "");
         // Fail closed: a malformed PAN is still sensitive and must never pass through unchanged.
         if (digits.length() < 12 || digits.length() > 19) return formatPreserve(salt + "|ccn-nonconform", value, false);
+        if (!Luhn.isValid(digits)) {
+            String maskedDigits = decimalPermutation(salt + "|ccn-non-luhn|length=" + digits.length(), digits);
+            return formatCard(maskedDigits, value, format);
+        }
         String m = mode == null || mode.isBlank() ? "VALID_PRESERVE_BIN" : mode.trim().toUpperCase(Locale.ROOT);
-        Random r = Determinism.rng(secret, salt + "|ccn", digits);
         String full;
         if ("VALID_KEEP_LAST4".equals(m) || "KEEP_LAST4".equals(m)) {
-            full = validCardPreserveLast4(r, digits);
+            full = validCardPreserveLast4(salt, digits);
         } else if ("VALID_RANDOM_BIN".equals(m) || "REDACT".equals(m)) {
-            full = validCardWithPrefix(r, randomCardBin(r, digits), digits.length());
+            full = validCardPermutingBody(salt + "|random-bin", digits, cardNetworkPrefixLength(digits));
         } else if ("FORMAT_PRESERVE".equals(m)) {
-            full = validCardWithPrefix(r, String.valueOf(digits.charAt(0)), digits.length());
+            full = validCardPermutingBody(salt + "|format", digits, 1);
         } else {
-            full = validCardWithPrefix(r, digits.substring(0, 6), digits.length());
+            full = validCardPermutingBody(salt + "|preserve-bin", digits, 6);
         }
         return formatCard(full, value, format);
     }
 
-    private String validCardWithPrefix(Random r, String prefix, int length) {
-        StringBuilder body = new StringBuilder(prefix);
-        while (body.length() < length - 1) body.append((char) ('0' + r.nextInt(10)));
-        return body.toString() + Luhn.checkDigit(body.toString());
+    private String validCardPermutingBody(String salt, String digits, int prefixLength) {
+        String prefix = digits.substring(0, prefixLength);
+        String variableBody = digits.substring(prefixLength, digits.length() - 1);
+        String permuted = decimalPermutation(
+                salt + "|length=" + digits.length() + "|prefix=" + prefix,
+                variableBody);
+        String body = prefix + permuted;
+        return body + Luhn.checkDigit(body);
     }
 
-    private String validCardPreserveLast4(Random r, String digits) {
+    private String validCardPreserveLast4(String salt, String digits) {
         String preservedBodyTail = digits.substring(digits.length() - 4, digits.length() - 1);
         char preservedCheck = digits.charAt(digits.length() - 1);
         int prefixLength = digits.length() - 4;
-        for (int attempt = 0; attempt < 100; attempt++) {
-            StringBuilder prefix = new StringBuilder(randomCardBin(r, digits));
-            while (prefix.length() < prefixLength) prefix.append((char) ('0' + r.nextInt(10)));
-            if (prefix.length() > prefixLength) prefix.setLength(prefixLength);
-            for (char candidate = '0'; candidate <= '9'; candidate++) {
-                String body = prefix.substring(0, Math.max(0, prefix.length() - 1)) + candidate + preservedBodyTail;
-                if (body.length() == digits.length() - 1 && Luhn.checkDigit(body) == preservedCheck) {
-                    return body + preservedCheck;
-                }
+        String candidate = digits.substring(0, prefixLength);
+        String domainSalt = salt + "|keep-last4|length=" + digits.length()
+                + "|tail=" + preservedBodyTail + preservedCheck;
+
+        // Cycle-walking a permutation over the subset whose computed check digit is the preserved
+        // digit remains a permutation, so KEEP_LAST4 is collision-free for valid source PANs too.
+        for (int attempt = 0; attempt < 10_000; attempt++) {
+            candidate = decimalPermutation(domainSalt, candidate);
+            String body = candidate + preservedBodyTail;
+            if (Luhn.checkDigit(body) == preservedCheck) {
+                return body + preservedCheck;
             }
         }
-        return validCardWithPrefix(r, randomCardBin(r, digits), digits.length());
+        throw new IllegalStateException("Unable to mask card while preserving its last four digits");
     }
 
-    private String randomCardBin(Random r, String originalDigits) {
-        String[] bins = originalDigits.startsWith("3")
-                ? new String[]{"378282", "371449", "341111"}
-                : originalDigits.startsWith("5")
-                ? new String[]{"555555", "545454", "510510"}
-                : new String[]{"411111", "424242", "400000"};
-        return bins[r.nextInt(bins.length)];
+    private static int cardNetworkPrefixLength(String digits) {
+        if (digits.startsWith("34") || digits.startsWith("37")) return 2;
+        if (digits.matches("5[1-5].*")) return 2;
+        return 1;
+    }
+
+    /** Keyed, balanced decimal Feistel-style permutation. Each round is reversible with the key. */
+    private String decimalPermutation(String salt, String digits) {
+        if (digits == null || digits.isEmpty()) return digits;
+        int leftLength = (digits.length() + 1) / 2;
+        int rightLength = digits.length() - leftLength;
+        BigInteger left = new BigInteger(digits.substring(0, leftLength));
+        BigInteger right = rightLength == 0 ? BigInteger.ZERO : new BigInteger(digits.substring(leftLength));
+        BigInteger leftModulus = BigInteger.TEN.pow(leftLength);
+        BigInteger rightModulus = BigInteger.TEN.pow(rightLength);
+
+        for (int round = 0; round < 8; round++) {
+            if ((round & 1) == 0) {
+                BigInteger delta = decimalRound(salt, round, decimalDigits(right, rightLength), leftModulus);
+                left = left.add(delta).mod(leftModulus);
+            } else if (rightLength > 0) {
+                BigInteger delta = decimalRound(salt, round, decimalDigits(left, leftLength), rightModulus);
+                right = right.add(delta).mod(rightModulus);
+            }
+        }
+        return decimalDigits(left, leftLength) + decimalDigits(right, rightLength);
+    }
+
+    private BigInteger decimalRound(String salt, int round, String half, BigInteger modulus) {
+        byte[] digest = Determinism.hmac(secret, salt + "|round=" + round, half);
+        return new BigInteger(1, digest).mod(modulus);
+    }
+
+    private static String decimalDigits(BigInteger value, int width) {
+        if (width == 0) return "";
+        return String.format(Locale.ROOT, "%0" + width + "d", value);
     }
 
     private static String formatCard(String digits, String original, String format) {
@@ -584,27 +627,57 @@ public class MaskingEngine {
         }
     }
 
-    private String dateShift(String salt, String value, int maxDays, String fmt) {
-        DateTimeFormatter f = formatter(fmt, value);
+    private String dateShift(String salt, String value, String shiftSpec, String fmt) {
+        String trimmed = value.trim();
+        String datePart = trimmed.length() > 10 ? trimmed.substring(0, 10) : trimmed;
+        String suffix = trimmed.length() > 10 ? trimmed.substring(10) : "";
+        DateTimeFormatter f = formatter(fmt, datePart);
         try {
-            LocalDate d = LocalDate.parse(value.trim(), f);
-            long shift = (Determinism.hashLong(secret, salt + "|dshift", value) % (2L * maxDays + 1)) - maxDays;
-            if (shift == 0) shift = maxDays / 2 + 1;
-            return d.plusDays(shift).format(f);
-        } catch (DateTimeParseException e) { return formatPreserve(salt, value, false); }
+            LocalDate d = LocalDate.parse(datePart, f);
+            int[] range = dateShiftRange(shiftSpec);
+            long span = (long) range[1] - range[0] + 1L;
+            long shift = range[0] + (Determinism.hashLong(secret, salt + "|dshift", value) % span);
+            if (shift == 0 && (range[0] != 0 || range[1] != 0)) {
+                shift = range[1] > 0 ? 1 : -1;
+            }
+            return d.plusDays(shift).format(f) + suffix;
+        } catch (DateTimeParseException e) { return value; }
+    }
+
+    private static int[] dateShiftRange(String shiftSpec) {
+        String spec = shiftSpec == null || shiftSpec.isBlank() ? "365" : shiftSpec.trim();
+        try {
+            if (!spec.contains(":")) {
+                int max = Math.abs(Integer.parseInt(spec));
+                return new int[]{-max, max};
+            }
+            String[] parts = spec.split(":", -1);
+            if (parts.length != 2 || parts[0].isBlank() || parts[1].isBlank()) {
+                throw new IllegalStateException("DATE_SHIFT range must be minDays:maxDays, e.g. 0:365");
+            }
+            int min = Integer.parseInt(parts[0].trim());
+            int max = Integer.parseInt(parts[1].trim());
+            if (min > max) throw new IllegalStateException("DATE_SHIFT minimum days must be <= maximum days");
+            return new int[]{min, max};
+        } catch (NumberFormatException e) {
+            throw new IllegalStateException("DATE_SHIFT must be maxDays or minDays:maxDays", e);
+        }
     }
 
     /** DOB: random date but same age band => eligibility logic (18+, senior) keeps behaving. */
     private String dobAgeBand(String salt, String value, int bandYears, String fmt) {
-        DateTimeFormatter f = formatter(fmt, value);
+        String trimmed = value.trim();
+        String datePart = trimmed.length() > 10 ? trimmed.substring(0, 10) : trimmed;
+        String suffix = trimmed.length() > 10 ? trimmed.substring(10) : "";
+        DateTimeFormatter f = formatter(fmt, datePart);
         try {
-            LocalDate d = LocalDate.parse(value.trim(), f);
+            LocalDate d = LocalDate.parse(datePart, f);
             int year = d.getYear();
             int bandStart = year - Math.floorMod(year, Math.max(1, bandYears));
             Random r = Determinism.rng(secret, salt + "|dob", value);
             LocalDate out = LocalDate.of(bandStart + r.nextInt(Math.max(1, bandYears)), 1 + r.nextInt(12), 1 + r.nextInt(28));
-            return out.format(f);
-        } catch (DateTimeParseException e) { return formatPreserve(salt, value, false); }
+            return out.format(f) + suffix;
+        } catch (DateTimeParseException e) { return value; }
     }
 
     private String street(String salt, String value) {

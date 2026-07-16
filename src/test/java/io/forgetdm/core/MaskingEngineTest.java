@@ -6,6 +6,8 @@ import io.forgetdm.core.mask.MaskingEngine;
 import io.forgetdm.core.util.Luhn;
 import org.junit.jupiter.api.Test;
 
+import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -83,7 +85,61 @@ class MaskingEngineTest {
         assertFalse(generated.startsWith("411111"));
         String nonconforming = engine.mask(MaskFunction.CREDIT_CARD, "ccn", "4111 1111 1111 1112", "VALID_RANDOM_BIN", "DIGITS_ONLY", ctx);
         assertNotEquals("4111 1111 1111 1112", nonconforming); // fail closed: malformed PANs never pass through
-        assertTrue(Luhn.isValid(nonconforming));
+        assertTrue(nonconforming.matches("\\d{16}"));
+    }
+
+    @Test void creditCardPreserveBinIsCollisionFreeAtScale() {
+        Set<String> masked = new HashSet<>();
+        for (int i = 0; i < 100_000; i++) {
+            String body = "411111" + String.format("%09d", i);
+            String source = body + Luhn.checkDigit(body);
+            String value = engine.mask(MaskFunction.CREDIT_CARD, "cards.pan", source,
+                    "VALID_PRESERVE_BIN", "DIGITS_ONLY", ctx);
+            assertTrue(value.startsWith("411111"));
+            assertTrue(Luhn.isValid(value));
+            assertTrue(masked.add(value), "collision for " + source + " -> " + value);
+        }
+    }
+
+    @Test void creditCardRandomBinIsCollisionFreeAtScale() {
+        Set<String> masked = new HashSet<>();
+        for (int i = 0; i < 50_000; i++) {
+            String body = "411111" + String.format("%09d", i);
+            String source = body + Luhn.checkDigit(body);
+            String value = engine.mask(MaskFunction.CREDIT_CARD, "cards.pan", source,
+                    "VALID_RANDOM_BIN", "DIGITS_ONLY", ctx);
+            assertTrue(value.startsWith("4"));
+            assertTrue(Luhn.isValid(value));
+            assertTrue(masked.add(value), "collision for " + source + " -> " + value);
+        }
+    }
+
+    @Test void creditCardKeepLastFourIsCollisionFreeAtScale() {
+        Set<String> masked = new HashSet<>();
+        int generated = 0;
+        for (int i = 0; generated < 5_000; i++) {
+            String body = "411111" + String.format("%06d", i) + "123";
+            if (Luhn.checkDigit(body) != '4') continue;
+            String source = body + "4";
+            String value = engine.mask(MaskFunction.CREDIT_CARD, "cards.pan", source,
+                    "VALID_KEEP_LAST4", "DIGITS_ONLY", ctx);
+            assertTrue(value.endsWith("1234"));
+            assertTrue(Luhn.isValid(value));
+            assertTrue(masked.add(value), "collision for " + source + " -> " + value);
+            generated++;
+        }
+    }
+
+    @Test void malformedCardShapedIdentifiersRemainMaskedAndCollisionFree() {
+        Set<String> masked = new HashSet<>();
+        for (int i = 1; i <= 20_000; i++) {
+            String source = String.format("%014d", i);
+            String value = engine.mask(MaskFunction.CREDIT_CARD, "party.key", source,
+                    "VALID_PRESERVE_BIN", "DIGITS_ONLY", ctx);
+            assertEquals(source.length(), value.length());
+            assertNotEquals(source, value);
+            assertTrue(masked.add(value), "collision for " + source + " -> " + value);
+        }
     }
 
     @Test void emailIsSafeValidAndDeterministic() {
@@ -106,6 +162,37 @@ class MaskingEngineTest {
         String m = engine.mask(MaskFunction.DOB_AGE_BAND, "dob", "1987-06-15", "5", null, ctx);
         int year = Integer.parseInt(m.substring(0, 4));
         assertTrue(year >= 1985 && year <= 1989);
+    }
+
+    @Test void temporalMasksAcceptOracleTimestampTextWithoutCreatingInvalidDates() {
+        String dob = engine.mask(MaskFunction.DOB_AGE_BAND, "dob", "1987-06-15 00:00:00.0", "5", null, ctx);
+        assertDoesNotThrow(() -> java.time.LocalDate.parse(dob.substring(0, 10)));
+        assertEquals(" 00:00:00.0", dob.substring(10));
+
+        String shifted = engine.mask(MaskFunction.DATE_SHIFT, "expiry", "2026-01-31 13:14:15.0", "365", null, ctx);
+        assertDoesNotThrow(() -> java.time.LocalDate.parse(shifted.substring(0, 10)));
+        assertEquals(" 13:14:15.0", shifted.substring(10));
+    }
+
+    @Test void temporalMasksDoNotDigitScrambleUnknownFormats() {
+        assertEquals("not-a-date", engine.mask(MaskFunction.DATE_SHIFT, "date", "not-a-date", "30", null, ctx));
+        assertEquals("not-a-date", engine.mask(MaskFunction.DOB_AGE_BAND, "dob", "not-a-date", "5", null, ctx));
+    }
+
+    @Test void dateShiftSupportsDirectionalRangesWithoutBreakingLegacyMaxDays() {
+        LocalDate source = LocalDate.parse("2026-01-31");
+        LocalDate forward = LocalDate.parse(engine.mask(MaskFunction.DATE_SHIFT, "expiry",
+                source.toString(), "0:365", null, ctx));
+        LocalDate backward = LocalDate.parse(engine.mask(MaskFunction.DATE_SHIFT, "effective",
+                source.toString(), "-365:0", null, ctx));
+        LocalDate legacy = LocalDate.parse(engine.mask(MaskFunction.DATE_SHIFT, "legacy",
+                source.toString(), "365", null, ctx));
+
+        assertTrue(forward.isAfter(source));
+        assertTrue(backward.isBefore(source));
+        assertTrue(Math.abs(java.time.temporal.ChronoUnit.DAYS.between(source, legacy)) <= 365);
+        assertThrows(IllegalStateException.class, () -> engine.mask(MaskFunction.DATE_SHIFT, "bad",
+                source.toString(), "365:0", null, ctx));
     }
 
     @Test void geoTripletIsCoherent() {

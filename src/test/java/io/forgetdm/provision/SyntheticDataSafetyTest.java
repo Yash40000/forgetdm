@@ -84,6 +84,20 @@ class SyntheticDataSafetyTest {
         assertTrue(issues.get(0).message().contains("choose SEQUENCE"));
     }
 
+    @Test void paymentCardGeneratorRejectsCharacterTargetsThatWouldTruncateThePan() {
+        var column = new SyntheticGenService.GenColumn("PAN", "CREDIT_CARD_AMEX", "", "",
+                false, null, null, "VARCHAR", null, null);
+        var table = new SyntheticGenService.GenTable("PAYMENT_CARDS", 100L, List.of(column));
+
+        var issues = SyntheticRangeChecks.check(table, 100,
+                Map.of("pan", Types.VARCHAR), Map.of("pan", 14), Map.of("pan", 0));
+
+        assertEquals(1, issues.size());
+        assertTrue(issues.get(0).fatal());
+        assertTrue(issues.get(0).message().contains("at least 15 characters"));
+        assertTrue(issues.get(0).message().contains("uniqueness"));
+    }
+
     @Test void savedSyntheticJobNamesRequireEightCharacters() {
         ApiException error = assertThrows(ApiException.class, () -> SyntheticGenService.cleanSavedJobName("SHORT"));
         assertTrue(error.getMessage().contains("at least 8 characters"));

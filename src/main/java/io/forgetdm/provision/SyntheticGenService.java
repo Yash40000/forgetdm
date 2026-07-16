@@ -55,6 +55,10 @@ import java.util.function.BiFunction;
  */
 @Service
 public class SyntheticGenService {
+    // Oracle exposes TIMESTAMP WITH TIME ZONE / LOCAL TIME ZONE through its
+    // proprietary JDBC codes instead of java.sql.Types.TIMESTAMP_WITH_TIMEZONE.
+    private static final int ORACLE_TIMESTAMP_WITH_TIME_ZONE = -101;
+    private static final int ORACLE_TIMESTAMP_WITH_LOCAL_TIME_ZONE = -102;
 
     private final DataSourceService dataSources;
     private final ConnectionFactory connections;
@@ -787,13 +791,14 @@ public class SyntheticGenService {
         String approvalStatus = String.valueOf(saved.getOrDefault("approvalStatus", "DRAFT"));
         GenPlan plan = (GenPlan) saved.get("plan");
         String receiver = plan == null || plan.receiver() == null ? "DB" : plan.receiver().trim().toUpperCase(Locale.ROOT);
-        if ("DB".equals(receiver) && !"APPROVED".equalsIgnoreCase(approvalStatus)) {
+        boolean adminBypass = currentPrincipalIsAdmin();
+        if ("DB".equals(receiver) && !"APPROVED".equalsIgnoreCase(approvalStatus) && !adminBypass) {
             throw ApiException.bad("Database saved jobs require approval before run. Request approval, then have a different user approve it.");
         }
-        if ("PENDING_APPROVAL".equalsIgnoreCase(approvalStatus)) {
+        if ("PENDING_APPROVAL".equalsIgnoreCase(approvalStatus) && !adminBypass) {
             throw ApiException.bad("Saved job is pending approval. Approve it or move it back to draft before running.");
         }
-        if ("REJECTED".equalsIgnoreCase(approvalStatus)) {
+        if ("REJECTED".equalsIgnoreCase(approvalStatus) && !adminBypass) {
             throw ApiException.bad("Saved job was rejected and cannot run until it is updated.");
         }
         SavedJobRunContext context = savedJobRunContext(saved);
@@ -835,7 +840,7 @@ public class SyntheticGenService {
     }
 
     public Map<String, Object> approveSavedJob(String id, ApprovalRequest request) {
-        Map<String, Object> saved = querySavedJob(id, false);
+        Map<String, Object> saved = querySavedJobForApproval(id, false);
         AccessPrincipal p = requirePrincipal();
         String owner = String.valueOf(saved.getOrDefault("ownerUsername", ""));
         if (owner.equalsIgnoreCase(p.username())) {
@@ -849,11 +854,11 @@ public class SyntheticGenService {
                         "approval_note = ?, updated_at = ? WHERE id = ?",
                 ts(Instant.now()), p.username(), note, ts(Instant.now()), id);
         audit.log(p.username(), "SYNTHETIC_JOB_APPROVED", "savedJob=" + id + " name=" + saved.get("name"));
-        return querySavedJob(id, true);
+        return querySavedJobForApproval(id, true);
     }
 
     public Map<String, Object> rejectSavedJob(String id, ApprovalRequest request) {
-        Map<String, Object> saved = querySavedJob(id, false);
+        Map<String, Object> saved = querySavedJobForApproval(id, false);
         AccessPrincipal p = requirePrincipal();
         String note = request == null ? null : blankNull(request.note());
         if (note == null) {
@@ -863,7 +868,7 @@ public class SyntheticGenService {
                         "approval_note = ?, updated_at = ? WHERE id = ?",
                 p.username(), note, ts(Instant.now()), id);
         audit.log(p.username(), "SYNTHETIC_JOB_REJECTED", "savedJob=" + id + " name=" + saved.get("name"));
-        return querySavedJob(id, true);
+        return querySavedJobForApproval(id, true);
     }
 
     public Map<String, Object> exportSavedJobRunner(String id, Map<String, Object> body) {
@@ -1620,6 +1625,15 @@ public class SyntheticGenService {
         return row;
     }
 
+    /** Approval routes require synthetic.approve at the security filter. Reviewers therefore need
+     * cross-owner visibility for this operation; normal saved-job reads remain owner-scoped. */
+    private Map<String, Object> querySavedJobForApproval(String id, boolean includePlan) {
+        List<Map<String, Object>> rows = jdbc.query("SELECT * FROM synthetic_saved_jobs WHERE id = ?",
+                (rs, rowNum) -> mapSavedJobRow(rs, includePlan), id);
+        if (rows.isEmpty()) throw ApiException.notFound("Saved synthetic job " + id + " not found");
+        return rows.get(0);
+    }
+
     private Map<String, Object> mapSavedJobRow(ResultSet rs, boolean includePlan) throws SQLException {
         LinkedHashMap<String, Object> out = new LinkedHashMap<>();
         out.put("id", rs.getString("id"));
@@ -1713,6 +1727,10 @@ public class SyntheticGenService {
                 .orElseThrow(() -> new ApiException(HttpStatus.UNAUTHORIZED, "Login required"));
     }
 
+    private boolean currentPrincipalIsAdmin() {
+        return AccessContext.current().map(p -> p.hasPermission("admin.all")).orElse(false);
+    }
+
     static String cleanSavedJobName(String name) {
         if (name == null || name.isBlank()) throw ApiException.bad("Saved job name is required");
         String clean = name.trim();
@@ -1733,6 +1751,7 @@ public class SyntheticGenService {
     }
 
     private void enforceControlledTargetGovernance(GenPlan plan, SavedJobRunContext savedJob) {
+        if (currentPrincipalIsAdmin()) return;
         String receiver = plan.receiver() == null ? "DB" : plan.receiver().trim().toUpperCase(Locale.ROOT);
         if ("DB".equals(receiver) && hasTargetSystems(plan)) {
             boolean controlled = false;
@@ -2275,7 +2294,7 @@ public class SyntheticGenService {
             Random rng = new Random(seed * 1000003L + (tIndex++));
             progress.update(percent(startPct, endPct, genProgress.done(), Math.max(1, totalRows)),
                     "Generate rows", "Generating " + rows + " rows for " + t.name());
-            data.put(t.name().toLowerCase(Locale.ROOT), genTableRows(t, rows, rng, pools, referenced, composite, tuplePools, rowIndex,
+            data.put(t.name().toLowerCase(Locale.ROOT), genTableRows(t, rows, rng, seed, pools, referenced, composite, tuplePools, rowIndex,
                     uniqueCols == null ? Set.of() : uniqueCols.getOrDefault(t.name().toLowerCase(Locale.ROOT), Set.of()),
                     constraintRules == null ? List.of() : constraintRules.getOrDefault(t.name().toLowerCase(Locale.ROOT), List.of()),
                     genProgress));
@@ -2341,7 +2360,7 @@ public class SyntheticGenService {
         }
     }
 
-    private List<LinkedHashMap<String, String>> genTableRows(GenTable t, long rows, Random rng,
+    private List<LinkedHashMap<String, String>> genTableRows(GenTable t, long rows, Random rng, long generatorSeed,
             Map<String, List<String>> pools, Set<String> referenced,
             Map<String, List<CompositeFk>> composite, Map<String, List<String[]>> tuplePools,
             Map<String, Map<String, LinkedHashMap<String, String>>> rowIndex,
@@ -2371,7 +2390,8 @@ public class SyntheticGenService {
         Map<String, BiFunction<Long, Random, String>> gens = new HashMap<>();
         for (GenColumn c : cols)
             if (!notBlank(c.fkTable()) && !isApi(c) && !isDerived(c))
-                gens.put(c.name(), Generators.of(blankOr(c.generator(), "SEQUENCE"), blankNull(c.param1()), blankNull(c.param2())));
+                gens.put(c.name(), Generators.of(blankOr(c.generator(), "SEQUENCE"), blankNull(c.param1()), blankNull(c.param2()),
+                        generatorSeed, t.name() + "." + c.name()));
 
         List<GenColumn> derived = cols.stream().filter(SyntheticGenService::isDerived).toList();
         UniqueGuards uniqueSets = new UniqueGuards(false, rows);   // exact uniqueness within this (bounded) table
@@ -2598,7 +2618,8 @@ public class SyntheticGenService {
     private static boolean isInherentlyUnique(GenColumn c) {
         String g = c.generator() == null ? "" : c.generator().trim().toUpperCase(Locale.ROOT);
         return switch (g) {
-            case "SEQUENCE", "PADDED_SEQUENCE", "UUID", "GUID", "ROW_NUMBER", "AUTOINCREMENT" -> true;
+            case "SEQUENCE", "PADDED_SEQUENCE", "UUID", "GUID", "ROW_NUMBER", "AUTOINCREMENT",
+                    "CREDIT_CARD_VISA", "CREDIT_CARD_MC", "CREDIT_CARD_AMEX" -> true;
             default -> false;
         };
     }
@@ -2725,7 +2746,8 @@ public class SyntheticGenService {
 
     /** Public single-table generation (no cross-table FK), reused by the mainframe file generator. */
     public List<LinkedHashMap<String, String>> generateRows(GenTable t, long rows, long seed) {
-        return genTableRows(t, Math.max(0, rows), new Random(seed), new HashMap<>(), Set.of(), Map.of(), new HashMap<>(), new HashMap<>(), Set.of(), List.of(), null);
+        return genTableRows(t, Math.max(0, rows), new Random(seed), seed, new HashMap<>(), Set.of(), Map.of(),
+                new HashMap<>(), new HashMap<>(), Set.of(), List.of(), null);
     }
 
     // --------------------------------------------------------- FK auto-detection
@@ -4151,7 +4173,7 @@ public class SyntheticGenService {
                                                   LoadPlan load, ProgressSink progress, int startPct, int endPct,
                                                   long rowsDoneBeforeTable, long rowsTotal) throws Exception {
         List<GenColumn> allCols = safe(t.columns());
-        Map<String, BiFunction<Long, Random, String>> gens = compiledGenerators(allCols);
+        Map<String, BiFunction<Long, Random, String>> gens = compiledGenerators(t.name(), allCols, ctx.seed);
         ctx.newTable(t, rows);
         Set<String> auto = autoIncrementColumns(out, schema, t.name());
         Set<String> generated = generatedColumns(out, schema, t.name());
@@ -4848,11 +4870,12 @@ public class SyntheticGenService {
                     + "cap API-backed tables at 5000 rows, or use a batch endpoint.");
     }
 
-    private Map<String, BiFunction<Long, Random, String>> compiledGenerators(List<GenColumn> cols) {
+    private Map<String, BiFunction<Long, Random, String>> compiledGenerators(String tableName, List<GenColumn> cols, long seed) {
         Map<String, BiFunction<Long, Random, String>> gens = new HashMap<>();
         for (GenColumn c : cols)
             if (!notBlank(c.fkTable()) && !isApi(c))
-                gens.put(c.name(), Generators.of(blankOr(c.generator(), "SEQUENCE"), blankNull(c.param1()), blankNull(c.param2())));
+                gens.put(c.name(), Generators.of(blankOr(c.generator(), "SEQUENCE"), blankNull(c.param1()), blankNull(c.param2()),
+                        seed, tableName + "." + c.name()));
         return gens;
     }
 
@@ -4927,7 +4950,7 @@ public class SyntheticGenService {
                                   long rowsDoneBeforeTable, long rowsTotal) throws SQLException {
         if (rows <= 0) return;
         List<GenColumn> allCols = safe(t.columns());
-        Map<String, BiFunction<Long, Random, String>> gens = compiledGenerators(allCols);
+        Map<String, BiFunction<Long, Random, String>> gens = compiledGenerators(t.name(), allCols, ctx.seed);
         ctx.newTable(t, rows);   // reset per-table run state (PK uniqueness, cardinality) + cache composite groups
         Set<String> auto = autoIncrementColumns(out, schema, t.name());
         Set<String> generated = generatedColumns(out, schema, t.name());
@@ -5031,7 +5054,7 @@ public class SyntheticGenService {
                                 long rowsDoneBeforeTable, long rowsTotal) throws Exception {
         if (rows <= 0) return;
         List<GenColumn> allCols = safe(t.columns());
-        Map<String, BiFunction<Long, Random, String>> gens = compiledGenerators(allCols);
+        Map<String, BiFunction<Long, Random, String>> gens = compiledGenerators(t.name(), allCols, ctx.seed);
         ctx.newTable(t, rows);   // reset per-table run state (PK uniqueness, cardinality) + cache composite groups
         Set<String> auto = autoIncrementColumns(out, schema, t.name());
         Set<String> generated = generatedColumns(out, schema, t.name());
@@ -5099,7 +5122,9 @@ public class SyntheticGenService {
                 case Types.BOOLEAN, Types.BIT -> Boolean.toString(parseBool(value));
                 case Types.DATE -> java.sql.Date.valueOf(datePart(value)).toString();
                 case Types.TIME -> Time.valueOf(value.substring(0, Math.min(8, value.length()))).toString();
-                case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE -> Timestamp.valueOf(normalizeTs(value)).toString();
+                case Types.TIMESTAMP, Types.TIMESTAMP_WITH_TIMEZONE,
+                        ORACLE_TIMESTAMP_WITH_TIME_ZONE, ORACLE_TIMESTAMP_WITH_LOCAL_TIME_ZONE ->
+                        Timestamp.valueOf(normalizeTs(value)).toString();
                 default -> fit(value, jdbcType, precision);
             };
         } catch (ApiException e) {
@@ -5182,7 +5207,7 @@ public class SyntheticGenService {
                                     long rowsDoneBeforeTable, long rowsTotal) throws SQLException {
         if (rows <= 0) return;
         List<GenColumn> allCols = safe(t.columns());
-        Map<String, BiFunction<Long, Random, String>> gens = compiledGenerators(allCols);
+        Map<String, BiFunction<Long, Random, String>> gens = compiledGenerators(t.name(), allCols, ctx.seed);
         ctx.newTable(t, rows);
         Set<String> auto = autoIncrementColumns(out, schema, t.name());
         Set<String> generated = generatedColumns(out, schema, t.name());
@@ -5280,7 +5305,7 @@ public class SyntheticGenService {
                                   long rowsDoneBeforeTable, long rowsTotal) throws SQLException {
         if (rows <= 0) return;
         List<GenColumn> allCols = safe(t.columns());
-        Map<String, BiFunction<Long, Random, String>> gens = compiledGenerators(allCols);
+        Map<String, BiFunction<Long, Random, String>> gens = compiledGenerators(t.name(), allCols, ctx.seed);
         ctx.newTable(t, rows);   // reset per-table run state (PK uniqueness, cardinality) + cache composite groups
         List<GenColumn> cols = writableColumns(t, types);
         List<GenColumn> keys = keyColumnsFor(out, schema, t, cols, load);
@@ -5327,7 +5352,7 @@ public class SyntheticGenService {
                                         long rowsDoneBeforeTable, long rowsTotal) throws SQLException {
         if (rows <= 0) return;
         List<GenColumn> allCols = safe(t.columns());
-        Map<String, BiFunction<Long, Random, String>> gens = compiledGenerators(allCols);
+        Map<String, BiFunction<Long, Random, String>> gens = compiledGenerators(t.name(), allCols, ctx.seed);
         ctx.newTable(t, rows);   // reset per-table run state (PK uniqueness, cardinality) + cache composite groups
         List<GenColumn> cols = writableColumns(t, types);
         List<GenColumn> keys = keyColumnsFor(out, schema, t, cols, load);
@@ -5502,6 +5527,7 @@ public class SyntheticGenService {
                 case Types.TIME:
                     ps.setTime(idx, Time.valueOf(v.substring(0, Math.min(8, v.length())))); break;
                 case Types.TIMESTAMP: case Types.TIMESTAMP_WITH_TIMEZONE:
+                case ORACLE_TIMESTAMP_WITH_TIME_ZONE: case ORACLE_TIMESTAMP_WITH_LOCAL_TIME_ZONE:
                     ps.setTimestamp(idx, Timestamp.valueOf(normalizeTs(v))); break;
                 default:
                     ps.setString(idx, v);

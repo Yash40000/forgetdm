@@ -32,10 +32,26 @@ final class SyntheticRangeChecks {
             String col = c.name().toLowerCase(Locale.ROOT);
             Integer type = types.get(col);
             if (type == null) continue;
+            String gen = c.generator() == null ? "" : c.generator().trim().toUpperCase(Locale.ROOT);
+            if (isCardGenerator(gen)) {
+                int digits = "CREDIT_CARD_AMEX".equals(gen) ? 15 : 16;
+                long cardCapacity = io.forgetdm.core.synth.Generators.cardCapacity(gen);
+                if (rows > cardCapacity) {
+                    issues.add(new RangeIssue(t.name(), c.name(), true,
+                            t.name() + "." + c.name() + ": " + gen + " guarantees at most " + cardCapacity
+                                    + " unique card numbers per column, but " + rows + " rows were requested."));
+                }
+                int declaredLength = sizes.getOrDefault(col, 0);
+                if (isCharacter(type) && declaredLength > 0 && declaredLength < digits) {
+                    issues.add(new RangeIssue(t.name(), c.name(), true,
+                            t.name() + "." + c.name() + ": " + gen + " requires a character column at least "
+                                    + digits + " characters long, but the target length is " + declaredLength
+                                    + ". Truncating a card number would break both uniqueness and its Luhn checksum."));
+                }
+            }
             BigDecimal capacity = capacityOf(type, sizes.getOrDefault(col, 0), scales.getOrDefault(col, 0));
             if (capacity == null) continue;   // not a bounded numeric column
 
-            String gen = c.generator() == null ? "" : c.generator().trim().toUpperCase(Locale.ROOT);
             switch (gen) {
                 case "DECIMAL_RANGE" -> {
                     // Generators.of: p1 = min (default 0), p2 = max (default 1000!)
@@ -106,6 +122,20 @@ final class SyntheticRangeChecks {
             case java.sql.Types.INTEGER -> new BigDecimal(Integer.MAX_VALUE);
             case java.sql.Types.BIGINT -> new BigDecimal(Long.MAX_VALUE);
             default -> null;
+        };
+    }
+
+    private static boolean isCardGenerator(String generator) {
+        return "CREDIT_CARD_VISA".equals(generator)
+                || "CREDIT_CARD_MC".equals(generator)
+                || "CREDIT_CARD_AMEX".equals(generator);
+    }
+
+    private static boolean isCharacter(int jdbcType) {
+        return switch (jdbcType) {
+            case java.sql.Types.CHAR, java.sql.Types.VARCHAR, java.sql.Types.LONGVARCHAR,
+                    java.sql.Types.NCHAR, java.sql.Types.NVARCHAR, java.sql.Types.LONGNVARCHAR -> true;
+            default -> false;
         };
     }
 

@@ -7,6 +7,7 @@ import io.forgetdm.core.util.PiiPatterns;
 import io.forgetdm.datasource.ConnectionFactory;
 import io.forgetdm.datasource.DataSourceEntity;
 import io.forgetdm.datasource.DataSourceService;
+import io.forgetdm.datasource.SqlDialect;
 import io.forgetdm.policy.MaskingPolicyEntity;
 import io.forgetdm.policy.MaskingPolicyRepository;
 import io.forgetdm.policy.MaskingRuleEntity;
@@ -233,8 +234,8 @@ public class DiscoveryService {
     @Transactional
     public int bulkUpdateClassifications(List<Long> ids, String status) {
         String normalizedStatus = status == null ? "" : status.trim().toUpperCase(Locale.ROOT);
-        if (!Set.of("APPROVED", "REJECTED").contains(normalizedStatus)) {
-            throw ApiException.bad("status must be APPROVED or REJECTED");
+        if (!Set.of("APPROVED", "REJECTED", "SUGGESTED").contains(normalizedStatus)) {
+            throw ApiException.bad("status must be APPROVED, REJECTED or SUGGESTED");
         }
         if (ids == null || ids.isEmpty()) return 0;
         List<Long> uniqueIds = ids.stream().filter(Objects::nonNull).distinct().limit(10_000).toList();
@@ -268,9 +269,8 @@ public class DiscoveryService {
             for (String v : sample) {
                 if (v == null || v.isBlank()) continue;
                 for (Map.Entry<String, Pattern> e : valueHints.entrySet()) {
-                    if (e.getValue().matcher(v.trim()).matches()) hits.merge(e.getKey(), 1, Integer::sum);
+                    if (valueMatches(e.getKey(), e.getValue(), v.trim())) hits.merge(e.getKey(), 1, Integer::sum);
                 }
-                if (valueHints.containsKey("CREDIT_CARD") && PiiPatterns.looksLikeCard(v.trim())) hits.merge("CREDIT_CARD", 1, Integer::sum);
             }
             int n = sample.size();
             for (Map.Entry<String, Integer> h : hits.entrySet()) {
@@ -287,6 +287,12 @@ public class DiscoveryService {
         else return null;
         String sampleShown = sample.stream().filter(Objects::nonNull).findFirst().orElse(null);
         return new Scored(piiType, Math.min(conf, 0.99), redactSample(truncate(sampleShown)));
+    }
+
+    /** Strong validators replace permissive regexes for identifiers with real check-digit contracts. */
+    static boolean valueMatches(String piiType, Pattern configuredPattern, String value) {
+        if ("CREDIT_CARD".equals(normalizeType(piiType))) return PiiPatterns.looksLikeCard(value);
+        return configuredPattern != null && configuredPattern.matcher(value).matches();
     }
 
     private List<String> sample(Connection c, String schema, String table, String column, int rows) {
@@ -359,13 +365,26 @@ public class DiscoveryService {
                 ? classifications.findByDataSourceIdAndStatus(dataSourceId, "APPROVED")
                 : classifications.findByDataSourceIdAndSchemaNameAndStatus(dataSourceId, schema, "APPROVED");
         if (approved.isEmpty()) throw ApiException.bad("No APPROVED classifications for data source " + dataSourceId);
+        Set<String> unsafeRiKeys = incompatibleRiMaskKeys(ds, schema, approved);
+        List<ClassificationEntity> safeApproved = approved.stream()
+                .filter(cl -> !unsafeRiKeys.contains(colKey(cl.getTableName(), cl.getColumnName())))
+                .toList();
+        if (!unsafeRiKeys.isEmpty()) {
+            audit.log("system", "POLICY_RI_RULE_SKIPPED",
+                    cleanPolicyName + " skipped " + unsafeRiKeys.size()
+                            + " one-sided or incompatible PK/FK mask rule(s): "
+                            + String.join(", ", unsafeRiKeys));
+        }
+        if (safeApproved.isEmpty()) {
+            throw ApiException.bad("No referentially safe APPROVED classifications for data source " + dataSourceId);
+        }
         MaskingPolicyEntity p = new MaskingPolicyEntity();
         p.setName(cleanPolicyName);
         p.setDataSourceId(dataSourceId);
         p.setSchemaName(schema);
         p.setDescription("Auto-generated from discovery of data source " + dataSourceId + (schema == null ? "" : " schema " + schema));
         p = policies.save(p);
-        for (ClassificationEntity cl : approved) {
+        for (ClassificationEntity cl : safeApproved) {
             MaskingRuleEntity r = new MaskingRuleEntity();
             r.setPolicyId(p.getId());
             r.setSchemaName(cl.getSchemaName());
@@ -376,8 +395,85 @@ public class DiscoveryService {
             r.setParam2(cl.getSuggestedParam2() == null ? defaultParam2(cl.getSuggestedFunction(), cl.getPiiType()) : cl.getSuggestedParam2());
             rules.save(r);
         }
-        audit.log("system", "POLICY_GENERATED", cleanPolicyName + " (" + approved.size() + " rules)");
+        audit.log("system", "POLICY_GENERATED", cleanPolicyName + " (" + safeApproved.size() + " rules)");
         return p;
+    }
+
+    /**
+     * A deterministic mask preserves a relationship only when both columns use the
+     * same function and parameters. Auto-generated policies therefore omit a
+     * classified key when its linked key is absent or configured differently.
+     */
+    private Set<String> incompatibleRiMaskKeys(DataSourceEntity ds, String requestedSchema,
+                                                List<ClassificationEntity> approved) {
+        Map<String, ClassificationEntity> byColumn = new HashMap<>();
+        approved.forEach(cl -> byColumn.put(colKey(cl.getTableName(), cl.getColumnName()), cl));
+        Set<String> unsafe = new TreeSet<>();
+
+        try (Connection c = connections.openPooled(ds)) {
+            String schema = DataSourceService.normalizeSchema(c, requestedSchema);
+            SqlDialect dialect = SqlDialect.of(ds);
+            String catalog = dialect == SqlDialect.MYSQL
+                    ? (schema == null || schema.isBlank() ? c.getCatalog() : schema)
+                    : null;
+            String schemaPattern = dialect == SqlDialect.MYSQL ? null : schema;
+            DatabaseMetaData metadata = c.getMetaData();
+            List<String> tables = new ArrayList<>();
+            try (ResultSet rs = metadata.getTables(catalog, schemaPattern, "%", new String[]{"TABLE"})) {
+                while (rs.next()) {
+                    String table = rs.getString("TABLE_NAME");
+                    if (table != null && !SqlDialect.isSystemTable(table)) tables.add(table);
+                }
+            }
+
+            for (String table : tables) {
+                try (ResultSet rs = metadata.getImportedKeys(catalog, schemaPattern, table)) {
+                    while (rs.next()) {
+                        addUnsafeRiPair(byColumn, unsafe,
+                                rs.getString("PKTABLE_NAME"), rs.getString("PKCOLUMN_NAME"),
+                                rs.getString("FKTABLE_NAME"), rs.getString("FKCOLUMN_NAME"));
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            throw ApiException.bad("Cannot validate PK/FK masking compatibility for generated policy: "
+                    + e.getMessage());
+        }
+        return unsafe;
+    }
+
+    static void addUnsafeRiPair(Map<String, ClassificationEntity> byColumn, Set<String> unsafe,
+                                String parentTable, String parentColumn,
+                                String childTable, String childColumn) {
+        String parentKey = colKey(parentTable, parentColumn);
+        String childKey = colKey(childTable, childColumn);
+        ClassificationEntity parent = byColumn.get(parentKey);
+        ClassificationEntity child = byColumn.get(childKey);
+        if (parent == null && child == null) return;
+        if (parent == null) {
+            unsafe.add(childKey);
+        } else if (child == null) {
+            unsafe.add(parentKey);
+        } else if (!sameEffectiveMask(parent, child)) {
+            unsafe.add(parentKey);
+            unsafe.add(childKey);
+        }
+    }
+
+    static boolean sameEffectiveMask(ClassificationEntity left, ClassificationEntity right) {
+        String leftFunction = normalizeType(left.getSuggestedFunction());
+        String rightFunction = normalizeType(right.getSuggestedFunction());
+        String leftParam1 = emptyToNull(left.getSuggestedParam1() == null
+                ? defaultParam1(leftFunction, left.getPiiType()) : left.getSuggestedParam1());
+        String rightParam1 = emptyToNull(right.getSuggestedParam1() == null
+                ? defaultParam1(rightFunction, right.getPiiType()) : right.getSuggestedParam1());
+        String leftParam2 = emptyToNull(left.getSuggestedParam2() == null
+                ? defaultParam2(leftFunction, left.getPiiType()) : left.getSuggestedParam2());
+        String rightParam2 = emptyToNull(right.getSuggestedParam2() == null
+                ? defaultParam2(rightFunction, right.getPiiType()) : right.getSuggestedParam2());
+        return leftFunction.equals(rightFunction)
+                && Objects.equals(leftParam1, rightParam1)
+                && Objects.equals(leftParam2, rightParam2);
     }
 
     public List<ClassificationEntity> results(Long dataSourceId) {
@@ -866,6 +962,7 @@ public class DiscoveryService {
         if ("BANK_ACCOUNT".equals(fn)) return "KEEP_LAST4";
         if ("ABA_ROUTING".equals(fn)) return "PRESERVE_FED_DISTRICT";
         if ("NATIONAL_ID".equals(fn)) return "GENERIC";
+        if ("DATE_SHIFT".equals(fn) && "CARD_EXPIRY".equals(pii)) return "0:365";
         if ("IP_ADDRESS".equals(fn)) return "SAFE_TEST_RANGE";
         if ("MAC_ADDRESS".equals(fn)) return "LOCAL_ADMIN";
         if ("TOKENIZE".equals(fn)) return switch (String.valueOf(pii)) {

@@ -58,6 +58,8 @@ import java.util.function.BiFunction;
 public class ProvisioningService {
 
     private static final int KEY_CHUNK_SIZE = 5_000;
+    private static final int ORACLE_TIMESTAMP_WITH_TIME_ZONE = -101;
+    private static final int ORACLE_TIMESTAMP_WITH_LOCAL_TIME_ZONE = -102;
 
     private final ProvisionJobRepository jobs;
     private final MaskingRuleRepository rules;
@@ -168,6 +170,10 @@ public class ProvisioningService {
 
     private boolean approvalRequired(ProvisionJobEntity job) {
         if (!Set.of("MASK_COPY", "SUBSET_MASK").contains(job.getJobType())) return false;
+        boolean admin = io.forgetdm.security.AccessContext.current()
+                .map(principal -> principal.hasPermission("admin.all"))
+                .orElse(false);
+        if (admin) return false;
         String mode = props.getGovernance().getRequireProvisionApproval();
         if ("never".equalsIgnoreCase(mode)) return false;
         if ("always".equalsIgnoreCase(mode)) return true;
@@ -907,20 +913,22 @@ public class ProvisioningService {
                 }
             } else {
                 rejectSelfMappedTables(src, tgt, sourceSchema, targetSchema, plan.loadOrder, tableMapForLoad);
-                rejectDuplicateTargets(plan.loadOrder.stream().filter(t -> plan.slices.get(t) != null).toList(),
+                List<String> copyTables = plan.loadOrder.stream().filter(t -> plan.slices.get(t) != null).toList();
+                rejectDuplicateTargets(copyTables,
                         targetSchema, tableMapForLoad);
-                prepareTargets(out, targetSchema, plan.loadOrder.stream()
-                        .filter(table -> plan.slices.get(table) != null)
+                prepareTargets(out, targetSchema, copyTables.stream()
                         .map(table -> targetTableFor(table, tableMapForLoad))
                         .toList(), load);
-                initTableStates(job, plan.loadOrder.stream().filter(t -> plan.slices.get(t) != null).toList(),
+                copyTables = referentialCopyOrder(out, targetSchema, copyTables, tableMapForLoad);
+                initTableStates(job, copyTables,
                         plan.rowCounts != null ? plan.rowCounts : Map.of());
                 setJobPhase(job, "PROVISION");
-                List<String> copyTables = plan.loadOrder.stream().filter(t -> plan.slices.get(t) != null).toList();
                 List<String> disabledIndexes = maybeDisableIndexesForLoad(out, targetSchema, copyTables, targetTableMap);
                 try {
                 int copyParallel = copyParallelism();
-                if (copyParallel > 1 && !load.truncateOnly() && copyTables.size() > 1) {
+                boolean relatedTargets = hasInternalForeignKeys(out, targetSchema,
+                        copyTables.stream().map(t -> targetTableFor(t, tableMapForLoad)).toList());
+                if (copyParallel > 1 && !relatedTargets && !load.truncateOnly() && copyTables.size() > 1) {
                     Map<String, List<MaskingRuleEntity>> resolvedRules = new HashMap<>();
                     for (String t : copyTables) {
                         List<MaskingRuleEntity> rr = effectiveTableRules(ruleMap, profileRuleCache,
@@ -932,7 +940,7 @@ public class ProvisioningService {
                             src, tgt, sourceSchema, targetSchema, eng, job, resolvedRules, colOverrideMap,
                             targetTableMap, rowLimitByTable, customPkMap, load, sharedSalts);
                 } else {
-                for (String table : plan.loadOrder) {
+                for (String table : copyTables) {
                     checkCancelled(job);
                     SubsetService.TableSlice slice = plan.slices.get(table);
                     if (slice == null) continue;
@@ -1077,16 +1085,18 @@ public class ProvisioningService {
         if (table == null || !spec.has("columns")) throw ApiException.bad("spec needs table + columns[] for SYNTHETIC_LOAD");
         if (count > 5_000_000) throw ApiException.bad("rowCount capped at 5,000,000");
         String targetSchema = textOrNull(spec, "targetSchema");
+        long seed = spec.path("seed").asLong(42);
 
         record Col(String name, BiFunction<Long, Random, String> gen) {}
         List<Col> cols = new ArrayList<>();
         for (JsonNode cn : spec.get("columns")) {
-            cols.add(new Col(cn.path("name").asText(),
+            String columnName = cn.path("name").asText();
+            cols.add(new Col(columnName,
                     Generators.of(cn.path("generator").asText("SEQUENCE"),
-                            cn.path("param1").asText(null), cn.path("param2").asText(null))));
+                            cn.path("param1").asText(null), cn.path("param2").asText(null),
+                            seed, table + "." + columnName)));
         }
         DataSourceEntity tgt = dataSources.get(req(job.getTargetId(), "targetId"));
-        long seed = spec.path("seed").asLong(42);
         Random rng = new Random(seed);
         LoadOptions load = loadOptions(spec, spec.path("truncateTarget").asBoolean(false) ? "REPLACE" : "INSERT");
         int batch = load.batchSize();
@@ -1342,7 +1352,8 @@ public class ProvisioningService {
         int batch = safeJdbcBatchRows(targetDialect, Math.max(1, writerCols.size()), load.batchSize());
         long rows = 0;
 
-        int keyChunkSize = safeJdbcBatchRows(sourceDialect, 1, KEY_CHUNK_SIZE);
+        int keyChunkSize = Math.min(sourceDialect.maxInListExpressions(),
+                safeJdbcBatchRows(sourceDialect, 1, KEY_CHUNK_SIZE));
         List<List<String>> keyChunks = pkValues == null ? nullableChunk() : chunks(new ArrayList<>(pkValues), keyChunkSize);
         int[] writerSqlTypes = columnPlans.stream().mapToInt(ColumnPlan::sqlType).toArray();
         // Rolling buffer of the current uncommitted batch (masked row + its original source values), cleared on
@@ -1378,7 +1389,7 @@ public class ProvisioningService {
                                 String sourceCol = selectCols.get(i - 1);
                                 String key = sourceCol.toLowerCase(Locale.ROOT);
                                 Object raw = rs.getObject(i);
-                                String text = rs.getString(i);
+                                String text = jdbcTextValue(raw);
                                 rawBySource.put(key, raw);
                                 textBySource.put(key, text);
                                 ctx.row.put(key, text);
@@ -1926,8 +1937,9 @@ public class ProvisioningService {
                             MaskContext ctx = new MaskContext(updated + staged.size() + 1);
                             for (int i = 1; i <= readCols.size(); i++) {
                                 String k = readCols.get(i - 1).toLowerCase(Locale.ROOT);
-                                rawBySource.put(k, rs.getObject(i));
-                                String txt = rs.getString(i);
+                                Object raw = rs.getObject(i);
+                                rawBySource.put(k, raw);
+                                String txt = jdbcTextValue(raw);
                                 textBySource.put(k, txt);
                                 ctx.row.put(k, txt);
                             }
@@ -1972,10 +1984,8 @@ public class ProvisioningService {
                 try (PreparedStatement ps = out.prepareStatement(insStg)) {
                     int pendingStageRows = 0;
                     for (Object[] row : staged) {
-                        for (int i = 0; i < row.length; i++) {
-                            if (row[i] == null) ps.setNull(i + 1, stageTypes[i]);
-                            else ps.setObject(i + 1, row[i]);
-                        }
+                        for (int i = 0; i < row.length; i++)
+                            bindJdbcValue(ps, i + 1, row[i], stageTypes[i]);
                         ps.addBatch();
                         if (++pendingStageRows >= stageBatchRows) {
                             ps.executeBatch();
@@ -2212,8 +2222,9 @@ public class ProvisioningService {
                         MaskContext ctx = new MaskContext(loaded + inBatch + 1);
                         for (int i = 1; i <= readCols.size(); i++) {
                             String k = readCols.get(i - 1).toLowerCase(Locale.ROOT);
-                            rawBySource.put(k, rs.getObject(i));
-                            String txt = rs.getString(i);
+                            Object raw = rs.getObject(i);
+                            rawBySource.put(k, raw);
+                            String txt = jdbcTextValue(raw);
                             textBySource.put(k, txt);
                             ctx.row.put(k, txt);
                         }
@@ -2251,10 +2262,8 @@ public class ProvisioningService {
                                 row[i] = outByCol.containsKey(k) ? outByCol.get(k) : rawBySource.get(k);
                             }
                         }
-                        for (int i = 0; i < row.length; i++) {
-                            if (row[i] == null) ps.setNull(i + 1, stageTypes[i]);
-                            else ps.setObject(i + 1, row[i]);
-                        }
+                        for (int i = 0; i < row.length; i++)
+                            bindJdbcValue(ps, i + 1, row[i], stageTypes[i]);
                         ps.addBatch();
                         if (++inBatch >= batch) {
                             ps.executeBatch(); out.commit();
@@ -2862,11 +2871,45 @@ public class ProvisioningService {
         return false;
     }
 
+    static boolean usesOracleDirectPath(SqlDialect dialect, String action, boolean lobColumns) {
+        return dialect == SqlDialect.ORACLE && !lobColumns
+                && ("INSERT".equals(action) || "REPLACE".equals(action));
+    }
+
     static boolean containsLobValue(Object[] values) {
         if (values == null) return false;
         for (Object value : values)
             if (value instanceof Blob || value instanceof Clob || value instanceof SQLXML) return true;
         return false;
+    }
+
+    /**
+     * Portable text view of a JDBC value. Oracle's thin driver deliberately does not implement
+     * ResultSet#getString for its CLOB accessor, while other drivers often do. Reading through the
+     * JDBC LOB interfaces keeps the copy path vendor-neutral. Binary LOBs intentionally have no
+     * implicit character representation; they still pass through unchanged via bindJdbcValue.
+     */
+    static String jdbcTextValue(Object value) throws SQLException {
+        if (value == null) return null;
+        if (value instanceof NClob nclob) return readCharacterLob(nclob.getCharacterStream());
+        if (value instanceof Clob clob) return readCharacterLob(clob.getCharacterStream());
+        if (value instanceof SQLXML xml) return xml.getString();
+        if (value instanceof Blob || value instanceof byte[]) return null;
+        return value.toString();
+    }
+
+    private static String readCharacterLob(java.io.Reader reader) throws SQLException {
+        try (reader) {
+            StringBuilder text = new StringBuilder();
+            char[] buffer = new char[8_192];
+            int read;
+            while ((read = reader.read(buffer)) >= 0) {
+                if (read > 0) text.append(buffer, 0, read);
+            }
+            return text.toString();
+        } catch (java.io.IOException e) {
+            throw new SQLException("Could not read character LOB from source", e);
+        }
     }
 
     /** Cross-driver bind that consumes source LOB locators as streams instead of passing vendor objects to a target driver. */
@@ -2883,12 +2926,31 @@ public class ProvisioningService {
             ps.setCharacterStream(index, xml.getCharacterStream());
         } else if (value instanceof byte[] bytes) {
             ps.setBinaryStream(index, new java.io.ByteArrayInputStream(bytes), bytes.length);
+        } else if (value instanceof java.sql.Date date) {
+            ps.setDate(index, date);
+        } else if (value instanceof java.sql.Time time) {
+            ps.setTime(index, time);
+        } else if (value instanceof java.sql.Timestamp timestamp) {
+            ps.setTimestamp(index, timestamp);
         } else if (value instanceof String text && (sqlType == Types.CLOB || sqlType == Types.NCLOB
                 || sqlType == Types.LONGVARCHAR || sqlType == Types.LONGNVARCHAR || sqlType == Types.SQLXML)) {
             ps.setCharacterStream(index, new java.io.StringReader(text), text.length());
+        } else if (value instanceof String text && isTemporalType(sqlType)) {
+            Object temporal = coerce(text, sqlType);
+            if (temporal instanceof java.sql.Date date) ps.setDate(index, date);
+            else if (temporal instanceof java.sql.Time time) ps.setTime(index, time);
+            else if (temporal instanceof java.sql.Timestamp timestamp) ps.setTimestamp(index, timestamp);
+            else ps.setObject(index, value, sqlType);
         } else {
             ps.setObject(index, value);
         }
+    }
+
+    private static boolean isTemporalType(int sqlType) {
+        return sqlType == Types.DATE || sqlType == Types.TIME || sqlType == Types.TIME_WITH_TIMEZONE
+                || sqlType == Types.TIMESTAMP || sqlType == Types.TIMESTAMP_WITH_TIMEZONE
+                || sqlType == ORACLE_TIMESTAMP_WITH_TIME_ZONE
+                || sqlType == ORACLE_TIMESTAMP_WITH_LOCAL_TIME_ZONE;
     }
 
     private static String normalizeLoadAction(String action) {
@@ -3034,6 +3096,45 @@ public class ProvisioningService {
         List<String> parentFirst = referentialLoadOrder(c, schema, tables);
         Collections.reverse(parentFirst);
         return parentFirst;
+    }
+
+    /** Order source tables by the FK graph of their mapped target tables. */
+    private List<String> referentialCopyOrder(Connection out, String schema, List<String> sourceTables,
+                                               Map<String, String> targetTableMap) throws SQLException {
+        Map<String, String> sourceByTarget = new LinkedHashMap<>();
+        List<String> targetTables = new ArrayList<>();
+        for (String source : distinctTables(sourceTables)) {
+            String target = targetTableFor(source, targetTableMap);
+            targetTables.add(target);
+            sourceByTarget.put(target.toLowerCase(Locale.ROOT), source);
+        }
+        List<String> ordered = new ArrayList<>();
+        for (String target : referentialLoadOrder(out, schema, targetTables)) {
+            String source = sourceByTarget.get(target.toLowerCase(Locale.ROOT));
+            if (source != null) ordered.add(source);
+        }
+        for (String source : distinctTables(sourceTables)) if (!ordered.contains(source)) ordered.add(source);
+        return ordered;
+    }
+
+    private boolean hasInternalForeignKeys(Connection c, String schema, List<String> tables) throws SQLException {
+        Set<String> selected = tables.stream()
+                .filter(Objects::nonNull)
+                .map(t -> t.toLowerCase(Locale.ROOT))
+                .collect(Collectors.toSet());
+        for (String child : distinctTables(tables)) {
+            try (ResultSet rs = c.getMetaData().getImportedKeys(null, schema, child)) {
+                while (rs.next()) {
+                    String parent = rs.getString("PKTABLE_NAME");
+                    String actualChild = rs.getString("FKTABLE_NAME");
+                    if (parent != null && actualChild != null
+                            && selected.contains(parent.toLowerCase(Locale.ROOT))
+                            && selected.contains(actualChild.toLowerCase(Locale.ROOT))
+                            && !parent.equalsIgnoreCase(actualChild)) return true;
+                }
+            }
+        }
+        return false;
     }
 
     private List<String> referentialLoadOrder(Connection c, String schema, List<String> tables) throws SQLException {
@@ -3325,6 +3426,7 @@ public class ProvisioningService {
         private final Connection conn;
         private final String schemaName, tableName;
         private final boolean plainInsert;          // INSERT or REPLACE (not upsert/update)
+        private final boolean oracleDirectPath;
         private final int multiRows;                // rows per multi-value INSERT; 1 = disabled (use single-row batch)
         private final List<Object[]> rowBuf = new ArrayList<>();
         private PreparedStatement multiInsertFull;  // cached statement sized to exactly multiRows
@@ -3344,6 +3446,7 @@ public class ProvisioningService {
                     .toList();
             this.sqlTypes = sqlTypes;
             this.lobColumns = containsLobType(sqlTypes);
+            this.oracleDirectPath = usesOracleDirectPath(dialect, action, lobColumns);
 
             if ("INSERT_UPDATE".equals(action)) {
                 if (keyColumns.isEmpty()) throw ApiException.bad("Update-style load requires key columns for " + table);
@@ -3361,7 +3464,7 @@ public class ProvisioningService {
             } else {
                 this.useMergeRowByRow = false;
                 this.insert = ("INSERT".equals(action) || "REPLACE".equals(action))
-                        ? out.prepareStatement(insertSql(dialect, schema, table, columns))
+                        ? out.prepareStatement(insertSql(dialect, schema, table, columns, oracleDirectPath))
                         : null;
                 if ("UPDATE".equals(action)) {
                     if (keyColumns.isEmpty()) throw ApiException.bad("Update-style load requires key columns for " + table);
@@ -3442,6 +3545,9 @@ public class ProvisioningService {
             if (pendingInserts > 0 && insert != null) {
                 insert.executeBatch();
                 pendingInserts = 0;
+                // Oracle direct-path inserts make the target object unavailable to subsequent DML in the
+                // same transaction (ORA-12838). Commit the completed streaming batch before accepting more.
+                if (oracleDirectPath && !conn.getAutoCommit()) conn.commit();
             }
         }
 
@@ -3520,8 +3626,9 @@ public class ProvisioningService {
          * Build the INSERT statement for INSERT / REPLACE actions.
          * Oracle uses the direct-path hint for better bulk-load performance.
          */
-        private static String insertSql(SqlDialect dialect, String schema, String table, List<String> columns) {
-            String hint = (dialect == SqlDialect.ORACLE) ? "/*+ APPEND_VALUES */ " : "";
+        private static String insertSql(SqlDialect dialect, String schema, String table, List<String> columns,
+                                        boolean directPath) {
+            String hint = directPath ? "/*+ APPEND_VALUES */ " : "";
             return "INSERT " + hint + "INTO " + q(schema, table)
                     + " (" + String.join(",", columns.stream().map(ProvisioningService::q).toList()) + ") VALUES ("
                     + String.join(",", Collections.nCopies(columns.size(), "?")) + ")";
@@ -3832,17 +3939,41 @@ public class ProvisioningService {
         };
     }
 
-    private static Object coerce(String value, int sqlType) {
+    static Object coerce(String value, int sqlType) {
         try {
             return switch (sqlType) {
                 case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.parseInt(value.trim());
                 case Types.BIGINT -> Long.parseLong(value.trim());
                 case Types.NUMERIC, Types.DECIMAL, Types.DOUBLE, Types.FLOAT, Types.REAL -> new java.math.BigDecimal(value.trim());
-                case Types.DATE -> java.sql.Date.valueOf(value.trim());
+                case Types.DATE -> java.sql.Date.valueOf(datePart(value));
+                case Types.TIME -> java.sql.Time.valueOf(timePart(value));
+                case Types.TIMESTAMP, ORACLE_TIMESTAMP_WITH_LOCAL_TIME_ZONE -> java.sql.Timestamp.valueOf(timestampText(value));
                 case Types.BOOLEAN, Types.BIT -> Boolean.parseBoolean(value.trim());
                 default -> value;
             };
         } catch (Exception e) { return value; }
+    }
+
+    private static String datePart(String value) {
+        String text = value == null ? "" : value.trim();
+        return text.length() > 10 ? text.substring(0, 10) : text;
+    }
+
+    private static String timePart(String value) {
+        String text = value == null ? "" : value.trim();
+        int separator = Math.max(text.indexOf('T'), text.indexOf(' '));
+        if (separator >= 0 && separator + 1 < text.length()) text = text.substring(separator + 1);
+        int offset = Math.max(text.indexOf('+'), text.lastIndexOf('-'));
+        if (offset > 1) text = text.substring(0, offset);
+        return text.length() > 8 ? text.substring(0, 8) : text;
+    }
+
+    private static String timestampText(String value) {
+        String text = value == null ? "" : value.trim();
+        if (text.length() == 10) return text + " 00:00:00";
+        if (text.length() > 10 && text.charAt(10) == 'T')
+            return text.substring(0, 10) + " " + text.substring(11);
+        return text;
     }
 
     private JsonNode spec(ProvisionJobEntity job) throws Exception {

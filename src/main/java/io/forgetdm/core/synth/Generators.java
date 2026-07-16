@@ -58,9 +58,9 @@ public final class Generators {
             spec("POSTAL_BY_COUNTRY", "Location", "ZIP/PIN by country and optional state list.", "US or IN", "TX|OH or MH|KA", "43004"),
             spec("ADDRESS_BY_COUNTRY", "Location", "Street, city, state, postal by country and optional state list.", "US or IN", "TX|OH or MH|KA", "42 Cedar Ave, Columbus, OH 43004"),
 
-            spec("CREDIT_CARD_VISA", "Finance", "Luhn-valid Visa test number.", "", "", "4..."),
-            spec("CREDIT_CARD_MC", "Finance", "Luhn-valid Mastercard test number.", "", "", "5..."),
-            spec("CREDIT_CARD_AMEX", "Finance", "Luhn-valid American Express style test number.", "", "", "37..."),
+            spec("CREDIT_CARD_VISA", "Finance", "Collision-free, Luhn-valid Visa test number (100 trillion per column).", "", "", "4..."),
+            spec("CREDIT_CARD_MC", "Finance", "Collision-free, Luhn-valid Mastercard test number (50 trillion per column).", "", "", "5..."),
+            spec("CREDIT_CARD_AMEX", "Finance", "Collision-free, Luhn-valid American Express style test number (2 trillion per column).", "", "", "37..."),
             spec("ACCOUNT_NUMBER", "Finance", "Numeric account identifier.", "length", "", "928104550127"),
             spec("ROUTING_NUMBER_US", "Finance", "ABA-style routing number with check digit.", "", "", "021000021"),
             spec("CURRENCY_USD", "Finance", "Decimal amount from 1 to max.", "max", "", "128.45"),
@@ -133,6 +133,15 @@ public final class Generators {
     }
 
     public static BiFunction<Long, Random, String> of(String name, String p1, String p2) {
+        return of(name, p1, p2, 0L, "standalone");
+    }
+
+    /**
+     * Seeded generator factory. The namespace should identify the logical column (normally table.column).
+     * Card generators use both values to select a repeatable permutation of their complete PAN space.
+     */
+    public static BiFunction<Long, Random, String> of(String name, String p1, String p2,
+                                                       long seed, String namespace) {
         switch (String.valueOf(name).toUpperCase(Locale.ROOT)) {
             case "FIRST_NAME":
             case "FIRST_NAME_BY_LOCALE": return firstName(p1, p2);
@@ -152,9 +161,9 @@ public final class Generators {
             case "GENDER": return (i, r) -> pick(r, List.of("M", "F", "X"));
             case "GENDER_WEIGHTED": return (i, r) -> weighted(r, p1 == null || p1.isBlank() ? "F:50|M:50|X:0" : p1);
 
-            case "CREDIT_CARD_VISA": return (i, r) -> card(r, "4", 16);
-            case "CREDIT_CARD_MC":   return (i, r) -> card(r, "5" + (1 + r.nextInt(5)), 16);
-            case "CREDIT_CARD_AMEX": return (i, r) -> card(r, r.nextBoolean() ? "34" : "37", 15);
+            case "CREDIT_CARD_VISA": return uniqueCardGenerator("CREDIT_CARD_VISA", new String[]{"4"}, 16, seed, namespace);
+            case "CREDIT_CARD_MC":   return uniqueCardGenerator("CREDIT_CARD_MC", new String[]{"51", "52", "53", "54", "55"}, 16, seed, namespace);
+            case "CREDIT_CARD_AMEX": return uniqueCardGenerator("CREDIT_CARD_AMEX", new String[]{"34", "37"}, 15, seed, namespace);
             case "ACCOUNT_NUMBER": return (i, r) -> digits(r, intOr(p1, 12));
             case "ROUTING_NUMBER_US": return (i, r) -> routingNumber(r);
             case "CURRENCY_USD": return (i, r) -> money(1, doubleOr(p1, 10000), r);
@@ -373,10 +382,101 @@ public final class Generators {
         return String.format(Locale.US, "%03d-%02d-%04d", area, 1 + r.nextInt(99), 1 + r.nextInt(9999));
     }
 
-    private static String card(Random r, String prefix, int length) {
-        StringBuilder b = new StringBuilder(prefix);
-        while (b.length() < length - 1) b.append(r.nextInt(10));
-        return b.toString() + Luhn.checkDigit(b.toString());
+    /** Maximum number of distinct PANs emitted by a card generator for one logical column. */
+    public static long cardCapacity(String generator) {
+        return switch (String.valueOf(generator).trim().toUpperCase(Locale.ROOT)) {
+            case "CREDIT_CARD_VISA" -> 100_000_000_000_000L;
+            case "CREDIT_CARD_MC" -> 50_000_000_000_000L;
+            case "CREDIT_CARD_AMEX" -> 2_000_000_000_000L;
+            default -> 0L;
+        };
+    }
+
+    private static BiFunction<Long, Random, String> uniqueCardGenerator(String name, String[] prefixes,
+                                                                         int length, long seed, String namespace) {
+        CardPermutation permutation = CardPermutation.create(name, prefixes, length, seed, namespace);
+        return (rowIndex, ignored) -> permutation.card(rowIndex);
+    }
+
+    /**
+     * A keyed, constant-memory permutation of the finite card-number domain. Every one-based row index maps
+     * to exactly one PAN and retries map back to the same PAN. This remains collision-free across partitions
+     * because workers receive the same seed/namespace and use the global row index.
+     */
+    private record CardPermutation(String name, String[] prefixes, int length, int variableDigits,
+                                   long valuesPerPrefix, long capacity, long offset,
+                                   int prefixOffset, int[] positions, int[] shifts) {
+        static CardPermutation create(String name, String[] prefixes, int length, long seed, String namespace) {
+            int variableDigits = length - prefixes[0].length() - 1;
+            long valuesPerPrefix = pow10(variableDigits);
+            long capacity = Math.multiplyExact(prefixes.length, valuesPerPrefix);
+            long key = mix64(seed ^ stableHash(name + "|" + String.valueOf(namespace)));
+            long offset = Math.floorMod(mix64(key ^ 0x6a09e667f3bcc909L), capacity);
+            int prefixOffset = (int) Math.floorMod(mix64(key ^ 0xbb67ae8584caa73bL), prefixes.length);
+
+            int[] positions = new int[variableDigits];
+            int[] shifts = new int[variableDigits];
+            Random keyed = new Random(mix64(key ^ 0x3c6ef372fe94f82bL));
+            for (int i = 0; i < variableDigits; i++) positions[i] = i;
+            for (int i = variableDigits - 1; i > 0; i--) {
+                int j = keyed.nextInt(i + 1);
+                int swap = positions[i];
+                positions[i] = positions[j];
+                positions[j] = swap;
+            }
+            boolean changed = false;
+            for (int i = 0; i < variableDigits; i++) {
+                shifts[i] = keyed.nextInt(10);
+                changed |= shifts[i] != 0;
+            }
+            if (!changed && variableDigits > 0) shifts[0] = 1;
+            return new CardPermutation(name, prefixes.clone(), length, variableDigits, valuesPerPrefix,
+                    capacity, offset, prefixOffset, positions, shifts);
+        }
+
+        String card(long rowIndex) {
+            if (rowIndex < 1 || rowIndex > capacity) {
+                throw new IllegalArgumentException(name + " supports row indexes 1 through " + capacity
+                        + "; requested " + rowIndex);
+            }
+            long domainIndex = (rowIndex - 1 + offset) % capacity;
+            int prefixIndex = (int) ((domainIndex / valuesPerPrefix + prefixOffset) % prefixes.length);
+            long serial = domainIndex % valuesPerPrefix;
+            char[] raw = new char[variableDigits];
+            Arrays.fill(raw, '0');
+            for (int i = variableDigits - 1; i >= 0 && serial > 0; i--) {
+                raw[i] = (char) ('0' + serial % 10);
+                serial /= 10;
+            }
+            char[] permuted = new char[variableDigits];
+            for (int i = 0; i < variableDigits; i++) {
+                int digit = (raw[i] - '0' + shifts[i]) % 10;
+                permuted[positions[i]] = (char) ('0' + digit);
+            }
+            String body = prefixes[prefixIndex] + new String(permuted);
+            return body + Luhn.checkDigit(body);
+        }
+    }
+
+    private static long pow10(int digits) {
+        long value = 1;
+        for (int i = 0; i < digits; i++) value = Math.multiplyExact(value, 10L);
+        return value;
+    }
+
+    private static long stableHash(String value) {
+        long hash = 0xcbf29ce484222325L;
+        for (int i = 0; i < value.length(); i++) {
+            hash ^= value.charAt(i);
+            hash *= 0x100000001b3L;
+        }
+        return hash;
+    }
+
+    private static long mix64(long value) {
+        value = (value ^ (value >>> 30)) * 0xbf58476d1ce4e5b9L;
+        value = (value ^ (value >>> 27)) * 0x94d049bb133111ebL;
+        return value ^ (value >>> 31);
     }
 
     private static String routingNumber(Random r) {

@@ -142,7 +142,7 @@ public class SyntheticController {
         int rows = Math.max(1, Math.min(25, (int) longOr(body.get("rows"), 5L)));
 
         Random rng = new Random(seed);
-        var fn = Generators.of(generator, param1, param2);
+        var fn = Generators.of(generator, param1, param2, seed, "preview." + generator);
         List<String> values = new ArrayList<>();
         for (long i = 1; i <= rows; i++) values.add(fn.apply(i, rng));
         return Map.of("generator", generator, "values", values);

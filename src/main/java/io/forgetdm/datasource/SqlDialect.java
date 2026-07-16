@@ -98,6 +98,11 @@ public enum SqlDialect {
         };
     }
 
+    /** Maximum expressions allowed inside one SQL IN list. Distinct from the statement bind limit. */
+    public int maxInListExpressions() {
+        return this == ORACLE ? 1_000 : bindParamLimit();
+    }
+
     /**
      * True for engines where TRUNCATE (and DDL generally) performs an implicit COMMIT, so it cannot be
      * rolled back if a subsequent load fails. On these, a REPLACE should clear with transactional DELETE

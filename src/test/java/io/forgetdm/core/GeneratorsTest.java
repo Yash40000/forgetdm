@@ -14,11 +14,48 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 class GeneratorsTest {
-    @Test void visaCardsAreLuhnValid() {
-        Random r = new Random(42);
-        for (long i = 0; i < 50; i++) {
-            String c = Generators.of("CREDIT_CARD_VISA", null, null).apply(i, r);
-            assertTrue(c.startsWith("4") && c.length() == 16 && Luhn.isValid(c), c);
+    @Test void allCardNetworksAreLuhnValidAndCollisionFree() {
+        assertUniqueCards("CREDIT_CARD_VISA", 16, value -> value.startsWith("4"));
+        assertUniqueCards("CREDIT_CARD_MC", 16, value -> value.matches("5[1-5].*"));
+        assertUniqueCards("CREDIT_CARD_AMEX", 15, value -> value.startsWith("34") || value.startsWith("37"));
+    }
+
+    @Test void cardCapacityMatchesEverySupportedNetworkAndRejectsOverflow() {
+        assertEquals(100_000_000_000_000L, Generators.cardCapacity("CREDIT_CARD_VISA"));
+        assertEquals(50_000_000_000_000L, Generators.cardCapacity("CREDIT_CARD_MC"));
+        assertEquals(2_000_000_000_000L, Generators.cardCapacity("CREDIT_CARD_AMEX"));
+        assertEquals(0L, Generators.cardCapacity("EMAIL"));
+
+        var amex = Generators.of("CREDIT_CARD_AMEX", null, null, 42L, "cards.pan");
+        assertThrows(IllegalArgumentException.class,
+                () -> amex.apply(Generators.cardCapacity("CREDIT_CARD_AMEX") + 1, new Random(1)));
+    }
+
+    @Test void cardGenerationReplaysAcrossWorkersAndChangesWithSeed() {
+        var workerOne = Generators.of("CREDIT_CARD_VISA", null, null, 42L, "cards.pan");
+        var workerTwo = Generators.of("CREDIT_CARD_VISA", null, null, 42L, "cards.pan");
+        var otherSeed = Generators.of("CREDIT_CARD_VISA", null, null, 43L, "cards.pan");
+
+        Set<String> partitioned = new HashSet<>();
+        for (long row = 1; row <= 10_000; row++) {
+            String firstAttempt = (row <= 5_000 ? workerOne : workerTwo).apply(row, new Random(row));
+            String retry = workerTwo.apply(row, new Random(999_999L - row));
+            assertEquals(firstAttempt, retry, "row " + row);
+            assertTrue(partitioned.add(firstAttempt), "duplicate at row " + row);
+        }
+        assertNotEquals(workerOne.apply(1L, new Random(1)), otherSeed.apply(1L, new Random(1)));
+    }
+
+    private static void assertUniqueCards(String generator, int length,
+                                          java.util.function.Predicate<String> prefixCheck) {
+        var fn = Generators.of(generator, null, null, 987_654_321L, "payment_cards.pan");
+        Set<String> values = new HashSet<>();
+        for (long row = 1; row <= 100_000; row++) {
+            String card = fn.apply(row, new Random(row));
+            assertEquals(length, card.length(), card);
+            assertTrue(prefixCheck.test(card), card);
+            assertTrue(Luhn.isValid(card), card);
+            assertTrue(values.add(card), "duplicate " + card + " at row " + row);
         }
     }
     @Test void intRangeRespectsBounds() {
