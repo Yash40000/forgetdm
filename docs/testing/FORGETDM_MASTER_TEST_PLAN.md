@@ -1,8 +1,11 @@
 # ForgeTDM Master Test Plan
 
-Document owner: Product Engineering and Quality Engineering  
-Applies to: ForgeTDM 1.0.0, Java 17, Spring Boot 3.3.5, Next.js 16  
-Baseline date: 2026-07-16  
+Document owner: Product Engineering and Quality Engineering
+
+Applies to: ForgeTDM 1.0.0, Java 17, Spring Boot 3.3.5, Next.js 16
+
+Baseline date: 2026-07-16
+
 Companion catalog: `FORGETDM_TEST_CASE_CATALOG.csv`
 
 ## 1. Purpose
@@ -420,4 +423,3 @@ evidence uses `docs/enterprise/connector-certification-evidence/TEMPLATE.md`.
 8. Complete security, accessibility, upgrade, backup/restore, and 24-hour endurance gates.
 9. Execute staged 1%/10%/1 TB/5 TB qualification on the intended production topology.
 10. Repeat the appropriate customer qualification pack before each banking deployment.
-
