@@ -115,6 +115,8 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
   const [outputSetupOpened, setOutputSetupOpened] = useState(false);
   const [targetSetupOpened, setTargetSetupOpened] = useState(false);
   const [previewOpened, setPreviewOpened] = useState(false);
+  const [newRequestOpened, setNewRequestOpened] = useState(false);
+  const [resetAfterSave, setResetAfterSave] = useState(false);
   const [sourceImportOpened, setSourceImportOpened] = useState(false);
   const [sourceDraftSnapshot, setSourceDraftSnapshot] = useState<SyntheticDraft | null>(null);
   const [outputDraftSnapshot, setOutputDraftSnapshot] = useState<SyntheticDraft | null>(null);
@@ -130,6 +132,28 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
     (draft.receiver !== 'DB' || Boolean(draft.targetDataSourceId || draft.targetSystems.length));
   const saveNameLength = saveName.trim().length;
   const saveNameTooShort = saveNameLength > 0 && saveNameLength < SYNTHETIC_JOB_NAME_MIN_LENGTH;
+
+  const resetToNewRequest = () => {
+    setDraft(emptySyntheticDraft());
+    setSelectedSourceTables([]);
+    setSourceTableText('');
+    setSummary(null);
+    setSaveOpened(false);
+    setSaveName('');
+    setSaveDescription('');
+    setImportStatus(null);
+    setSourceSetupOpened(false);
+    setOutputSetupOpened(false);
+    setTargetSetupOpened(false);
+    setPreviewOpened(false);
+    setSourceImportOpened(false);
+    setSourceDraftSnapshot(null);
+    setOutputDraftSnapshot(null);
+    setSourceSetupSaved(false);
+    setOutputSetupSaved(false);
+    setNewRequestOpened(false);
+    setResetAfterSave(false);
+  };
 
   const previewPlan = useMutation({
     mutationFn: (nextPlan: SyntheticPlan) => apiPost<SyntheticPlanSummary>('/api/synthetic/plan-summary', nextPlan),
@@ -160,9 +184,15 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
         plan
       }),
     onSuccess: async () => {
+      const shouldReset = resetAfterSave;
       notifications.show({ color: 'green', title: 'Synthetic job saved', message: saveName.trim() });
       setSaveOpened(false);
+      setResetAfterSave(false);
       await queryClient.invalidateQueries({ queryKey: keys.synthetic.savedJobs });
+      if (shouldReset) {
+        resetToNewRequest();
+        notifications.show({ color: 'blue', title: 'New request ready', message: 'The saved request was closed and a clean design is open.' });
+      }
     },
     onError: (error) =>
       notifications.show({ color: 'red', title: 'Could not save synthetic job', message: error instanceof Error ? error.message : 'Save failed' })
@@ -244,13 +274,15 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
     }
   };
 
-  const openSave = () => {
+  const openSave = (startNewAfterSave = false) => {
     try {
       validate(plan);
       setSaveName(`${plan.dataset || 'synthetic'} job`);
       setSaveDescription('');
+      setResetAfterSave(startNewAfterSave);
       setSaveOpened(true);
     } catch (error) {
+      setResetAfterSave(false);
       notifications.show({ color: 'red', title: 'Plan is not ready', message: error instanceof Error ? error.message : 'Check the design.' });
     }
   };
@@ -258,7 +290,13 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
   return (
     <>
       <Stack className="syn-designer-stack" gap="md">
-        <DesignerHeader draft={draft} plan={plan} summary={summary} setDraft={setDraft} />
+        <DesignerHeader
+          draft={draft}
+          plan={plan}
+          summary={summary}
+          setDraft={setDraft}
+          onNewRequest={() => setNewRequestOpened(true)}
+        />
 
         <BuildSetupBar
           draft={draft}
@@ -291,7 +329,7 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
             <Button variant="light" disabled={!setupLaunchReady} leftSection={<IconRefresh size={16} />} loading={previewPlan.isPending} onClick={() => previewPlan.mutate(plan)}>
               Preview plan
             </Button>
-            <Button variant="light" disabled={!setupLaunchReady} leftSection={<IconDeviceFloppy size={16} />} onClick={openSave}>
+            <Button variant="light" disabled={!setupLaunchReady} leftSection={<IconDeviceFloppy size={16} />} onClick={() => openSave()}>
               Save job
             </Button>
             <Button disabled={!setupLaunchReady} leftSection={<IconPlayerPlay size={16} />} loading={startRun.isPending} onClick={launch}>
@@ -319,6 +357,48 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
             </Group>
           </Stack>
         ) : null}
+      </Modal>
+
+      <Modal
+        opened={newRequestOpened}
+        onClose={() => setNewRequestOpened(false)}
+        title="Start a new synthetic request?"
+        size="md"
+        centered
+        closeOnClickOutside={false}
+      >
+        <Stack gap="md">
+          <Text size="sm">
+            The current request will close. Save it as a reusable job first, discard it, or return to the design.
+          </Text>
+          <Alert color="yellow" variant="light">
+            Discarding removes the current dataset, table generators, output settings, and enterprise targets from this open workspace.
+          </Alert>
+          <Group justify="flex-end" gap="xs">
+            <Button variant="subtle" onClick={() => setNewRequestOpened(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="light"
+              color="red"
+              onClick={() => {
+                resetToNewRequest();
+                notifications.show({ color: 'blue', title: 'New request ready', message: 'A clean synthetic design is open.' });
+              }}
+            >
+              Discard changes
+            </Button>
+            <Button
+              leftSection={<IconDeviceFloppy size={16} />}
+              onClick={() => {
+                setNewRequestOpened(false);
+                openSave(true);
+              }}
+            >
+              Save changes
+            </Button>
+          </Group>
+        </Stack>
       </Modal>
 
       <Modal
@@ -479,7 +559,15 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
         <EnterpriseTargetPanel draft={draft} setDraft={setDraft} dataSources={dataSources} />
       </Modal>
 
-      <Modal opened={saveOpened} onClose={() => setSaveOpened(false)} title="Save synthetic job" size="md">
+      <Modal
+        opened={saveOpened}
+        onClose={() => {
+          setSaveOpened(false);
+          setResetAfterSave(false);
+        }}
+        title={resetAfterSave ? 'Save before starting a new request' : 'Save synthetic job'}
+        size="md"
+      >
         <Stack gap="sm">
           <NameInput
             label="Job name"
@@ -493,7 +581,13 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
             Saved jobs can be loaded, approved, exported as shell runners, and run without rebuilding the design.
           </Alert>
           <Group justify="flex-end">
-            <Button variant="light" onClick={() => setSaveOpened(false)}>
+            <Button
+              variant="light"
+              onClick={() => {
+                setSaveOpened(false);
+                setResetAfterSave(false);
+              }}
+            >
               Cancel
             </Button>
             <Button loading={saveJob.isPending} disabled={saveNameLength < SYNTHETIC_JOB_NAME_MIN_LENGTH} onClick={() => saveJob.mutate()}>
@@ -510,16 +604,27 @@ function DesignerHeader({
   draft,
   plan,
   summary,
-  setDraft
+  setDraft,
+  onNewRequest
 }: {
   draft: SyntheticDraft;
   plan: SyntheticPlan;
   summary: SyntheticPlanSummary | null;
   setDraft: (fn: (draft: SyntheticDraft) => SyntheticDraft) => void;
+  onNewRequest: () => void;
 }) {
   const fkCount = plan.tables.reduce((total, table) => total + table.columns.filter((column) => column.fkTable).length, 0);
   return (
     <Paper className="forge-card" p="md">
+      <Group justify="space-between" align="center" mb="sm">
+        <div>
+          <Text fw={850}>Request details</Text>
+          <Text size="xs" c="dimmed">Name this dataset and choose the deterministic seed used across every generated table.</Text>
+        </div>
+        <Button variant="light" size="compact-sm" leftSection={<IconPlus size={15} />} onClick={onNewRequest}>
+          New request
+        </Button>
+      </Group>
       <SimpleGrid cols={{ base: 1, md: 4 }}>
         <TextInput
           label="Dataset"

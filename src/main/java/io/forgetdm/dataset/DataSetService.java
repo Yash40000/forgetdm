@@ -240,6 +240,7 @@ public class DataSetService {
         p.setDatasetId(datasetId);
         profiles.findByDatasetIdAndTableName(datasetId, p.getTableName())
                 .map(TableProfileEntity::getId).ifPresent(profiles::deleteById);
+        profiles.flush();
         return profiles.save(p);
     }
 
@@ -278,6 +279,7 @@ public class DataSetService {
         o.setDatasetId(datasetId);
         overrides.findByDatasetIdAndTableNameAndColumnName(datasetId, o.getTableName(), o.getColumnName())
                 .map(ColumnOverrideEntity::getId).ifPresent(overrides::deleteById);
+        overrides.flush();
         return overrides.save(o);
     }
 

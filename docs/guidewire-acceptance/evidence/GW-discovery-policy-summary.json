@@ -1,0 +1,29 @@
+﻿{
+    "components":  [
+                       {
+                           "connection":  "GW-Policy-Oracle",
+                           "schema":  "BE_CARDS",
+                           "scanJobId":  "disc-c10d1e1a",
+                           "tables":  50,
+                           "findings":  86,
+                           "approved":  86,
+                           "policy":  "GW-Policy-Masking-20260716-v5",
+                           "policyId":  28,
+                           "rules":  84,
+                           "status":  "COMPLETED"
+                       },
+                       {
+                           "connection":  "GW-Billing-PostgreSQL",
+                           "schema":  "gw_billing_src",
+                           "scanJobId":  "disc-3e06a97a",
+                           "tables":  50,
+                           "findings":  52,
+                           "approved":  52,
+                           "policy":  "GW-Billing-Masking-20260716-v5",
+                           "policyId":  29,
+                           "rules":  51,
+                           "status":  "COMPLETED"
+                       }
+                   ],
+    "generatedAt":  "2026-07-16T17:34:53.1131575Z"
+}

@@ -1,0 +1,2 @@
+DROP SCHEMA IF EXISTS tool_rel_tgt CASCADE;
+CREATE SCHEMA tool_rel_tgt;

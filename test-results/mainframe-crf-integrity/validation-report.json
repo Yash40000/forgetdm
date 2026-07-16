@@ -1,0 +1,87 @@
+{
+    "test":  "FTDM mainframe/database CRF integrity",
+    "executedAt":  "2026-07-16T17:38:11.4024060-04:00",
+    "passed":  true,
+    "seed":  73421,
+    "sharedContract":  [
+                           "CRF_KEY",
+                           "FIRST_NAME",
+                           "LAST_NAME",
+                           "STATUS_CODE"
+                       ],
+    "mainframe":  {
+                      "file":  "D:\\forgetdm - Copy\\test-results\\mainframe-crf-integrity\\ftdm-crf-customer-v1.dat",
+                      "copybookId":  2,
+                      "records":  5000,
+                      "applicationOnlyField":  "HOST_REGION",
+                      "format":  "EBCDIC Cp037 FB",
+                      "duplicateKeys":  0,
+                      "copybook":  "FTDM-CRF-CUSTOMER-V1",
+                      "nullKeys":  0,
+                      "lrecl":  76
+                  },
+    "database":  {
+                     "applicationOnlyField":  "CRM_SEGMENT",
+                     "runId":  "4766d254-3dcf-45ee-8aa1-f271a754e0f5",
+                     "schema":  "public",
+                     "dataSourceId":  3,
+                     "savedJobId":  "f1b7f160-b07e-47bd-956a-714bacb7a5f0",
+                     "table":  "ftdm_crf_customer_app",
+                     "records":  5000
+                 },
+    "comparison":  {
+                       "mismatchSamples":  [
+
+                                           ],
+                       "missingInFile":  0,
+                       "missingInDatabase":  0,
+                       "commonFieldMismatches":  0
+                   },
+    "samples":  [
+                    {
+                        "crfKey":  "CRF-0000000001",
+                        "file":  {
+                                     "host":  "EAST",
+                                     "last":  "Southbakerwood",
+                                     "first":  "Cambina",
+                                     "status":  "DORMANT"
+                                 },
+                        "database":  {
+                                         "last":  "Southbakerwood",
+                                         "first":  "Cambina",
+                                         "status":  "DORMANT",
+                                         "segment":  "RETAIL"
+                                     }
+                    },
+                    {
+                        "crfKey":  "CRF-0000002500",
+                        "file":  {
+                                     "host":  "WEST",
+                                     "last":  "Eastwoodworth",
+                                     "first":  "Evanvena",
+                                     "status":  "DORMANT"
+                                 },
+                        "database":  {
+                                         "last":  "Eastwoodworth",
+                                         "first":  "Evanvena",
+                                         "status":  "DORMANT",
+                                         "segment":  "PRIVATE"
+                                     }
+                    },
+                    {
+                        "crfKey":  "CRF-0000005000",
+                        "file":  {
+                                     "host":  "WEST",
+                                     "last":  "Brookdaltonley",
+                                     "first":  "Evanmard",
+                                     "status":  "DORMANT"
+                                 },
+                        "database":  {
+                                         "last":  "Brookdaltonley",
+                                         "first":  "Evanmard",
+                                         "status":  "DORMANT",
+                                         "segment":  "PRIVATE"
+                                     }
+                    }
+                ]
+}

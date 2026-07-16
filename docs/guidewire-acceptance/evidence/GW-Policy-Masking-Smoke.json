@@ -1,0 +1,915 @@
+﻿{
+    "blueprint":  {
+                      "id":  37,
+                      "name":  "GW-Policy-Masking-Smoke",
+                      "description":  "Guidewire-style Policy Operations source-to-target masked copy. Managed by the GW acceptance runner.",
+                      "dataSourceId":  13,
+                      "schemaName":  "BE_CARDS",
+                      "targetDataSourceId":  13,
+                      "targetSchemaName":  "BE_CARDS",
+                      "policyId":  28,
+                      "driverTable":  "",
+                      "driverFilter":  null,
+                      "globalQ1":  true,
+                      "globalQ2":  true,
+                      "createdAt":  "2026-07-15T19:50:51.168404Z",
+                      "updatedAt":  "2026-07-16T17:36:34.039308600Z"
+                  },
+    "profiles":  50,
+    "columnMaps":  575,
+    "policy":  "GW-Policy-Masking-20260716-v5",
+    "policyId":  28,
+    "drift":  {
+                  "issues":  [
+
+                             ],
+                  "checkedAt":  "2026-07-16T17:36:38.065311700Z",
+                  "inSync":  true,
+                  "sourceReachable":  true
+              },
+    "piiCoverage":  {
+                        "approvedTotal":  86,
+                        "approvedMasked":  84,
+                        "suggestedTotal":  0,
+                        "suggestedMasked":  0,
+                        "unmaskedApproved":  [
+                                                 {
+                                                     "table":  "PC_VEHICLE_DRIVER",
+                                                     "column":  "VEHICLE_ID",
+                                                     "piiType":  "VEHICLE_ID"
+                                                 },
+                                                 {
+                                                     "table":  "PC_LOCATION",
+                                                     "column":  "ADDRESS_ID",
+                                                     "piiType":  "ADDRESS"
+                                                 }
+                                             ],
+                        "tables":  [
+                                       {
+                                           "table":  "PC_CONTACT",
+                                           "approved":  5,
+                                           "approvedMasked":  5,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "PARTY_KEY",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "FIRST_NAME",
+                                                               "piiType":  "FIRST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "LAST_NAME",
+                                                               "piiType":  "LAST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "DATE_OF_BIRTH",
+                                                               "piiType":  "DOB",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "TAX_IDENTIFIER",
+                                                               "piiType":  "SSN",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_ADDRESS",
+                                           "approved":  4,
+                                           "approvedMasked":  4,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "ADDRESS_LINE1",
+                                                               "piiType":  "ADDRESS",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "CITY",
+                                                               "piiType":  "CITY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "STATE_CODE",
+                                                               "piiType":  "STATE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "POSTAL_CODE",
+                                                               "piiType":  "ZIP",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_ACCOUNT_CONTACT",
+                                           "approved":  5,
+                                           "approvedMasked":  5,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "TAX_IDENTIFIER",
+                                                               "piiType":  "SSN",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "LAST_NAME",
+                                                               "piiType":  "LAST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "PARTY_KEY",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "FIRST_NAME",
+                                                               "piiType":  "FIRST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "DATE_OF_BIRTH",
+                                                               "piiType":  "DOB",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_POLICY",
+                                           "approved":  2,
+                                           "approvedMasked":  2,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "EXPIRATION_DATE",
+                                                               "piiType":  "CARD_EXPIRY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "POLICY_NUMBER",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_POLICY_PERIOD",
+                                           "approved":  2,
+                                           "approvedMasked":  2,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "POLICY_NUMBER",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "EXPIRATION_DATE",
+                                                               "piiType":  "CARD_EXPIRY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_POLICY_LINE",
+                                           "approved":  2,
+                                           "approvedMasked":  2,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "POLICY_NUMBER",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "EXPIRATION_DATE",
+                                                               "piiType":  "CARD_EXPIRY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_VEHICLE",
+                                           "approved":  3,
+                                           "approvedMasked":  3,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "VIN",
+                                                               "piiType":  "VEHICLE_ID",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "MAKE_NAME",
+                                                               "piiType":  "FULL_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "MODEL_NAME",
+                                                               "piiType":  "FULL_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_DRIVER",
+                                           "approved":  5,
+                                           "approvedMasked":  5,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "PARTY_KEY",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "FIRST_NAME",
+                                                               "piiType":  "FIRST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "LAST_NAME",
+                                                               "piiType":  "LAST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "DATE_OF_BIRTH",
+                                                               "piiType":  "DOB",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "TAX_IDENTIFIER",
+                                                               "piiType":  "SSN",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_VEHICLE_DRIVER",
+                                           "approved":  9,
+                                           "approvedMasked":  8,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "VEHICLE_ID",
+                                                               "piiType":  "VEHICLE_ID",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "UNMASKED"
+                                                           },
+                                                           {
+                                                               "column":  "PARTY_KEY",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "FIRST_NAME",
+                                                               "piiType":  "FIRST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "LAST_NAME",
+                                                               "piiType":  "LAST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "DATE_OF_BIRTH",
+                                                               "piiType":  "DOB",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "TAX_IDENTIFIER",
+                                                               "piiType":  "SSN",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "VIN",
+                                                               "piiType":  "VEHICLE_ID",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "MAKE_NAME",
+                                                               "piiType":  "FULL_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "MODEL_NAME",
+                                                               "piiType":  "FULL_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_LOCATION",
+                                           "approved":  5,
+                                           "approvedMasked":  4,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "ADDRESS_LINE1",
+                                                               "piiType":  "ADDRESS",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "CITY",
+                                                               "piiType":  "CITY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "STATE_CODE",
+                                                               "piiType":  "STATE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "POSTAL_CODE",
+                                                               "piiType":  "ZIP",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "ADDRESS_ID",
+                                                               "piiType":  "ADDRESS",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "UNMASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_BUILDING",
+                                           "approved":  4,
+                                           "approvedMasked":  4,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "ADDRESS_LINE1",
+                                                               "piiType":  "ADDRESS",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "CITY",
+                                                               "piiType":  "CITY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "STATE_CODE",
+                                                               "piiType":  "STATE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "POSTAL_CODE",
+                                                               "piiType":  "ZIP",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_DWELLING",
+                                           "approved":  4,
+                                           "approvedMasked":  4,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "CITY",
+                                                               "piiType":  "CITY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "STATE_CODE",
+                                                               "piiType":  "STATE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "POSTAL_CODE",
+                                                               "piiType":  "ZIP",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "ADDRESS_LINE1",
+                                                               "piiType":  "ADDRESS",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_POLICY_CONTACT_ROLE",
+                                           "approved":  7,
+                                           "approvedMasked":  7,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "TAX_IDENTIFIER",
+                                                               "piiType":  "SSN",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "POLICY_NUMBER",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "EXPIRATION_DATE",
+                                                               "piiType":  "CARD_EXPIRY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "PARTY_KEY",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "FIRST_NAME",
+                                                               "piiType":  "FIRST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "LAST_NAME",
+                                                               "piiType":  "LAST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "DATE_OF_BIRTH",
+                                                               "piiType":  "DOB",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_QUOTE",
+                                           "approved":  2,
+                                           "approvedMasked":  2,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "POLICY_NUMBER",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "EXPIRATION_DATE",
+                                                               "piiType":  "CARD_EXPIRY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_QUOTE_COST",
+                                           "approved":  2,
+                                           "approvedMasked":  2,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "POLICY_NUMBER",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "EXPIRATION_DATE",
+                                                               "piiType":  "CARD_EXPIRY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_SUBMISSION",
+                                           "approved":  2,
+                                           "approvedMasked":  2,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "POLICY_NUMBER",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "EXPIRATION_DATE",
+                                                               "piiType":  "CARD_EXPIRY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_RENEWAL",
+                                           "approved":  2,
+                                           "approvedMasked":  2,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "POLICY_NUMBER",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "EXPIRATION_DATE",
+                                                               "piiType":  "CARD_EXPIRY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_CANCELLATION",
+                                           "approved":  2,
+                                           "approvedMasked":  2,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "POLICY_NUMBER",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "EXPIRATION_DATE",
+                                                               "piiType":  "CARD_EXPIRY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_REINSTATEMENT",
+                                           "approved":  2,
+                                           "approvedMasked":  2,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "POLICY_NUMBER",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "EXPIRATION_DATE",
+                                                               "piiType":  "CARD_EXPIRY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_DOCUMENT",
+                                           "approved":  1,
+                                           "approvedMasked":  1,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "FILE_NAME",
+                                                               "piiType":  "FULL_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_PRODUCT",
+                                           "approved":  2,
+                                           "approvedMasked":  2,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "EXPIRATION_DATE",
+                                                               "piiType":  "CARD_EXPIRY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "POLICY_NUMBER",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_PRODUCT_LINE",
+                                           "approved":  2,
+                                           "approvedMasked":  2,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "POLICY_NUMBER",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "EXPIRATION_DATE",
+                                                               "piiType":  "CARD_EXPIRY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_POLICY_FORM",
+                                           "approved":  2,
+                                           "approvedMasked":  2,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "POLICY_NUMBER",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "EXPIRATION_DATE",
+                                                               "piiType":  "CARD_EXPIRY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_PRODUCER",
+                                           "approved":  5,
+                                           "approvedMasked":  5,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "PARTY_KEY",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "TAX_IDENTIFIER",
+                                                               "piiType":  "SSN",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "FIRST_NAME",
+                                                               "piiType":  "FIRST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "LAST_NAME",
+                                                               "piiType":  "LAST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "DATE_OF_BIRTH",
+                                                               "piiType":  "DOB",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "PC_PRODUCER_CODE",
+                                           "approved":  5,
+                                           "approvedMasked":  5,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "FIRST_NAME",
+                                                               "piiType":  "FIRST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "LAST_NAME",
+                                                               "piiType":  "LAST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "DATE_OF_BIRTH",
+                                                               "piiType":  "DOB",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "TAX_IDENTIFIER",
+                                                               "piiType":  "SSN",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "PARTY_KEY",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       }
+                                   ]
+                    },
+    "version":  {
+                    "id":  5,
+                    "datasetId":  37,
+                    "versionNo":  2,
+                    "note":  "GW acceptance RI-safe baseline 2026-07-15 v2",
+                    "createdBy":  "admin",
+                    "createdAt":  "2026-07-15T20:37:45.897700Z"
+                },
+    "savedJob":  {
+                     "id":  "bda19b38-85eb-4175-9722-b85b0582e473",
+                     "ownerUserId":  1,
+                     "ownerUsername":  "admin",
+                     "name":  "GW-Policy-Provision-Smoke",
+                     "description":  "Reusable GW-Policy-Masking-Smoke provision job",
+                     "lastRunJobId":  83,
+                     "scheduleEnabled":  false,
+                     "selfServiceEnabled":  false,
+                     "createdAt":  "2026-07-15T19:50:54.921821Z",
+                     "updatedAt":  "2026-07-16T17:36:38.214816Z",
+                     "spec":  {
+                                  "name":  "GW-Policy-Provision-Smoke",
+                                  "sourceId":  13,
+                                  "policyId":  28,
+                                  "datasetId":  37,
+                                  "targetId":  13,
+                                  "specJson":  {
+                                                   "loadAction":  "REPLACE",
+                                                   "batchSize":  500,
+                                                   "maskingSeed":  "GW-ACCEPTANCE-20260715",
+                                                   "targetPrep":  "DELETE",
+                                                   "targetSchema":  "BE_CARDS",
+                                                   "maxDriverRows":  0,
+                                                   "sourceSchema":  "BE_CARDS"
+                                               },
+                                  "jobType":  "SUBSET_MASK"
+                              },
+                     "lastRunStatus":  "COMPLETED"
+                 }
+}

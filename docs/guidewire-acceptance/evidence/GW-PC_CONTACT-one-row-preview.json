@@ -1,0 +1,38 @@
+{
+    "tables":  [
+                   {
+                       "rows":  1,
+                       "name":  "PC_CONTACT"
+                   }
+               ],
+    "files":  [
+                  {
+                      "content":  "[ {\r\n  \"ID\" : 1,\r\n  \"PUBLIC_ID\" : \"ab9c0b8c-5d9c-37fd-88c1-7c36f130ab79\",\r\n  \"TENANT_ID\" : \"GW-DEMO\",\r\n  \"STATUS_CODE\" : \"PENDING\",\r\n  \"VERSION_NO\" : 1,\r\n  \"RETIRED\" : 0,\r\n  \"CREATED_AT\" : \"2026-05-03T21:51:08\",\r\n  \"UPDATED_AT\" : \"2025-10-05T23:56:08\",\r\n  \"PARENT_CONTACT_ID\" : null,\r\n  \"PARTY_KEY\" : \"00000000000001\",\r\n  \"FIRST_NAME\" : \"Benta\",\r\n  \"LAST_NAME\" : \"Fairfordstone\",\r\n  \"DATE_OF_BIRTH\" : \"1977-04-25\",\r\n  \"TAX_IDENTIFIER\" : \"575-52-6889\"\r\n} ]",
+                      "name":  "PC_CONTACT.json"
+                  }
+              ],
+    "receiver":  "JSON",
+    "bankingReadiness":  {
+                             "score":  4,
+                             "rating":  "NEEDS_BANKING_RULES",
+                             "relationshipCount":  1,
+                             "ruleColumnCount":  0,
+                             "scenarioColumnCount":  1,
+                             "strengths":  [
+
+                                           ],
+                             "gaps":  [
+                                          "Missing customer domain (customers)",
+                                          "Missing account domain (accounts)",
+                                          "Missing payment/transaction domain (transactions/payments)",
+                                          "Missing card domain (cards)",
+                                          "Missing loan domain (loans)",
+                                          "Missing statement domain (statements)",
+                                          "Missing branch domain (branches)",
+                                          "Missing merchant domain (merchants)",
+                                          "Add more explicit foreign keys between customers, accounts, cards, loans, payments, and statements",
+                                          "Add CASE, LOOKUP, TEMPLATE, or DATE_AFTER rules for within-row consistency",
+                                          "Add risk, KYC, fraud, delinquency, and status fields for banking scenarios"
+                                      ]
+                         }
+}

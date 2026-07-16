@@ -1,0 +1,151 @@
+application,engine,source_schema,target_schema,source_table,target_table,planned_rows,fk_count
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_contact,pt_contact,7200,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_address,pt_address,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_account,pt_account,7200,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_account_contact,pt_account_contact,7200,2
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_policy,pt_policy,7200,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_policy_period,pt_policy_period,7200,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_policy_line,pt_policy_line,7200,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_personal_auto_line,pt_personal_auto_line,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_vehicle,pt_vehicle,7200,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_driver,pt_driver,7200,2
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_vehicle_driver,pt_vehicle_driver,7200,2
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_coverage_pattern,pt_coverage_pattern,12000,0
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_coverage,pt_coverage,12000,2
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_coverage_term,pt_coverage_term,12000,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_location,pt_location,2400,2
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_building,pt_building,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_homeowners_line,pt_homeowners_line,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_dwelling,pt_dwelling,2400,2
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_policy_contact_role,pt_policy_contact_role,7200,2
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_underwriting_issue,pt_underwriting_issue,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_underwriting_referral,pt_underwriting_referral,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_quote,pt_quote,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_quote_cost,pt_quote_cost,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_premium_transaction,pt_premium_transaction,12000,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_rate_book,pt_rate_book,2400,0
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_rate_table,pt_rate_table,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_rate_factor,pt_rate_factor,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_job,pt_job,2400,2
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_submission,pt_submission,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_renewal,pt_renewal,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_cancellation,pt_cancellation,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_reinstatement,pt_reinstatement,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_document,pt_document,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_note,pt_note,12000,2
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_activity,pt_activity,12000,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_workflow,pt_workflow,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_workflow_step,pt_workflow_step,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_question_set,pt_question_set,2400,0
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_question,pt_question,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_answer,pt_answer,2400,2
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_product,pt_product,2400,0
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_product_line,pt_product_line,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_form_pattern,pt_form_pattern,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_policy_form,pt_policy_form,7200,2
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_producer,pt_producer,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_producer_code,pt_producer_code,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_territory,pt_territory,2400,0
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_audit,pt_audit,12000,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_message_outbox,pt_message_outbox,2400,1
+Policy Operations,oracle,BE_CARDS,BE_CARDS,pc_change_event,pt_change_event,12400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_contact,cc_contact,7200,0
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_address,cc_address,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_claim,cc_claim,7200,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_claim_contact,cc_claim_contact,7200,2
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_incident,cc_incident,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_vehicle_incident,cc_vehicle_incident,7200,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_injury_incident,cc_injury_incident,2400,2
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_property_incident,cc_property_incident,2400,2
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_exposure,cc_exposure,12000,2
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_reserve_line,cc_reserve_line,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_reserve,cc_reserve,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_payment,cc_payment,12000,2
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_check,cc_check,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_check_payee,cc_check_payee,2400,2
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_recovery,cc_recovery,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_recovery_reserve,cc_recovery_reserve,2400,2
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_service_request,cc_service_request,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_vendor,cc_vendor,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_litigation,cc_litigation,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_matter,cc_matter,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_negotiation,cc_negotiation,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_settlement,cc_settlement,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_subrogation,cc_subrogation,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_salvage,cc_salvage,2400,2
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_catastrophe,cc_catastrophe,2400,0
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_activity,cc_activity,12000,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_note,cc_note,12000,2
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_document,cc_document,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_authority_limit,cc_authority_limit,2400,0
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_approval,cc_approval,2400,2
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_assignment,cc_assignment,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_group,cc_group,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_user,cc_user,2400,2
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_role,cc_role,2400,0
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_claim_user_role,cc_claim_user_role,7200,3
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_policy_snapshot,cc_policy_snapshot,7200,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_policy_vehicle,cc_policy_vehicle,7200,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_policy_driver,cc_policy_driver,7200,2
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_policy_location,cc_policy_location,7200,2
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_coverage_snapshot,cc_coverage_snapshot,12000,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_deductible,cc_deductible,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_fault_rating,cc_fault_rating,2400,2
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_medical_treatment,cc_medical_treatment,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_contact_phone,cc_contact_phone,7200,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_contact_email,cc_contact_email,7200,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_message_outbox,cc_message_outbox,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_external_status,cc_external_status,2400,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_financial_transaction,cc_financial_transaction,12000,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_history,cc_history,12000,1
+Claims Operations,sqlserver,gw_claim_src,gw_claim_tgt,cc_change_event,cc_change_event,12400,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_contact,bc_contact,5950,0
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_address,bc_address,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_account,bc_account,5950,2
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_account_contact,bc_account_contact,5950,2
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_billing_plan,bc_billing_plan,1950,0
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_payment_plan,bc_payment_plan,9900,2
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_invoice,bc_invoice,5950,2
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_invoice_item,bc_invoice_item,9900,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_charge_pattern,bc_charge_pattern,9900,0
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_charge,bc_charge,9900,2
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_policy,bc_policy,5950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_policy_period,bc_policy_period,5950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_payment_instrument,bc_payment_instrument,9900,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_bank_account,bc_bank_account,5950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_payment_card,bc_payment_card,9900,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_payment,bc_payment,9900,2
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_payment_allocation,bc_payment_allocation,9900,2
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_refund,bc_refund,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_disbursement,bc_disbursement,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_suspense_payment,bc_suspense_payment,9900,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_delinquency_plan,bc_delinquency_plan,1950,0
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_delinquency_process,bc_delinquency_process,1950,2
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_delinquency_event,bc_delinquency_event,9900,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_writeoff,bc_writeoff,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_commission_plan,bc_commission_plan,1950,0
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_producer,bc_producer,1950,2
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_producer_code,bc_producer_code,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_commission,bc_commission,1950,2
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_agency_bill_plan,bc_agency_bill_plan,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_statement,bc_statement,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_statement_item,bc_statement_item,1950,2
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_credit,bc_credit,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_debit,bc_debit,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_tax,bc_tax,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_fee,bc_fee,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_currency_rate,bc_currency_rate,1950,0
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_gl_account,bc_gl_account,5950,0
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_gl_entry,bc_gl_entry,1950,2
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_batch,bc_batch,1950,0
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_batch_item,bc_batch_item,1950,2
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_activity,bc_activity,9900,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_note,bc_note,9900,2
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_document,bc_document,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_contact_phone,bc_contact_phone,5950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_contact_email,bc_contact_email,5950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_identity,bc_identity,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_audit,bc_audit,9900,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_message_outbox,bc_message_outbox,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_external_reference,bc_external_reference,1950,1
+Billing and Contacts,postgres,gw_billing_src,gw_billing_tgt,bc_change_event,bc_change_event,11100,1

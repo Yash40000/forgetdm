@@ -16,6 +16,19 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DiscoveryMaskRecommendationTest {
 
+    @Test
+    void dobValueEvidenceRequiresDobSemanticColumnName() {
+        Pattern valuePattern = PiiPatterns.VALUE_HINTS.get("DOB");
+        Pattern namePattern = PiiPatterns.NAME_HINTS.get("DOB");
+
+        assertTrue(DiscoveryService.valueMatches("DOB", valuePattern, "1987-06-15",
+                "date_of_birth", namePattern));
+        assertFalse(DiscoveryService.valueMatches("DOB", valuePattern, "2028-06-01",
+                "effective_date", namePattern));
+        assertFalse(DiscoveryService.valueMatches("DOB", valuePattern, "2029-06-01",
+                "expiration_date", namePattern));
+    }
+
     @Test void creditCardValueSignalRequiresLuhnInsteadOfAnyLongDigitString() {
         Pattern looseCardPattern = PiiPatterns.VALUE_HINTS.get("CREDIT_CARD");
         assertFalse(DiscoveryService.valueMatches("CREDIT_CARD", looseCardPattern, "00000000000001"));

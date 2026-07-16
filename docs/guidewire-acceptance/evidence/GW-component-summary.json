@@ -1,0 +1,17 @@
+﻿{
+    "prefix":  "GW-",
+    "generatedAt":  "2026-07-15T19:15:33.4752161Z",
+    "applications":  [
+                         {
+                             "application":  "Billing and Contacts",
+                             "connection":  "GW-Billing-PostgreSQL",
+                             "connectionId":  14,
+                             "syntheticJob":  "GW-Billing-Synthetic-250K",
+                             "savedJobId":  "b16688ed-def8-44b8-951b-7f28a9e46d65",
+                             "plannedRows":  250000,
+                             "approval":  "APPROVED",
+                             "runId":  "521a0e3a-08a3-4d85-b092-7fe5d51c2dbd",
+                             "status":  "COMPLETED"
+                         }
+                     ]
+}

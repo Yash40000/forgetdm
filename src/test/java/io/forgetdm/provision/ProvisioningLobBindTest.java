@@ -84,4 +84,32 @@ class ProvisioningLobBindTest {
         verify(statement).setDate(1, java.sql.Date.valueOf("2026-07-15"));
         verify(statement).setTimestamp(2, Timestamp.valueOf("2026-07-15 13:14:15.0"));
     }
+
+    @Test
+    void normalizesVendorTemporalObjectsBeforeCrossDatabaseBinding() throws Exception {
+        PreparedStatement statement = mock(PreparedStatement.class);
+        Object vendorTimestamp = new Object() {
+            @Override public String toString() { return "2026-07-16 19:12:23.123456"; }
+        };
+
+        ProvisioningService.bindJdbcValue(statement, 1, vendorTimestamp, Types.TIMESTAMP);
+
+        verify(statement).setTimestamp(1, Timestamp.valueOf("2026-07-16 19:12:23.123456"));
+    }
+
+    @Test
+    void boundsGeneratedOracleIdentifiersWithoutLosingRunIdentity() {
+        String first = ProvisioningService.boundedIdentifier(
+                SqlDialect.ORACLE, "fdm_stg_CLOB_ADDRESS_SOURCE_100");
+        String same = ProvisioningService.boundedIdentifier(
+                SqlDialect.ORACLE, "fdm_stg_CLOB_ADDRESS_SOURCE_100");
+        String nextRun = ProvisioningService.boundedIdentifier(
+                SqlDialect.ORACLE, "fdm_stg_CLOB_ADDRESS_SOURCE_101");
+
+        assertEquals(30, first.length());
+        assertEquals(first, same);
+        assertFalse(first.equals(nextRun));
+        assertEquals("fdm_stg_short_7", ProvisioningService.boundedIdentifier(
+                SqlDialect.ORACLE, "fdm_stg_short_7"));
+    }
 }

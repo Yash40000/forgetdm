@@ -1,0 +1,376 @@
+﻿{
+    "testName":  "ForgeTDM Hybrid Banking Generation Acceptance",
+    "generatedAt":  "2026-07-16T22:36:26.5268241Z",
+    "status":  "PASSED",
+    "assumptions":  [
+                        "MCD is modeled as a Mastercard debit product.",
+                        "MCC is modeled as a Mastercard credit product.",
+                        "The user term \u0027loads\u0027 is modeled as loans.",
+                        "Customer/branch/product/account masters are relational; transactions are fixed-block EBCDIC."
+                    ],
+    "savedComponents":  {
+                            "syntheticJobId":  "d307418c-9c3c-435a-92c2-95c4a3ececcc",
+                            "syntheticJobName":  "BANK-HYBRID-MASTER-29K",
+                            "runId":  "3457a20e-1e33-4f75-943a-bb625f3f922c",
+                            "copybookId":  3,
+                            "copybookName":  "FTDM-BANK-TRANSACTIONS-V1",
+                            "businessEntityId":  11,
+                            "businessEntityName":  "FTDM Hybrid Banking Customer"
+                        },
+    "relationalMaster":  {
+                             "target":  "targetdb (data source 3) / public",
+                             "plannedRows":  29050,
+                             "runStatus":  "COMPLETED",
+                             "elapsed":  {
+                                             "startedAt":  "2026-07-16T22:33:55.232683500Z",
+                                             "finishedAt":  "2026-07-16T22:34:45.294796400Z"
+                                         },
+                             "checks":  [
+                                            {
+                                                "check":  "row_count",
+                                                "object":  "ftdm_bank_branch",
+                                                "expected":  50,
+                                                "actual":  50,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "row_count",
+                                                "object":  "ftdm_bank_customer",
+                                                "expected":  10000,
+                                                "actual":  10000,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "row_count",
+                                                "object":  "ftdm_bank_sav_account",
+                                                "expected":  4000,
+                                                "actual":  4000,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "row_count",
+                                                "object":  "ftdm_bank_dda_account",
+                                                "expected":  4000,
+                                                "actual":  4000,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "row_count",
+                                                "object":  "ftdm_bank_credit_card_account",
+                                                "expected":  3000,
+                                                "actual":  3000,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "row_count",
+                                                "object":  "ftdm_bank_mcd_account",
+                                                "expected":  2500,
+                                                "actual":  2500,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "row_count",
+                                                "object":  "ftdm_bank_mcc_account",
+                                                "expected":  2500,
+                                                "actual":  2500,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "row_count",
+                                                "object":  "ftdm_bank_loan_account",
+                                                "expected":  3000,
+                                                "actual":  3000,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "coherent_full_name",
+                                                "object":  "ftdm_bank_customer",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "unique_crf_key",
+                                                "object":  "ftdm_bank_customer",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "customer_fk",
+                                                "object":  "ftdm_bank_sav_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "branch_fk",
+                                                "object":  "ftdm_bank_sav_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "customer_crf_consistency",
+                                                "object":  "ftdm_bank_sav_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "product_code",
+                                                "object":  "ftdm_bank_sav_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "mainframe_routeable_account_range",
+                                                "object":  "ftdm_bank_sav_account",
+                                                "expected":  2000,
+                                                "actual":  2000,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "customer_fk",
+                                                "object":  "ftdm_bank_dda_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "branch_fk",
+                                                "object":  "ftdm_bank_dda_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "customer_crf_consistency",
+                                                "object":  "ftdm_bank_dda_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "product_code",
+                                                "object":  "ftdm_bank_dda_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "mainframe_routeable_account_range",
+                                                "object":  "ftdm_bank_dda_account",
+                                                "expected":  2000,
+                                                "actual":  2000,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "customer_fk",
+                                                "object":  "ftdm_bank_credit_card_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "branch_fk",
+                                                "object":  "ftdm_bank_credit_card_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "customer_crf_consistency",
+                                                "object":  "ftdm_bank_credit_card_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "product_code",
+                                                "object":  "ftdm_bank_credit_card_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "mainframe_routeable_account_range",
+                                                "object":  "ftdm_bank_credit_card_account",
+                                                "expected":  2000,
+                                                "actual":  2000,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "customer_fk",
+                                                "object":  "ftdm_bank_mcd_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "branch_fk",
+                                                "object":  "ftdm_bank_mcd_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "customer_crf_consistency",
+                                                "object":  "ftdm_bank_mcd_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "product_code",
+                                                "object":  "ftdm_bank_mcd_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "mainframe_routeable_account_range",
+                                                "object":  "ftdm_bank_mcd_account",
+                                                "expected":  2000,
+                                                "actual":  2000,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "customer_fk",
+                                                "object":  "ftdm_bank_mcc_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "branch_fk",
+                                                "object":  "ftdm_bank_mcc_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "customer_crf_consistency",
+                                                "object":  "ftdm_bank_mcc_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "product_code",
+                                                "object":  "ftdm_bank_mcc_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "mainframe_routeable_account_range",
+                                                "object":  "ftdm_bank_mcc_account",
+                                                "expected":  2000,
+                                                "actual":  2000,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "customer_fk",
+                                                "object":  "ftdm_bank_loan_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "branch_fk",
+                                                "object":  "ftdm_bank_loan_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "customer_crf_consistency",
+                                                "object":  "ftdm_bank_loan_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "product_code",
+                                                "object":  "ftdm_bank_loan_account",
+                                                "expected":  0,
+                                                "actual":  0,
+                                                "passed":  true
+                                            },
+                                            {
+                                                "check":  "mainframe_routeable_account_range",
+                                                "object":  "ftdm_bank_loan_account",
+                                                "expected":  2000,
+                                                "actual":  2000,
+                                                "passed":  true
+                                            }
+                                        ],
+                             "cardChecks":  [
+                                                {
+                                                    "table":  "ftdm_bank_credit_card_account",
+                                                    "rows":  3000,
+                                                    "invalidLuhn":  0,
+                                                    "duplicates":  0,
+                                                    "passed":  true
+                                                },
+                                                {
+                                                    "table":  "ftdm_bank_mcd_account",
+                                                    "rows":  2500,
+                                                    "invalidLuhn":  0,
+                                                    "duplicates":  0,
+                                                    "passed":  true
+                                                },
+                                                {
+                                                    "table":  "ftdm_bank_mcc_account",
+                                                    "rows":  2500,
+                                                    "invalidLuhn":  0,
+                                                    "duplicates":  0,
+                                                    "passed":  true
+                                                },
+                                                {
+                                                    "table":  "ALL_CARD_PRODUCTS",
+                                                    "rows":  8000,
+                                                    "invalidLuhn":  0,
+                                                    "duplicates":  0,
+                                                    "passed":  true
+                                                }
+                                            ],
+                             "passed":  true
+                         },
+    "mainframeTransactions":  {
+                                  "rows":  60000,
+                                  "bytes":  7140000,
+                                  "lrecl":  119,
+                                  "recfm":  "FB",
+                                  "codePage":  "Cp037",
+                                  "productCounts":  {
+                                                        "MCD":  9942,
+                                                        "CREDIT_CARD":  9961,
+                                                        "DDA":  9965,
+                                                        "SAV":  10087,
+                                                        "MCC":  9954,
+                                                        "LOAN":  10091
+                                                    },
+                                  "invalidRecordSample":  [
+
+                                                          ],
+                                  "deterministicPrefixReplay":  true,
+                                  "everyTransactionRouteable":  true,
+                                  "passed":  true
+                              },
+    "binding":  {
+                    "entityId":  11,
+                    "members":  9,
+                    "transactionKey":  "PRODUCT-CODE + PRODUCT-ACCOUNT-ID",
+                    "customerTrace":  "EBCDIC transaction -\u003e routed product account -\u003e customer_id/crf_key -\u003e customer master"
+                },
+    "artifacts":  {
+                      "resultDirectory":  "D:\\forgetdm - Copy\\test-results\\hybrid-banking-generation",
+                      "downloadDirectory":  "C:\\Users\\yashp\\Downloads\\ForgeTDM-Hybrid-Banking-Test",
+                      "ebcdicFile":  "D:\\forgetdm - Copy\\test-results\\hybrid-banking-generation\\ftdm-bank-transactions-v1.dat",
+                      "logicalCsv":  "D:\\forgetdm - Copy\\test-results\\hybrid-banking-generation\\ftdm-bank-transactions-v1.csv",
+                      "copybook":  "D:\\forgetdm - Copy\\test-results\\hybrid-banking-generation\\ftdm-bank-transactions-v1.cpy"
+                  }
+}

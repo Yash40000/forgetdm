@@ -566,7 +566,7 @@ public class ProvisioningService {
 
         setJobPhase(job, "EXTRACT");
         long total = 0;
-        try (Connection in = connections.open(src); Connection out = connections.open(tgt)) {
+        try (Connection in = connections.openForBulk(src); Connection out = connections.openForBulk(tgt)) {
             sourceSchema = DataSourceService.normalizeSchema(in, sourceSchema);
             targetSchema = DataSourceService.normalizeSchema(out, targetSchema);
             out.setAutoCommit(false);
@@ -658,7 +658,7 @@ public class ProvisioningService {
         boolean validate = spec.path("exchangeValidate").asBoolean(false);
         setJobPhase(job, "PROVISION");
 
-        try (Connection in = connections.open(src); Connection out = connections.open(tgt)) {
+        try (Connection in = connections.openForBulk(src); Connection out = connections.openForBulk(tgt)) {
             sourceSchema = DataSourceService.normalizeSchema(in, sourceSchema);
             targetSchema = DataSourceService.normalizeSchema(out, targetSchema);
             out.setAutoCommit(false);
@@ -668,7 +668,8 @@ public class ProvisioningService {
             if (!isPartitionedTarget(out, targetSchema, tableF))
                 throw ApiException.bad("Target table " + tableF + " is not partitioned.");
 
-            String stg = "fdm_xchg_" + sanitize(tableF) + "_" + job.getId();
+            String stg = boundedIdentifier(SqlDialect.ORACLE,
+                    "fdm_xchg_" + sanitize(tableF) + "_" + job.getId());
             try (Statement st = out.createStatement()) { st.execute("DROP TABLE " + q(targetSchema, stg) + " PURGE"); }
             catch (SQLException ignore) { /* may not exist */ }
             try (Statement st = out.createStatement()) {
@@ -854,7 +855,7 @@ public class ProvisioningService {
         long total = 0;
         checkCancelled(job);
         progressMessage(job, "Loading " + plan.loadOrder.size() + " planned table(s)");
-        try (Connection in = connections.open(src); Connection out = connections.open(tgt)) {
+        try (Connection in = connections.openForBulk(src); Connection out = connections.openForBulk(tgt)) {
             sourceSchema = DataSourceService.normalizeSchema(in, sourceSchema);
             targetSchema = DataSourceService.normalizeSchema(out, targetSchema);
             out.setAutoCommit(false);
@@ -1004,7 +1005,7 @@ public class ProvisioningService {
         long total = 0;
         progressMessage(job, "Loading mixed-source DataScope table map (" + included.size() + " table(s))");
         checkCancelled(job);
-        try (Connection out = connections.open(tgt)) {
+        try (Connection out = connections.openForBulk(tgt)) {
             targetSchema = DataSourceService.normalizeSchema(out, targetSchema);
             out.setAutoCommit(false);
             tuneBulkConnection(out);
@@ -1013,7 +1014,7 @@ public class ProvisioningService {
                 checkCancelled(job);
                     String table = profile.getTableName();
                     DataSourceEntity src = dataSources.get(profileSourceDataSourceId(def, profile));
-                    try (Connection in = connections.open(src)) {
+                    try (Connection in = connections.openForBulk(src)) {
                         String sourceSchema = DataSourceService.normalizeSchema(in,
                             profileSourceSchemaName(def, defaultSourceSchema, profile));
                     rejectSelfMappedTables(src, tgt, sourceSchema, targetSchema,
@@ -1052,7 +1053,7 @@ public class ProvisioningService {
                         + (sourceSchema == null || sourceSchema.isBlank() ? "" : " / " + sourceSchema)
                         + " -> " + targetTable);
                 setTableState(job, table, "RUNNING");
-                try (Connection in = connections.open(src)) {
+                try (Connection in = connections.openForBulk(src)) {
                     total += copyTable(eng, in, sourceSchema, out, targetSchema, table, targetTable, null, null,
                             tableRules, job,
                             profile.getFilterExpr(), profile.getRowLimit(), load, tableOverrides, customPkMap);
@@ -1102,7 +1103,7 @@ public class ProvisioningService {
         int batch = load.batchSize();
 
         long written = 0;
-        try (Connection out = connections.open(tgt)) {
+        try (Connection out = connections.openForBulk(tgt)) {
             targetSchema = DataSourceService.normalizeSchema(out, targetSchema);
             out.setAutoCommit(false);
             tuneBulkConnection(out);
@@ -1381,7 +1382,7 @@ public class ProvisioningService {
                         while (rs.next()) {
                             if (rowLimit != null && rowLimit > 0 && rows >= rowLimit) break;  // hard cap (keyed/keyless alike)
                             rows++;
-                            MaskContext ctx = new MaskContext(rows);
+                            MaskContext ctx = maskContext(rows, tableRules);
                             Object[] values = new Object[columnPlans.size()];
                             Map<String, Object> rawBySource = new HashMap<>();
                             Map<String, String> textBySource = new HashMap<>();
@@ -1887,7 +1888,8 @@ public class ProvisioningService {
         stageCols.addAll(updateCols);
         int[] stageTypes = stageCols.stream()
                 .mapToInt(c -> types.getOrDefault(c.toLowerCase(Locale.ROOT), Types.VARCHAR)).toArray();
-        String stg = "fdm_stg_" + sanitize(table) + "_" + job.getId();
+        String stg = boundedIdentifier(dialect,
+                "fdm_stg_" + sanitize(table) + "_" + job.getId());
         int chunkRows = spec.path("inPlaceChunkRows").asInt(50_000);
         chunkRows = chunkRows <= 0 ? 50_000 : Math.min(chunkRows, 500_000);
 
@@ -1934,7 +1936,7 @@ public class ProvisioningService {
                         while (rs.next()) {
                             Map<String, Object> rawBySource = new HashMap<>();
                             Map<String, String> textBySource = new HashMap<>();
-                            MaskContext ctx = new MaskContext(updated + staged.size() + 1);
+                            MaskContext ctx = maskContext(updated + staged.size() + 1, tableRules);
                             for (int i = 1; i <= readCols.size(); i++) {
                                 String k = readCols.get(i - 1).toLowerCase(Locale.ROOT);
                                 Object raw = rs.getObject(i);
@@ -2180,7 +2182,8 @@ public class ProvisioningService {
         if (keyed) stageCols.addAll(updateCols);
         int[] stageTypes = stageCols.stream()
                 .mapToInt(c -> types.getOrDefault(c.toLowerCase(Locale.ROOT), Types.VARCHAR)).toArray();
-        String stg = "fdm_stg_" + sanitize(table) + "_" + job.getId();
+        String stg = boundedIdentifier(dialect,
+                "fdm_stg_" + sanitize(table) + "_" + job.getId());
         int batch = spec.path("inPlaceChunkRows").asInt(50_000);
         batch = batch <= 0 ? 50_000 : Math.min(batch, 500_000);
         batch = safeJdbcBatchRows(dialect, Math.max(1, stageCols.size()), batch);
@@ -2219,7 +2222,7 @@ public class ProvisioningService {
                         checkCancelled(job);
                         Map<String, Object> rawBySource = new HashMap<>();
                         Map<String, String> textBySource = new HashMap<>();
-                        MaskContext ctx = new MaskContext(loaded + inBatch + 1);
+                        MaskContext ctx = maskContext(loaded + inBatch + 1, tableRules);
                         for (int i = 1; i <= readCols.size(); i++) {
                             String k = readCols.get(i - 1).toLowerCase(Locale.ROOT);
                             Object raw = rs.getObject(i);
@@ -2450,7 +2453,8 @@ public class ProvisioningService {
     /** Delete rows whose key is not in {@code keep}, via a typed temp keep-table anti-join (scales to big sets). */
     private void deleteNotInKeep(Connection out, SqlDialect dialect, String schema, String table,
                                  String pkCol, java.util.Set<String> keep) throws SQLException {
-        String keepTbl = "fdm_keep_" + sanitize(table) + "_" + Long.toHexString(System.nanoTime());
+        String keepTbl = boundedIdentifier(dialect,
+                "fdm_keep_" + sanitize(table) + "_" + Long.toHexString(System.nanoTime()));
         createStaging(out, dialect, schema, keepTbl, table, List.of(pkCol));   // keepTbl(pkCol) typed like the source
         try {
             try (PreparedStatement ins = out.prepareStatement(
@@ -2548,6 +2552,20 @@ public class ProvisioningService {
         };
         try (Statement st = out.createStatement()) { st.executeUpdate(sql); }
         if (!out.getAutoCommit()) out.commit();
+    }
+
+    /** Keep generated work-table names inside each engine's physical identifier limit. */
+    static String boundedIdentifier(SqlDialect dialect, String candidate) {
+        int max = switch (dialect) {
+            case ORACLE, TERADATA -> 30;
+            case POSTGRES -> 63;
+            case MYSQL -> 64;
+            default -> 128;
+        };
+        if (candidate.length() <= max) return candidate;
+        String hash = Integer.toUnsignedString(candidate.hashCode(), 36);
+        int prefixLength = Math.max(1, max - hash.length() - 1);
+        return candidate.substring(0, prefixLength) + "_" + hash;
     }
 
     private void dropStaging(Connection out, String schema, String stg) {
@@ -2677,12 +2695,25 @@ public class ProvisioningService {
                                    Map<String, MaskingRuleEntity> ruleByCol, MaskContext ctx) {
         MaskingRuleEntity rule = ruleByCol.get(sourceCol.toLowerCase(Locale.ROOT));
         if (rule == null) rule = ruleByCol.get(targetCol.toLowerCase(Locale.ROOT));
-        if (rule == null || original == null) return original;
+        if (rule == null) return original;
         String masked = eng.mask(MaskFunction.valueOf(rule.getFunction()),
                 saltFor(rule, table, rule.getColumnName() != null ? rule.getColumnName() : sourceCol, keySaltTL.get()),
                 originalText, rule.getParam1(), rule.getParam2(), ctx);
         ctx.masked.put(targetCol.toLowerCase(Locale.ROOT), masked);
         return masked == null ? null : coerce(masked, sqlType);
+    }
+
+    static MaskContext maskContext(long rowIndex, List<MaskingRuleEntity> rules) {
+        MaskContext context = new MaskContext(rowIndex);
+        if (rules == null || rules.isEmpty()) return context;
+        List<String> ranges = rules.stream()
+                .filter(Objects::nonNull)
+                .filter(rule -> "DATE_SHIFT".equalsIgnoreCase(rule.getFunction()))
+                .map(MaskingRuleEntity::getParam1)
+                .toList();
+        int[] shared = MaskingEngine.intersectDateShiftRanges(ranges);
+        if (shared != null) context.useSharedDateShiftRange(shared[0], shared[1]);
+        return context;
     }
 
     // -------------------- conditional masking --------------------
@@ -2935,12 +2966,14 @@ public class ProvisioningService {
         } else if (value instanceof String text && (sqlType == Types.CLOB || sqlType == Types.NCLOB
                 || sqlType == Types.LONGVARCHAR || sqlType == Types.LONGNVARCHAR || sqlType == Types.SQLXML)) {
             ps.setCharacterStream(index, new java.io.StringReader(text), text.length());
-        } else if (value instanceof String text && isTemporalType(sqlType)) {
-            Object temporal = coerce(text, sqlType);
+        } else if (isTemporalType(sqlType)) {
+            // Some source drivers expose temporal columns as vendor classes (for example
+            // oracle.sql.TIMESTAMP). Never pass those objects into a different vendor's driver.
+            Object temporal = coerce(jdbcTextValue(value), sqlType);
             if (temporal instanceof java.sql.Date date) ps.setDate(index, date);
             else if (temporal instanceof java.sql.Time time) ps.setTime(index, time);
             else if (temporal instanceof java.sql.Timestamp timestamp) ps.setTimestamp(index, timestamp);
-            else ps.setObject(index, value, sqlType);
+            else ps.setObject(index, temporal, sqlType);
         } else {
             ps.setObject(index, value);
         }

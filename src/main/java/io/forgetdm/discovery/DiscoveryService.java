@@ -269,7 +269,8 @@ public class DiscoveryService {
             for (String v : sample) {
                 if (v == null || v.isBlank()) continue;
                 for (Map.Entry<String, Pattern> e : valueHints.entrySet()) {
-                    if (valueMatches(e.getKey(), e.getValue(), v.trim())) hits.merge(e.getKey(), 1, Integer::sum);
+                    if (valueMatches(e.getKey(), e.getValue(), v.trim(), column, nameHints.get(e.getKey())))
+                        hits.merge(e.getKey(), 1, Integer::sum);
                 }
             }
             int n = sample.size();
@@ -291,7 +292,18 @@ public class DiscoveryService {
 
     /** Strong validators replace permissive regexes for identifiers with real check-digit contracts. */
     static boolean valueMatches(String piiType, Pattern configuredPattern, String value) {
+        return valueMatches(piiType, configuredPattern, value, null, null);
+    }
+
+    static boolean valueMatches(String piiType, Pattern configuredPattern, String value,
+                                String columnName, Pattern configuredNamePattern) {
         if ("CREDIT_CARD".equals(normalizeType(piiType))) return PiiPatterns.looksLikeCard(value);
+        // A date-shaped value cannot distinguish a DOB from an effective, expiration, posting, or audit date.
+        // Require the effective (built-in or custom) DOB name pattern as semantic evidence.
+        if ("DOB".equals(normalizeType(piiType))) {
+            Pattern namePattern = configuredNamePattern == null ? PiiPatterns.NAME_HINTS.get("DOB") : configuredNamePattern;
+            if (columnName == null || namePattern == null || !namePattern.matcher(columnName).find()) return false;
+        }
         return configuredPattern != null && configuredPattern.matcher(value).matches();
     }
 

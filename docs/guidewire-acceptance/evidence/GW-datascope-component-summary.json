@@ -1,0 +1,53 @@
+﻿{
+    "components":  [
+                       {
+                           "application":  "Policy Operations",
+                           "mode":  "SMOKE",
+                           "blueprint":  "GW-Policy-Masking-Smoke",
+                           "blueprintId":  37,
+                           "profiles":  50,
+                           "columnMaps":  575,
+                           "savedJob":  "GW-Policy-Provision-Smoke",
+                           "savedJobId":  "bda19b38-85eb-4175-9722-b85b0582e473",
+                           "runId":  null,
+                           "status":  "SAVED"
+                       },
+                       {
+                           "application":  "Policy Operations",
+                           "mode":  "FULL",
+                           "blueprint":  "GW-Policy-Masked-Full-Copy",
+                           "blueprintId":  38,
+                           "profiles":  50,
+                           "columnMaps":  575,
+                           "savedJob":  "GW-Policy-Provision-250K",
+                           "savedJobId":  "0d687544-1024-453c-bddc-14a6613865c7",
+                           "runId":  null,
+                           "status":  "SAVED"
+                       },
+                       {
+                           "application":  "Billing and Contacts",
+                           "mode":  "SMOKE",
+                           "blueprint":  "GW-Billing-Masking-Smoke",
+                           "blueprintId":  39,
+                           "profiles":  50,
+                           "columnMaps":  560,
+                           "savedJob":  "GW-Billing-Provision-Smoke",
+                           "savedJobId":  "b8ac141a-af8f-4945-bc68-7e331e0beb9a",
+                           "runId":  null,
+                           "status":  "SAVED"
+                       },
+                       {
+                           "application":  "Billing and Contacts",
+                           "mode":  "FULL",
+                           "blueprint":  "GW-Billing-Masked-Full-Copy",
+                           "blueprintId":  40,
+                           "profiles":  50,
+                           "columnMaps":  560,
+                           "savedJob":  "GW-Billing-Provision-250K",
+                           "savedJobId":  "4004a7da-6735-45a0-8cda-55ac63e9f770",
+                           "runId":  null,
+                           "status":  "SAVED"
+                       }
+                   ],
+    "generatedAt":  "2026-07-16T17:36:45.4538428Z"
+}

@@ -1,0 +1,573 @@
+﻿{
+    "blueprint":  {
+                      "id":  39,
+                      "name":  "GW-Billing-Masking-Smoke",
+                      "description":  "Guidewire-style Billing and Contacts source-to-target masked copy. Managed by the GW acceptance runner.",
+                      "dataSourceId":  14,
+                      "schemaName":  "gw_billing_src",
+                      "targetDataSourceId":  14,
+                      "targetSchemaName":  "gw_billing_tgt",
+                      "policyId":  29,
+                      "driverTable":  "",
+                      "driverFilter":  null,
+                      "globalQ1":  true,
+                      "globalQ2":  true,
+                      "createdAt":  "2026-07-15T19:50:57.571347Z",
+                      "updatedAt":  "2026-07-16T17:36:40.630189200Z"
+                  },
+    "profiles":  50,
+    "columnMaps":  560,
+    "policy":  "GW-Billing-Masking-20260716-v5",
+    "policyId":  29,
+    "drift":  {
+                  "issues":  [
+
+                             ],
+                  "checkedAt":  "2026-07-16T17:36:43.434086800Z",
+                  "inSync":  true,
+                  "sourceReachable":  true
+              },
+    "piiCoverage":  {
+                        "approvedTotal":  52,
+                        "approvedMasked":  51,
+                        "suggestedTotal":  0,
+                        "suggestedMasked":  0,
+                        "unmaskedApproved":  [
+                                                 {
+                                                     "table":  "bc_statement_item",
+                                                     "column":  "statement_id",
+                                                     "piiType":  "STATE"
+                                                 }
+                                             ],
+                        "tables":  [
+                                       {
+                                           "table":  "bc_contact",
+                                           "approved":  5,
+                                           "approvedMasked":  5,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "date_of_birth",
+                                                               "piiType":  "DOB",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.99,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "first_name",
+                                                               "piiType":  "FIRST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "last_name",
+                                                               "piiType":  "LAST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "party_key",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "tax_identifier",
+                                                               "piiType":  "SSN",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "bc_address",
+                                           "approved":  4,
+                                           "approvedMasked":  4,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "address_line1",
+                                                               "piiType":  "ADDRESS",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "city",
+                                                               "piiType":  "CITY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "postal_code",
+                                                               "piiType":  "ZIP",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "state_code",
+                                                               "piiType":  "STATE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "bc_account_contact",
+                                           "approved":  5,
+                                           "approvedMasked":  5,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "date_of_birth",
+                                                               "piiType":  "DOB",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.99,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "first_name",
+                                                               "piiType":  "FIRST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "last_name",
+                                                               "piiType":  "LAST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "party_key",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "tax_identifier",
+                                                               "piiType":  "SSN",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "bc_policy",
+                                           "approved":  3,
+                                           "approvedMasked":  3,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "effective_date",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "expiration_date",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "policy_number",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "bc_policy_period",
+                                           "approved":  3,
+                                           "approvedMasked":  3,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "effective_date",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "expiration_date",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "policy_number",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "bc_bank_account",
+                                           "approved":  2,
+                                           "approvedMasked":  2,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "bank_account_number",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "routing_number",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "bc_payment_card",
+                                           "approved":  2,
+                                           "approvedMasked":  2,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "card_expiry",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "card_number",
+                                                               "piiType":  "CREDIT_CARD",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.99,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "bc_payment_allocation",
+                                           "approved":  4,
+                                           "approvedMasked":  4,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "postal_code",
+                                                               "piiType":  "ZIP",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "state_code",
+                                                               "piiType":  "STATE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "address_line1",
+                                                               "piiType":  "ADDRESS",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "city",
+                                                               "piiType":  "CITY",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "bc_producer",
+                                           "approved":  5,
+                                           "approvedMasked":  5,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "first_name",
+                                                               "piiType":  "FIRST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "last_name",
+                                                               "piiType":  "LAST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "party_key",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "date_of_birth",
+                                                               "piiType":  "DOB",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.99,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "tax_identifier",
+                                                               "piiType":  "SSN",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "bc_producer_code",
+                                           "approved":  5,
+                                           "approvedMasked":  5,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "party_key",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "first_name",
+                                                               "piiType":  "FIRST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "last_name",
+                                                               "piiType":  "LAST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "date_of_birth",
+                                                               "piiType":  "DOB",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.99,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "tax_identifier",
+                                                               "piiType":  "SSN",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "bc_statement_item",
+                                           "approved":  1,
+                                           "approvedMasked":  0,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "statement_id",
+                                                               "piiType":  "STATE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "UNMASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "bc_document",
+                                           "approved":  1,
+                                           "approvedMasked":  1,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "file_name",
+                                                               "piiType":  "FULL_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "bc_contact_phone",
+                                           "approved":  6,
+                                           "approvedMasked":  6,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "first_name",
+                                                               "piiType":  "FIRST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "last_name",
+                                                               "piiType":  "LAST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "party_key",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "phone_number",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.99,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "tax_identifier",
+                                                               "piiType":  "SSN",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "date_of_birth",
+                                                               "piiType":  "DOB",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.99,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       },
+                                       {
+                                           "table":  "bc_contact_email",
+                                           "approved":  6,
+                                           "approvedMasked":  6,
+                                           "suggested":  0,
+                                           "suggestedMasked":  0,
+                                           "columns":  [
+                                                           {
+                                                               "column":  "date_of_birth",
+                                                               "piiType":  "DOB",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.99,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "email_address",
+                                                               "piiType":  "EMAIL",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.99,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "first_name",
+                                                               "piiType":  "FIRST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "last_name",
+                                                               "piiType":  "LAST_NAME",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.6,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "party_key",
+                                                               "piiType":  "PHONE",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.75,
+                                                               "maskState":  "MASKED"
+                                                           },
+                                                           {
+                                                               "column":  "tax_identifier",
+                                                               "piiType":  "SSN",
+                                                               "status":  "APPROVED",
+                                                               "confidence":  0.7,
+                                                               "maskState":  "MASKED"
+                                                           }
+                                                       ]
+                                       }
+                                   ]
+                    },
+    "version":  {
+                    "id":  7,
+                    "datasetId":  39,
+                    "versionNo":  2,
+                    "note":  "GW acceptance RI-safe baseline 2026-07-15 v2",
+                    "createdBy":  "admin",
+                    "createdAt":  "2026-07-15T20:37:51.448148Z"
+                },
+    "savedJob":  {
+                     "id":  "b8ac141a-af8f-4945-bc68-7e331e0beb9a",
+                     "ownerUserId":  1,
+                     "ownerUsername":  "admin",
+                     "name":  "GW-Billing-Provision-Smoke",
+                     "description":  "Reusable GW-Billing-Masking-Smoke provision job",
+                     "lastRunJobId":  84,
+                     "scheduleEnabled":  false,
+                     "selfServiceEnabled":  false,
+                     "createdAt":  "2026-07-15T19:51:00.209547Z",
+                     "updatedAt":  "2026-07-16T17:36:43.480166Z",
+                     "spec":  {
+                                  "name":  "GW-Billing-Provision-Smoke",
+                                  "sourceId":  14,
+                                  "policyId":  29,
+                                  "datasetId":  39,
+                                  "targetId":  14,
+                                  "specJson":  {
+                                                   "loadAction":  "REPLACE",
+                                                   "batchSize":  500,
+                                                   "maskingSeed":  "GW-ACCEPTANCE-20260715",
+                                                   "targetPrep":  "DELETE",
+                                                   "targetSchema":  "gw_billing_tgt",
+                                                   "maxDriverRows":  0,
+                                                   "sourceSchema":  "gw_billing_src"
+                                               },
+                                  "jobType":  "SUBSET_MASK"
+                              },
+                     "lastRunStatus":  "COMPLETED"
+                 }
+}

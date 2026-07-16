@@ -195,6 +195,26 @@ class MaskingEngineTest {
                 source.toString(), "365:0", null, ctx));
     }
 
+    @Test void sharedDateShiftPreservesIntervalsAcrossRelatedColumns() {
+        MaskContext row = new MaskContext(42);
+        row.row.put("policy_id", "2001");
+        row.row.put("effective_date", "2028-06-01");
+        row.row.put("expiration_date", "2029-06-01");
+        int[] common = MaskingEngine.intersectDateShiftRanges(java.util.List.of("365", "0:365"));
+        row.useSharedDateShiftRange(common[0], common[1]);
+
+        LocalDate effective = LocalDate.parse(engine.mask(MaskFunction.DATE_SHIFT, "effective",
+                "2028-06-01", "365", null, row));
+        LocalDate expiration = LocalDate.parse(engine.mask(MaskFunction.DATE_SHIFT, "expiration",
+                "2029-06-01", "0:365", null, row));
+
+        assertEquals(365, java.time.temporal.ChronoUnit.DAYS.between(effective, expiration));
+        assertTrue(expiration.isAfter(effective));
+        assertArrayEquals(new int[]{0, 365}, common);
+        assertThrows(IllegalStateException.class, () ->
+                MaskingEngine.intersectDateShiftRanges(java.util.List.of("-365:-1", "1:365")));
+    }
+
     @Test void geoTripletIsCoherent() {
         String city = engine.mask(MaskFunction.CITY_STATE_ZIP, "geo", "60601", "CITY", null, ctx);
         String full = engine.mask(MaskFunction.CITY_STATE_ZIP, "geo", "60601", "FULL", null, ctx);

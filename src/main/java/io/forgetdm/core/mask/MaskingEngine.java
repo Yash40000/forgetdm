@@ -90,6 +90,9 @@ public class MaskingEngine {
         if (fn == MaskFunction.SEQUENCE) return (param1 == null ? "ID-" : param1) + (ctx == null ? 0 : ctx.rowIndex);
         if (fn == MaskFunction.DIRECT_LOOKUP) return directLookup(value, param1, param2, ctx);
         if (fn == MaskFunction.HASH_LOOKUP) return hashLookup(value, param1, param2, ctx);
+        // Row-composition scripts may intentionally populate an empty source column from
+        // previously masked sibling columns (for example: "last_name, first_name").
+        if (fn == MaskFunction.SCRIPT) return script(salt, value, param1, param2, ctx);
         if (value == null || value.isEmpty()) return value;
 
         switch (fn) {
@@ -101,7 +104,7 @@ public class MaskingEngine {
             case PHONE:      return phone(salt, value, param1, param2);
             case SSN:        return ssn(salt, value, param1, param2);
             case CREDIT_CARD:return creditCard(salt, value, param1, param2);
-            case DATE_SHIFT: return dateShift(salt, value, param1, param2);
+            case DATE_SHIFT: return dateShift(salt, value, param1, param2, ctx);
             case DOB_AGE_BAND: return dobAgeBand(salt, value, parseIntOr(param1, 5), param2);
             case ADDRESS_STREET: return applyCase(street(salt, value), caseMode(param1, param2));
             case ADDRESS_US: return usAddress(salt, value, param1, param2, ctx);
@@ -129,7 +132,7 @@ public class MaskingEngine {
             case SSN_SPLIT:   return splitDigits(value, param1, param2, ctx, "ssn", true);
             case DATE_SPLIT:  return splitDate(value, param1, param2, ctx);
             case AGE:         return age(value, param1, param2);
-            case SCRIPT:      return script(salt, value, param1, param2, ctx);
+            case SCRIPT:      throw new IllegalStateException("SCRIPT must be evaluated before null handling");
             default: return value;
         }
     }
@@ -627,16 +630,33 @@ public class MaskingEngine {
         }
     }
 
-    private String dateShift(String salt, String value, String shiftSpec, String fmt) {
+    private String dateShift(String salt, String value, String shiftSpec, String fmt, MaskContext ctx) {
         String trimmed = value.trim();
         String datePart = trimmed.length() > 10 ? trimmed.substring(0, 10) : trimmed;
         String suffix = trimmed.length() > 10 ? trimmed.substring(10) : "";
         DateTimeFormatter f = formatter(fmt, datePart);
         try {
             LocalDate d = LocalDate.parse(datePart, f);
-            int[] range = dateShiftRange(shiftSpec);
+            int[] range = ctx != null && ctx.hasSharedDateShiftRange()
+                    ? new int[]{ctx.sharedDateShiftMinDays(), ctx.sharedDateShiftMaxDays()}
+                    : dateShiftRange(shiftSpec);
             long span = (long) range[1] - range[0] + 1L;
-            long shift = range[0] + (Determinism.hashLong(secret, salt + "|dshift", value) % span);
+            long shift;
+            if (ctx != null && ctx.hasSharedDateShiftRange()) {
+                Long cached = ctx.sharedDateShiftDays();
+                if (cached == null) {
+                    String rowKey = ctx.row.isEmpty()
+                            ? Long.toString(ctx.rowIndex)
+                            : new java.util.TreeMap<>(ctx.row).toString();
+                    cached = range[0] + (Determinism.hashLong(secret, "row|dshift", rowKey) % span);
+                    if (cached == 0 && (range[0] != 0 || range[1] != 0))
+                        cached = range[1] > 0 ? 1L : -1L;
+                    ctx.sharedDateShiftDays(cached);
+                }
+                shift = cached;
+            } else {
+                shift = range[0] + (Determinism.hashLong(secret, salt + "|dshift", value) % span);
+            }
             if (shift == 0 && (range[0] != 0 || range[1] != 0)) {
                 shift = range[1] > 0 ? 1 : -1;
             }
@@ -662,6 +682,27 @@ public class MaskingEngine {
         } catch (NumberFormatException e) {
             throw new IllegalStateException("DATE_SHIFT must be maxDays or minDays:maxDays", e);
         }
+    }
+
+    /**
+     * Intersect the configured ranges for a table's DATE_SHIFT rules. Two or more temporal columns use
+     * this shared range so one deterministic row-level shift preserves intervals and CHECK constraints.
+     * A single rule keeps the legacy value/column-specific behavior.
+     */
+    public static int[] intersectDateShiftRanges(java.util.Collection<String> shiftSpecs) {
+        if (shiftSpecs == null || shiftSpecs.size() < 2) return null;
+        int min = Integer.MIN_VALUE;
+        int max = Integer.MAX_VALUE;
+        for (String spec : shiftSpecs) {
+            int[] range = dateShiftRange(spec);
+            min = Math.max(min, range[0]);
+            max = Math.min(max, range[1]);
+        }
+        if (min > max) {
+            throw new IllegalStateException("DATE_SHIFT ranges on related columns do not overlap; "
+                    + "use a common range or AGE so temporal ordering can be preserved");
+        }
+        return new int[]{min, max};
     }
 
     /** DOB: random date but same age band => eligibility logic (18+, senior) keeps behaving. */

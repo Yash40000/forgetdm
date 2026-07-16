@@ -119,7 +119,7 @@ public class DataScopeMaskPreviewService {
         long rowIdx = 0;
         for (Map<String, String> src : sourceRows) {
             rowIdx++;
-            MaskContext ctx = new MaskContext(rowIdx);
+            MaskContext ctx = ProvisioningService.maskContext(rowIdx, new ArrayList<>(ruleByCol.values()));
             src.forEach((k, v) -> ctx.row.put(k, v));   // readSample lower-cases keys already
             Map<String, String> maskedByTarget = new HashMap<>();
             for (PreviewColumn c : ordered) {
@@ -132,7 +132,7 @@ public class DataScopeMaskPreviewService {
                     case "LITERAL" -> masked = c.literalValue();
                     default -> {
                         MaskingRuleEntity rule = ruleFor(c, ruleByCol);
-                        if (rule == null || original == null) {
+                        if (rule == null) {
                             masked = original;
                         } else {
                             String col = rule.getColumnName() != null ? rule.getColumnName() : c.sourceColumn();

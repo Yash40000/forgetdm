@@ -54,6 +54,20 @@ class ScriptMaskTest {
         assertNull(e.mask(MaskFunction.SCRIPT, "s", "secret", "nuller", null, ctx()));
     }
 
+    @Test void nullSourceCanBeComposedFromAlreadyMaskedSiblingColumns() {
+        MaskingEngine e = engineWith(Map.of("masked-full-name",
+                "local f = forge.masked(\"first_name\")\n" +
+                "local l = forge.masked(\"last_name\")\n" +
+                "if f == nil or l == nil then error(\"masked name components are required\") end\n" +
+                "return l .. \", \" .. f"));
+        MaskContext row = ctx();
+        row.masked.put("first_name", "Avery");
+        row.masked.put("last_name", "Stone");
+
+        assertEquals("Stone, Avery",
+                e.mask(MaskFunction.SCRIPT, "name.full", null, "masked-full-name", null, row));
+    }
+
     @Test void sandboxHasNoOsIoOrFiles() {
         MaskingEngine e = engineWith(Map.of(
                 "probe", "return tostring(os) .. \"/\" .. tostring(io) .. \"/\" .. tostring(loadfile) .. \"/\" .. tostring(require)"));

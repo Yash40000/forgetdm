@@ -70,7 +70,7 @@ public class MainframeGenService {
             RecordValue rv = codec.decode(blank);
             Map<String, String> changes = new LinkedHashMap<>();
             for (RecordValue.DecodedField df : rv.fields()) {
-                String v = row.get(CopybookSupport.stripSubscripts(df.path()));
+                String v = generatedValue(row, df.path());
                 if (v != null) changes.put(df.path(), v);
             }
             recs.add(codec.encodeOverlay(rv, blank, changes));
@@ -106,6 +106,25 @@ public class MainframeGenService {
             result.put("delivered", Map.of("connection", conn.getName(), "name", name, "bytes", ebcdic.length));
         }
         return result;
+    }
+
+    /**
+     * Generator columns come from the copybook registry as record-qualified paths, while the codec
+     * exposes paths relative to the primary record. Match the complete relative path (not only the
+     * leaf name) so nested groups remain unambiguous.
+     */
+    static String generatedValue(Map<String, String> row, String codecPath) {
+        if (row == null || row.isEmpty() || codecPath == null) return null;
+        String wanted = CopybookSupport.stripSubscripts(codecPath);
+        if (row.containsKey(wanted)) return row.get(wanted);
+        for (Map.Entry<String, String> entry : row.entrySet()) {
+            String candidate = CopybookSupport.stripSubscripts(entry.getKey());
+            if (candidate != null && (candidate.equalsIgnoreCase(wanted)
+                    || candidate.toUpperCase(Locale.ROOT).endsWith("." + wanted.toUpperCase(Locale.ROOT)))) {
+                return entry.getValue();
+            }
+        }
+        return null;
     }
 
     private static String csvRow(List<String> cols, java.util.function.Function<String, String> value) {

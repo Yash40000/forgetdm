@@ -2291,7 +2291,7 @@ public class SyntheticGenService {
         int tIndex = 0;
         for (GenTable t : ordered) {
             long rows = Math.max(0, Math.min(t.rowCount() == null ? 100 : t.rowCount(), maxRows));
-            Random rng = new Random(seed * 1000003L + (tIndex++));
+            Random rng = tableRandom(seed, tIndex++);
             progress.update(percent(startPct, endPct, genProgress.done(), Math.max(1, totalRows)),
                     "Generate rows", "Generating " + rows + " rows for " + t.name());
             data.put(t.name().toLowerCase(Locale.ROOT), genTableRows(t, rows, rng, seed, pools, referenced, composite, tuplePools, rowIndex,
@@ -2746,8 +2746,13 @@ public class SyntheticGenService {
 
     /** Public single-table generation (no cross-table FK), reused by the mainframe file generator. */
     public List<LinkedHashMap<String, String>> generateRows(GenTable t, long rows, long seed) {
-        return genTableRows(t, Math.max(0, rows), new Random(seed), seed, new HashMap<>(), Set.of(), Map.of(),
+        return genTableRows(t, Math.max(0, rows), tableRandom(seed, 0), seed, new HashMap<>(), Set.of(), Map.of(),
                 new HashMap<>(), new HashMap<>(), Set.of(), List.of(), null);
+    }
+
+    /** One seed convention across bounded, streaming, and file receivers. */
+    static Random tableRandom(long seed, int tableIndex) {
+        return new Random(seed * 1000003L + tableIndex);
     }
 
     // --------------------------------------------------------- FK auto-detection
@@ -4112,7 +4117,7 @@ public class SyntheticGenService {
                     rangeWarnings.add(issue.message());
                     progress.update(22, "Range check", issue.message());
                 }
-                Random rng = new Random(seed * 1000003L + (tableIndex + 1));
+                Random rng = tableRandom(seed, tableIndex);
                 int from = 22 + (tableIndex * 74 / tableCount);
                 int to = 22 + ((tableIndex + 1) * 74 / tableCount);
                 switch (load.action()) {
