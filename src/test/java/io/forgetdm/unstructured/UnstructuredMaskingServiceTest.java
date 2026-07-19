@@ -106,4 +106,36 @@ class UnstructuredMaskingServiceTest {
             service.shutdown();
         }
     }
+
+    @Test void tikaRuntimeUsesTheCommonsLangVersionItWasCompiledAgainst() {
+        assertDoesNotThrow(() -> org.apache.commons.lang3.SystemProperties.getUserName("unknown"));
+    }
+
+    @Test void cancellationRequestedBeforeDetectionStopsAtTheFirstSafeBoundary() throws Exception {
+        UnstructuredProfileRepository profiles = mock(UnstructuredProfileRepository.class);
+        UnstructuredProfileEntity profile = new UnstructuredProfileEntity();
+        profile.setId(10L); profile.setName("cancel"); profile.setRulesJson("[]");
+        when(profiles.findById(10L)).thenReturn(Optional.of(profile));
+
+        UnstructuredJobEntity job = new UnstructuredJobEntity();
+        ReflectionTestUtils.setField(job, "id", 102L);
+        job.setProfileId(10L); job.setOriginalFilename("large.txt"); job.setCreatedBy("admin");
+        job.setStatus("QUEUED"); job.setCancelRequested(true);
+        UnstructuredJobRepository jobs = mock(UnstructuredJobRepository.class);
+        when(jobs.findById(102L)).thenReturn(Optional.of(job));
+        when(jobs.save(any(UnstructuredJobEntity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        AuditService audit = mock(AuditService.class);
+        ManagedFileVault vault = mock(ManagedFileVault.class);
+        UnstructuredMaskingService service = new UnstructuredMaskingService(profiles, jobs, vault,
+                new MaskingEngine("secret"), new ObjectMapper(), audit, 10_000_000, 1_000_000, 72);
+
+        ReflectionTestUtils.invokeMethod(service, "process", 102L, "seed-a");
+
+        assertEquals("CANCELED", job.getStatus());
+        assertEquals("CANCELED", job.getStage());
+        verify(vault, never()).open(any(), any(), any());
+        verify(audit).record(eq("admin"), eq("UNSTRUCTURED_JOB_CANCELED"), eq("CANCEL"),
+                eq("UNSTRUCTURED_JOB"), eq("102"), eq("large.txt"), eq("SUCCESS"), any(), isNull());
+        service.shutdown();
+    }
 }

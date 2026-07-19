@@ -1,6 +1,7 @@
 package io.forgetdm.mapping;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import io.forgetdm.audit.AuditService;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.http.HttpHeaders;
@@ -27,9 +28,11 @@ public class MappingController {
     private final MappingService svc;
     private final MappingFileService files;
     private final MappingExecutionService executions;
+    private final AuditService audit;
 
-    public MappingController(MappingService svc, MappingFileService files, MappingExecutionService executions) {
-        this.svc = svc; this.files = files; this.executions = executions;
+    public MappingController(MappingService svc, MappingFileService files, MappingExecutionService executions,
+                             AuditService audit) {
+        this.svc = svc; this.files = files; this.executions = executions; this.audit = audit;
     }
 
     @GetMapping public List<MappingEntity> list() { return svc.list(); }
@@ -77,9 +80,13 @@ public class MappingController {
 
     @PostMapping("/runs/{id}/cancel") public MappingRunEntity cancel(@PathVariable Long id) { return executions.cancel(id); }
 
+    @PostMapping("/runs/{id}/retry") public MappingRunEntity retry(@PathVariable Long id) { return executions.retry(id); }
+
     @GetMapping("/runs/{id}/download")
     public ResponseEntity<StreamingResponseBody> download(@PathVariable Long id) {
         MappingExecutionService.InputStreamDownload file = executions.output(id);
+        audit.record(null, "MAPPING_OUTPUT_EXPORTED", "MAPPING", "mapping-run", String.valueOf(id),
+                file.filename(), "SUCCESS", "Mapping output download prepared", "{\"format\":\"file\"}");
         StreamingResponseBody body = output -> { try (var in = file.stream()) { in.transferTo(output); } };
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + file.filename().replace("\"", "") + "\"")

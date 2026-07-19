@@ -6,6 +6,8 @@ import io.forgetdm.core.mask.MaskContext;
 import io.forgetdm.core.mask.MaskFunction;
 import io.forgetdm.core.mask.MaskingEngine;
 import io.forgetdm.provision.ValueListService;
+import io.forgetdm.security.AccessPrincipal;
+import io.forgetdm.security.OwnershipGuard;
 import jakarta.transaction.Transactional;
 import org.springframework.web.bind.annotation.*;
 
@@ -23,40 +25,98 @@ public class PolicyController {
     private final MaskingEngine engine;
     private final AuditService audit;
     private final ValueListService valueLists;
+    private final OwnershipGuard ownership;
 
     public PolicyController(MaskingPolicyRepository policies, MaskingRuleRepository rules,
-                            MaskingEngine engine, AuditService audit, ValueListService valueLists) {
+                            MaskingEngine engine, AuditService audit, ValueListService valueLists,
+                            OwnershipGuard ownership) {
         this.policies = policies; this.rules = rules; this.engine = engine; this.audit = audit; this.valueLists = valueLists;
+        this.ownership = ownership;
     }
 
+    /** Tenant-scoped: callers only see policies they own, their group owns, or that are SHARED. */
     @GetMapping public List<MaskingPolicyEntity> list(@RequestParam(required = false) Long dataSourceId,
                                                       @RequestParam(required = false) String schema) {
-        if (dataSourceId != null && schema != null && !schema.isBlank())
-            return policies.findByDataSourceIdAndSchemaName(dataSourceId, schema);
-        return policies.findAll();
+        List<MaskingPolicyEntity> found = (dataSourceId != null && schema != null && !schema.isBlank())
+                ? policies.findByDataSourceIdAndSchemaName(dataSourceId, schema)
+                : policies.findAll();
+        return found.stream()
+                .filter(p -> ownership.canSee(p.getOwnerUserId(), p.getOwnerGroupId(), p.getVisibility()))
+                .toList();
     }
 
     @PostMapping public MaskingPolicyEntity create(@RequestBody MaskingPolicyEntity p) {
         p.setName(PolicyNameRules.normalize(p.getName()));
+        policies.findByNameIgnoreCase(p.getName()).ifPresent(existing -> {
+            throw ApiException.conflict("A policy named '" + p.getName() + "' already exists");
+        });
+        p.setOwnerUserId(ownership.defaultOwnerUserId());
+        p.setOwnerUsername(ownership.defaultOwnerUsername());
+        p.setOwnerGroupId(ownership.defaultOwnerGroupId());
+        if (p.getVisibility() == null || p.getVisibility().isBlank()) p.setVisibility(ownership.defaultVisibility());
         MaskingPolicyEntity saved = policies.save(p);
-        audit.log("system", "POLICY_CREATED", saved.getName());
+        audit.record(ownership.caller().map(AccessPrincipal::username).orElse("system"),
+                "POLICY_CREATED", "MASKING", "policy", String.valueOf(saved.getId()), saved.getName(),
+                "SUCCESS", saved.getName(), null);
+        return saved;
+    }
+
+    /** Update policy metadata without replacing its rules or ownership. */
+    @PutMapping("/{id}")
+    @Transactional
+    public MaskingPolicyEntity update(@PathVariable Long id, @RequestBody MaskingPolicyEntity body) {
+        MaskingPolicyEntity policy = requireVisiblePolicy(id);
+        if (body.getName() != null && !body.getName().isBlank()) {
+            String name = PolicyNameRules.normalize(body.getName());
+            policies.findByNameIgnoreCase(name).ifPresent(existing -> {
+                if (!existing.getId().equals(id)) {
+                    throw ApiException.conflict("A policy named '" + name + "' already exists");
+                }
+            });
+            policy.setName(name);
+        }
+        if (body.getDescription() != null) policy.setDescription(body.getDescription());
+        if (body.getDataSourceId() != null) policy.setDataSourceId(body.getDataSourceId());
+        if (body.getSchemaName() != null) policy.setSchemaName(emptyToNull(body.getSchemaName()));
+        if (body.getVisibility() != null && !body.getVisibility().isBlank()) {
+            String visibility = body.getVisibility().trim().toUpperCase(Locale.ROOT);
+            if (!List.of(OwnershipGuard.PRIVATE, OwnershipGuard.GROUP, OwnershipGuard.SHARED).contains(visibility)) {
+                throw ApiException.bad("Visibility must be PRIVATE, GROUP, or SHARED");
+            }
+            policy.setVisibility(visibility);
+        }
+        MaskingPolicyEntity saved = policies.save(policy);
+        audit.record(currentActor(), "POLICY_UPDATED", "MASKING", "policy", String.valueOf(id),
+                saved.getName(), "SUCCESS", "Updated masking policy", null);
         return saved;
     }
 
     @DeleteMapping("/{id}")
     @Transactional
     public void delete(@PathVariable Long id) {
+        MaskingPolicyEntity policy = requireVisiblePolicy(id);
         rules.deleteByPolicyId(id);
         policies.deleteById(id);
-        audit.log("system", "POLICY_DELETED", "id=" + id);
+        audit.record(currentActor(),
+                "POLICY_DELETED", "MASKING", "policy", String.valueOf(id), policy.getName(),
+                "SUCCESS", "id=" + id + " name=" + policy.getName(), null);
     }
 
     @GetMapping("/{id}/rules") public List<MaskingRuleEntity> rules(@PathVariable Long id) {
+        requireVisiblePolicy(id);
         return rules.findByPolicyId(id);
     }
 
+    /** Object-level tenancy check: the route permission alone must not grant another group's policy. */
+    private MaskingPolicyEntity requireVisiblePolicy(Long id) {
+        MaskingPolicyEntity policy = policies.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Policy " + id + " not found"));
+        ownership.assertCanSee("policy", id, policy.getOwnerUserId(), policy.getOwnerGroupId(), policy.getVisibility());
+        return policy;
+    }
+
     @PostMapping("/{id}/rules") public MaskingRuleEntity addRule(@PathVariable Long id, @RequestBody MaskingRuleEntity r) {
-        policies.findById(id).orElseThrow(() -> ApiException.notFound("Policy " + id + " not found"));
+        MaskingPolicyEntity policy = requireVisiblePolicy(id);
         MaskFunction fn = parseFunction(r.getFunction());
         r.setFunction(fn.name());
         r.setParam1(emptyToNull(r.getParam1()));
@@ -65,7 +125,11 @@ public class PolicyController {
         validateLookupReference(fn, r.getParam1());
         validateLookupConfiguration(fn, r.getParam1(), r.getParam2());
         r.setPolicyId(id);
-        return rules.save(r);
+        MaskingRuleEntity saved = rules.save(r);
+        audit.record(currentActor(), "POLICY_RULE_CREATED", "MASKING", "policy-rule",
+                String.valueOf(saved.getId()), r.getTableName() + "." + r.getColumnName(), "SUCCESS",
+                "Added rule to policy " + policy.getName(), "{\"policyId\":" + id + "}");
+        return saved;
     }
 
     /** Edit an existing rule in place — change function and/or params without delete+re-add. */
@@ -73,6 +137,7 @@ public class PolicyController {
     public MaskingRuleEntity updateRule(@PathVariable Long ruleId, @RequestBody Map<String, String> body) {
         MaskingRuleEntity r = rules.findById(ruleId)
                 .orElseThrow(() -> ApiException.notFound("Rule " + ruleId + " not found"));
+        MaskingPolicyEntity policy = requireVisiblePolicy(r.getPolicyId());   // a rule inherits its policy's tenancy
         if (body.containsKey("function") && body.get("function") != null && !body.get("function").isBlank()) {
             validateFunction(body.get("function"));
             r.setFunction(body.get("function").trim().toUpperCase());
@@ -84,13 +149,27 @@ public class PolicyController {
         validateLookupReference(effectiveFunction, r.getParam1());
         validateLookupConfiguration(effectiveFunction, r.getParam1(), r.getParam2());
         MaskingRuleEntity saved = rules.save(r);
-        audit.log("system", "RULE_UPDATED", r.getTableName() + "." + r.getColumnName() + " -> " + r.getFunction());
+        audit.record(currentActor(), "POLICY_RULE_UPDATED", "MASKING", "policy-rule",
+                String.valueOf(saved.getId()), r.getTableName() + "." + r.getColumnName(), "SUCCESS",
+                "Updated rule in policy " + policy.getName(), "{\"policyId\":" + r.getPolicyId() + "}");
         return saved;
     }
 
     private static String emptyToNull(String s) { return s == null || s.isBlank() ? null : s; }
 
-    @DeleteMapping("/rules/{ruleId}") public void deleteRule(@PathVariable Long ruleId) { rules.deleteById(ruleId); }
+    @DeleteMapping("/rules/{ruleId}") public void deleteRule(@PathVariable Long ruleId) {
+        MaskingRuleEntity rule = rules.findById(ruleId)
+                .orElseThrow(() -> ApiException.notFound("Rule " + ruleId + " not found"));
+        MaskingPolicyEntity policy = requireVisiblePolicy(rule.getPolicyId());
+        rules.deleteById(ruleId);
+        audit.record(currentActor(), "POLICY_RULE_DELETED", "MASKING", "policy-rule",
+                String.valueOf(ruleId), rule.getTableName() + "." + rule.getColumnName(), "SUCCESS",
+                "Deleted rule from policy " + policy.getName(), "{\"policyId\":" + rule.getPolicyId() + "}");
+    }
+
+    private String currentActor() {
+        return ownership.caller().map(AccessPrincipal::username).orElse("system");
+    }
 
     @GetMapping("/functions") public List<String> functions() {
         return Arrays.stream(MaskFunction.values()).map(Enum::name).toList();

@@ -3,7 +3,7 @@
 **Priority:** P0
 
 **Lane:** All
-**Execution status:** NOT RUN
+**Execution status:** EXECUTED LIVE 2026-07-17 — 9/10 PASS; RBAC-001-04 originally FAIL → **fixed** (DEF-0005 CLOSED: permission layer + nav + 6 core pages gated, verified live). Full zero-mismatch across all pages tracked by DEF-0006 (LOW, OPEN). Evidence: `docs/testing/evidence/RBAC-001-EVIDENCE.md`.
 
 ## Objective
 

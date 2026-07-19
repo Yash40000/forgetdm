@@ -4,6 +4,7 @@ import io.forgetdm.common.ApiException;
 import io.forgetdm.core.copybook.Copybook;
 import io.forgetdm.core.copybook.Field;
 import io.forgetdm.mainframe.transport.TransportFactory;
+import io.forgetdm.security.AccessContext;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -251,6 +252,7 @@ public class MainframeController {
         job.setSourceConnectionId(req.sourceConnectionId());
         job.setTargetConnectionId(req.targetConnectionId());
         job.setMaskingSeed(blankToNull(req.maskingSeed()));
+        job.setCreatedBy(AccessContext.current().map(p -> p.username()).orElse("system"));
         job.setStatus("PENDING");
         job.setFilesTotal(req.files().size());
         job = jobs.save(job);
@@ -273,6 +275,18 @@ public class MainframeController {
         }
 
         masking.submitAsync(job.getId());
+        return Map.of("job", job, "files", jobFiles.findByJobIdOrderByOrdinalAsc(job.getId()));
+    }
+
+    @PostMapping("/jobs/{id}/cancel")
+    public Map<String, Object> cancelJob(@PathVariable Long id) {
+        MainframeJobEntity job = masking.cancel(id);
+        return Map.of("job", job, "files", jobFiles.findByJobIdOrderByOrdinalAsc(job.getId()));
+    }
+
+    @PostMapping("/jobs/{id}/retry")
+    public Map<String, Object> retryJob(@PathVariable Long id) {
+        MainframeJobEntity job = masking.retry(id);
         return Map.of("job", job, "files", jobFiles.findByJobIdOrderByOrdinalAsc(job.getId()));
     }
 

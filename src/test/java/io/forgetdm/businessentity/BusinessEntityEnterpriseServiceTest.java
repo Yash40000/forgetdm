@@ -119,6 +119,89 @@ class BusinessEntityEnterpriseServiceTest {
     }
 
     @Test
+    void governanceAndPackageAuditsAreStructuredAttributedAndSecretFree() {
+        Map<String, Object> release = asUser("maker1", () -> service.createGovernanceRequest(1L,
+                new BusinessEntityEnterpriseService.GovernanceRequestRequest(
+                        "BUSINESS_ENTITY", 1L, "RELEASE", "checker1", "HIGH", "private maker rationale")));
+        long releaseId = ((Number) release.get("id")).longValue();
+        asUser("checker1", () -> service.approveGovernanceRequest(releaseId,
+                new BusinessEntityEnterpriseService.DecisionRequest(
+                        "checker1", "private checker rationale", "private-electronic-signature")));
+
+        Map<String, Object> rejected = asUser("maker1", () -> service.createGovernanceRequest(1L,
+                new BusinessEntityEnterpriseService.GovernanceRequestRequest(
+                        "BUSINESS_ENTITY", 1L, "RELEASE", "checker1", "MEDIUM", "reject this release")));
+        long rejectedId = ((Number) rejected.get("id")).longValue();
+        asUser("checker1", () -> service.rejectGovernanceRequest(rejectedId,
+                new BusinessEntityEnterpriseService.DecisionRequest(
+                        "checker1", "private rejection rationale", "private-rejection-signature")));
+
+        Map<String, Object> promoteApproval = asUser("maker1", () -> service.createGovernanceRequest(1L,
+                new BusinessEntityEnterpriseService.GovernanceRequestRequest(
+                        "OPERATIONAL_PACKAGE", 1L, "PROMOTE", "checker1", "HIGH", "promote to QA")));
+        long promoteApprovalId = ((Number) promoteApproval.get("id")).longValue();
+        asUser("checker1", () -> service.approveGovernanceRequest(promoteApprovalId,
+                new BusinessEntityEnterpriseService.DecisionRequest("checker1", "promotion approved", "promotion-signature")));
+
+        Map<String, Object> plan = asUser("maker1", () -> service.createExecutionPlan(1L,
+                new BusinessEntityEnterpriseService.ExecutionPlanRequest(
+                        "Audited release", "SUBSET_MASK", "DEV", "QA", "PLAN_ONLY", null, null, null)));
+        Map<String, Object> pkg = asUser("maker1", () -> service.createOperationalPackage(1L,
+                new BusinessEntityEnterpriseService.OperationalPackageRequest(
+                        "Audited package", ((Number) plan.get("id")).longValue(), "SCHEDULER_RUNNER", "QA")));
+        long packageId = ((Number) pkg.get("id")).longValue();
+        Map<String, Object> version = asUser("maker1", () -> service.createPackageVersion(packageId,
+                new BusinessEntityEnterpriseService.PackageVersionRequest(
+                        "STANDARD_7_YEAR", 2555, "private version note")));
+        var spoofedApprover = assertThrows(io.forgetdm.common.ApiException.class,
+                () -> asUser("maker1", () -> service.promotePackageVersion(packageId,
+                        new BusinessEntityEnterpriseService.PromotionRequest(
+                                ((Number) version.get("id")).longValue(), "DEV", "QA", "imposter",
+                                "spoofed approver"))));
+        assertTrue(spoofedApprover.getMessage().contains("signer of the approved governance request"));
+
+        Map<String, Object> promotion = asUser("maker1", () -> service.promotePackageVersion(packageId,
+                new BusinessEntityEnterpriseService.PromotionRequest(
+                        ((Number) version.get("id")).longValue(), "DEV", "QA", "checker1", "private promotion note")));
+
+        assertEquals("PROMOTED", promotion.get("status"));
+        assertEquals("checker1", promotion.get("approvedBy"));
+        assertEquals(promoteApprovalId, ((Number) promotion.get("approvedRequestId")).longValue());
+
+        verify(audit).record(eq("maker1"), eq("BUSINESS_ENTITY_GOVERNANCE_REQUEST"), eq("GOVERNANCE"),
+                eq("business-entity-governance-request"), eq(String.valueOf(releaseId)), contains("RELEASE"),
+                eq("SUCCESS"), contains("Created governance request"), argThat(metadata ->
+                        metadata.contains("\"riskLevel\":\"HIGH\"")
+                                && metadata.contains("\"commentsPresent\":true")
+                                && !metadata.contains("private maker rationale")));
+        verify(audit).record(eq("checker1"), eq("BUSINESS_ENTITY_GOVERNANCE_APPROVED"), eq("GOVERNANCE"),
+                eq("business-entity-governance-request"), eq(String.valueOf(releaseId)), contains("RELEASE"),
+                eq("SUCCESS"), contains("Approved governance request"), argThat(metadata ->
+                        metadata.contains("\"decision\":\"APPROVED\"")
+                                && metadata.contains("\"eSignaturePresent\":true")
+                                && !metadata.contains("private checker rationale")
+                                && !metadata.contains("private-electronic-signature")));
+        verify(audit).record(eq("checker1"), eq("BUSINESS_ENTITY_GOVERNANCE_REJECTED"), eq("GOVERNANCE"),
+                eq("business-entity-governance-request"), eq(String.valueOf(rejectedId)), contains("RELEASE"),
+                eq("SUCCESS"), contains("Rejected governance request"), argThat(metadata ->
+                        metadata.contains("\"decision\":\"REJECTED\"")
+                                && !metadata.contains("private rejection rationale")
+                                && !metadata.contains("private-rejection-signature")));
+        verify(audit, atLeast(2)).record(eq("maker1"), eq("BUSINESS_ENTITY_PACKAGE_VERSION_CREATE"), eq("RELEASE"),
+                eq("business-entity-package-version"), anyString(), contains("Audited package"), eq("SUCCESS"),
+                contains("Created immutable package version"), argThat(metadata ->
+                        metadata.contains("\"artifactHash\"")
+                                && metadata.contains("\"retentionPolicy\":\"STANDARD_7_YEAR\"")
+                                && !metadata.contains("private version note")));
+        verify(audit).record(eq("maker1"), eq("BUSINESS_ENTITY_PACKAGE_PROMOTION"), eq("RELEASE"),
+                eq("business-entity-package-promotion"), anyString(), contains("DEV -> QA"), eq("SUCCESS"),
+                contains("PROMOTED"), argThat(metadata ->
+                        metadata.contains("\"governanceApprovedBy\":\"checker1\"")
+                                && metadata.contains("\"approvedRequestId\":" + promoteApprovalId)
+                                && !metadata.contains("private promotion note")));
+    }
+
+    @Test
     void makerCannotApproveOwnRequest() {
         Map<String, Object> gov = service.createGovernanceRequest(1L,
                 new BusinessEntityEnterpriseService.GovernanceRequestRequest("BUSINESS_ENTITY", 1L, "RELEASE", "system", "MEDIUM", null));

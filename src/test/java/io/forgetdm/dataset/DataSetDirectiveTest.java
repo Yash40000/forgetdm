@@ -10,9 +10,10 @@ class DataSetDirectiveTest {
 
     @Test
     void independentTableDisablesItsQ1AndQ2Traversal() {
+        // trailing null is the OwnershipGuard (V61 tenancy) — unused by toDirectives
         DataSetService service = new DataSetService(
                 null, null, null, null, null, null,
-                null, null, null, null, null, null);
+                null, null, null, null, null, null, null);
         TableProfileEntity profile = new TableProfileEntity();
         profile.setTableName("standalone_seed");
         profile.setIncluded(true);

@@ -39,6 +39,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { NameInput } from '@/components/name-input';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { apiPatch, apiPost } from '@/lib/api';
+import { usePermissions } from '@/lib/use-permissions';
 import { keys } from '@/lib/keys';
 import type { DataSource } from '@/lib/types';
 import type { MaskingPolicy, MaskingRule } from '@/lib/types';
@@ -84,6 +85,8 @@ type PolicyDrawer = 'browse' | 'create' | null;
 
 export function PiiDiscoveryPage() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('discovery.manage');
   const completedJobRef = useRef<string | null>(null);
   const [workspace, setWorkspace] = useState<DiscoveryWorkspace | null>(null);
   const [policyDrawer, setPolicyDrawer] = useState<PolicyDrawer>(null);
@@ -621,14 +624,16 @@ export function PiiDiscoveryPage() {
                 <Button size="xs" variant="default" onClick={handleUseScopeForResults}>
                   Use type scope for results
                 </Button>
-                <Button
-                  size="xs"
-                  leftSection={<IconShieldSearch size={14} />}
-                  loading={startScanMutation.isPending}
-                  onClick={handleStartScan}
-                >
-                  Start scan
-                </Button>
+                {canManage ? (
+                  <Button
+                    size="xs"
+                    leftSection={<IconShieldSearch size={14} />}
+                    loading={startScanMutation.isPending}
+                    onClick={handleStartScan}
+                  >
+                    Start scan
+                  </Button>
+                ) : null}
               </Group>
             </div>
           </Paper>

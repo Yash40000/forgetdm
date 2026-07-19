@@ -1,5 +1,6 @@
 package io.forgetdm.unstructured;
 
+import io.forgetdm.audit.AuditService;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -14,7 +15,11 @@ import java.util.Map;
 @RequestMapping("/api/unstructured")
 public class UnstructuredMaskingController {
     private final UnstructuredMaskingService service;
-    public UnstructuredMaskingController(UnstructuredMaskingService service) { this.service = service; }
+    private final AuditService audit;
+    public UnstructuredMaskingController(UnstructuredMaskingService service, AuditService audit) {
+        this.service = service;
+        this.audit = audit;
+    }
 
     @GetMapping("/capabilities") public Map<String, Object> capabilities() { return service.capabilities(); }
     @GetMapping("/profiles") public List<UnstructuredProfileEntity> profiles() { return service.listProfiles(); }
@@ -41,6 +46,9 @@ public class UnstructuredMaskingController {
     @GetMapping("/jobs/{id}/download")
     public ResponseEntity<StreamingResponseBody> download(@PathVariable Long id) {
         UnstructuredMaskingService.Download file = service.output(id);
+        audit.record(null, "UNSTRUCTURED_OUTPUT_EXPORTED", "MASKING", "unstructured-job",
+                String.valueOf(id), file.filename(), "SUCCESS", "Masked file download prepared",
+                "{\"format\":\"file\"}");
         StreamingResponseBody body = output -> { try (var in = file.stream()) { in.transferTo(output); } };
         return ResponseEntity.ok().header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"" + file.filename().replace("\"", "") + "\"")

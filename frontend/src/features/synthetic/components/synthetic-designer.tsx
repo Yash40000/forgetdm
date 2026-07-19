@@ -45,6 +45,7 @@ import {
 
 import { apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { NameInput } from '@/components/name-input';
 import type { DataColumn, DataSource } from '@/lib/types';
 import type {
@@ -128,13 +129,18 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
   const targetSchemas = useSchemas(draft.targetDataSourceId);
   const plan = useMemo(() => collectSyntheticPlan(draft), [draft]);
   const fingerprint = useMemo(() => planFingerprint(plan), [plan]);
+  // Warn before a session-expiry redirect can silently discard an edited design (AUTH-003-05 / DEF-0003).
+  const [savedFingerprint, setSavedFingerprint] = useState(() => fingerprint);
+  useUnsavedGuard(fingerprint !== savedFingerprint);
   const setupLaunchReady = sourceSetupSaved && outputSetupSaved &&
     (draft.receiver !== 'DB' || Boolean(draft.targetDataSourceId || draft.targetSystems.length));
   const saveNameLength = saveName.trim().length;
   const saveNameTooShort = saveNameLength > 0 && saveNameLength < SYNTHETIC_JOB_NAME_MIN_LENGTH;
 
   const resetToNewRequest = () => {
-    setDraft(emptySyntheticDraft());
+    const emptyDraft = emptySyntheticDraft();
+    setDraft(emptyDraft);
+    setSavedFingerprint(planFingerprint(collectSyntheticPlan(emptyDraft)));
     setSelectedSourceTables([]);
     setSourceTableText('');
     setSummary(null);
@@ -192,6 +198,8 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
       if (shouldReset) {
         resetToNewRequest();
         notifications.show({ color: 'blue', title: 'New request ready', message: 'The saved request was closed and a clean design is open.' });
+      } else {
+        setSavedFingerprint(fingerprint);
       }
     },
     onError: (error) =>

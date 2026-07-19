@@ -13,6 +13,7 @@ class SubsetDialectTest {
     @Test
     void quotesPlannerIdentifiersForOracleMysqlAndSqlServer() throws Exception {
         assertEquals("\"BE_CARDS\".\"CARD_CUSTOMERS\"", qualified("Oracle", "be_cards", "card_customers"));
+        assertEquals("\"BANK\".\"CUSTOMERS\"", qualified("IBM Db2", "bank", "customers"));
         assertEquals("`digital_engagement`.`digital_customers`", qualified("MySQL", "digital_engagement", "digital_customers"));
         assertEquals("[dbo].[customers]", qualified("Microsoft SQL Server", "dbo", "customers"));
     }

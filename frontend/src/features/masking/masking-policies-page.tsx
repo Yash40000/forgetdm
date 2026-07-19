@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch, apiPatch, apiPost } from '@/lib/api';
 import { useConfirm } from '@/components/confirm';
+import { usePermissions } from '@/lib/use-permissions';
 import { NameInput } from '@/components/name-input';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { keys } from '@/lib/keys';
@@ -43,6 +44,8 @@ const emptyRuleDraft: RuleDraft = {
 export function MaskingPoliciesPage() {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canManage = can('policy.manage');
   const policiesQuery = usePolicies();
   const functionsQuery = useMaskingFunctions();
   const scriptsQuery = useMaskingScripts();
@@ -249,9 +252,11 @@ export function MaskingPoliciesPage() {
                 <IconRefresh size={17} />
               </ActionIcon>
             </Tooltip>
-            <Button leftSection={<IconPlus size={16} />} onClick={() => setCreateOpened(true)}>
-              New policy
-            </Button>
+            {canManage ? (
+              <Button leftSection={<IconPlus size={16} />} onClick={() => setCreateOpened(true)}>
+                New policy
+              </Button>
+            ) : null}
           </Group>
         }
       />
@@ -308,13 +313,15 @@ export function MaskingPoliciesPage() {
                     <td>
                       <Group gap={4} wrap="nowrap">
                         <Button size="xs" variant="subtle" leftSection={<IconEdit size={15} />} onClick={() => selectPolicy(policy)}>
-                          Open
+                          {canManage ? 'Open' : 'View'}
                         </Button>
-                        <Tooltip label={`Delete ${policy.name}`}>
-                          <ActionIcon variant="subtle" color="red" aria-label={`Delete ${policy.name}`} onClick={() => void removePolicy(policy)}>
-                            <IconTrash size={16} />
-                          </ActionIcon>
-                        </Tooltip>
+                        {canManage ? (
+                          <Tooltip label={`Delete ${policy.name}`}>
+                            <ActionIcon variant="subtle" color="red" aria-label={`Delete ${policy.name}`} onClick={() => void removePolicy(policy)}>
+                              <IconTrash size={16} />
+                            </ActionIcon>
+                          </Tooltip>
+                        ) : null}
                       </Group>
                     </td>
                   </tr>
@@ -367,7 +374,7 @@ export function MaskingPoliciesPage() {
                   </Text>
                 </div>
                 <Group gap="xs">
-                  <InlineDanger onClick={() => void removePolicy(selectedPolicy)}>Delete policy</InlineDanger>
+                  {canManage ? <InlineDanger onClick={() => void removePolicy(selectedPolicy)}>Delete policy</InlineDanger> : null}
                   <Button variant="default" leftSection={<IconX size={16} />} onClick={() => setEditorOpened(false)}>
                     Close workspace
                   </Button>
@@ -379,6 +386,8 @@ export function MaskingPoliciesPage() {
                   <Tabs.Tab value="discovery" leftSection={<IconLink size={15} />}>Bind from Discovery</Tabs.Tab>
                 </Tabs.List>
                 <Tabs.Panel value="rules" p="md">
+                  {canManage ? (
+                  <>
                   <SimpleGrid cols={{ base: 1, md: 6 }} spacing="sm" className="masking-rule-add-grid">
                     <TextInput label="Schema" value={effectiveRuleSchema} placeholder="optional" onChange={(event) => setRuleDraft({ ...ruleDraft, schemaName: safeInputValue(event) })} {...technicalInputProps} />
                     <TextInput label="Table" value={ruleDraft.tableName} onChange={(event) => setRuleDraft({ ...ruleDraft, tableName: safeInputValue(event) })} {...technicalInputProps} />
@@ -392,6 +401,8 @@ export function MaskingPoliciesPage() {
                       Add rule
                     </Button>
                   </Group>
+                  </>
+                  ) : null}
 
                   <div className="forge-grid-panel masking-rules-table">
                     <table className="forge-table">
@@ -414,7 +425,7 @@ export function MaskingPoliciesPage() {
                               </Text>
                             </td>
                             <td>
-                              <Select size="xs" data={functions} searchable value={rule.function} onChange={(value) => value && patchRule(rule, { function: value })} />
+                              <Select size="xs" data={functions} searchable value={rule.function} disabled={!canManage} onChange={(value) => value && patchRule(rule, { function: value })} />
                             </td>
                             <td>
                               <ParamControl functionName={rule.function} index={1} value={rule.param1 || ''} scripts={scripts} valueLists={valueLists} lookupReferences={lookupReferences} onChange={(value) => patchRule(rule, { param1: value || null })} />
@@ -423,11 +434,13 @@ export function MaskingPoliciesPage() {
                               <ParamControl functionName={rule.function} index={2} value={rule.param2 || ''} scripts={scripts} valueLists={valueLists} lookupReferences={lookupReferences} onChange={(value) => patchRule(rule, { param2: value || null })} />
                             </td>
                             <td>
-                              <Tooltip label="Delete rule">
-                              <ActionIcon variant="subtle" color="red" aria-label={`Delete rule ${ruleSignature(rule)}`} onClick={() => removeRule(rule)}>
-                                  <IconTrash size={16} />
-                                </ActionIcon>
-                              </Tooltip>
+                              {canManage ? (
+                                <Tooltip label="Delete rule">
+                                  <ActionIcon variant="subtle" color="red" aria-label={`Delete rule ${ruleSignature(rule)}`} onClick={() => removeRule(rule)}>
+                                    <IconTrash size={16} />
+                                  </ActionIcon>
+                                </Tooltip>
+                              ) : null}
                             </td>
                           </tr>
                         ))}
@@ -457,9 +470,11 @@ export function MaskingPoliciesPage() {
                   <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm" mt="md">
                     <Select label="Discovery data source" data={dataSourceOptions} value={effectiveMapDataSourceId || null} searchable clearable onChange={(value) => { setMapContextDirty(true); setMapDataSourceId(value || ''); }} />
                     <TextInput label="Schema" value={effectiveMapSchema} onChange={(event) => { setMapContextDirty(true); setMapSchema(safeInputValue(event)); }} {...technicalInputProps} />
-                    <Button mt={22} leftSection={<IconLink size={16} />} loading={addMappedRules.isPending} disabled={!selectedFindingIds.length} onClick={() => addMappedRules.mutate()}>
-                      Add selected ({selectedFindingIds.length})
-                    </Button>
+                    {canManage ? (
+                      <Button mt={22} leftSection={<IconLink size={16} />} loading={addMappedRules.isPending} disabled={!selectedFindingIds.length} onClick={() => addMappedRules.mutate()}>
+                        Add selected ({selectedFindingIds.length})
+                      </Button>
+                    ) : null}
                   </SimpleGrid>
                   <div className="masking-discovery-map">
                     {findingsByTable.map(([table, rows]) => {

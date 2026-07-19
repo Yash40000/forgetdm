@@ -28,6 +28,21 @@ public class DataSetDefinitionEntity {
     @Column(name = "created_at")               private Instant createdAt = Instant.now();
     @Column(name = "updated_at")               private Instant updatedAt = Instant.now();
 
+    // Tenancy (V61 / DEF-0007). visibility: PRIVATE | GROUP | SHARED — legacy rows are SHARED.
+    @Column(name = "owner_user_id")  private Long ownerUserId;
+    @Column(name = "owner_username") private String ownerUsername;
+    @Column(name = "owner_group_id") private Long ownerGroupId;
+    @Column(name = "visibility")     private String visibility = "GROUP";
+
+    public Long getOwnerUserId() { return ownerUserId; }
+    public void setOwnerUserId(Long v) { ownerUserId = v; }
+    public String getOwnerUsername() { return ownerUsername; }
+    public void setOwnerUsername(String v) { ownerUsername = v; }
+    public Long getOwnerGroupId() { return ownerGroupId; }
+    public void setOwnerGroupId(Long v) { ownerGroupId = v; }
+    public String getVisibility() { return visibility; }
+    public void setVisibility(String v) { visibility = v; }
+
     public Long getId() { return id; }
     public String getName() { return name; }
     public void setName(String v) { name = v; }

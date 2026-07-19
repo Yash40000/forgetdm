@@ -554,15 +554,21 @@ public class SyntheticGenService {
         syntheticJobs.put(job.id, job);
         insertSyntheticJob(job);
         insertGenerationLineage(job, plan, savedJob, constraints, summarySnapshot);
-        audit.log("system", "SYNTHETIC_JOB_STARTED",
-                "run=" + job.id + " savedJob=" + (savedJob == null ? "DIRECT" : savedJob.id())
-                        + " receiver=" + job.receiver + " rows=" + job.plannedRows + " planHash=" + job.planHash);
+        audit.record(job.ownerUsername, "SYNTHETIC_JOB_QUEUED", "GENERATE", "SYNTHETIC_JOB", job.id,
+                job.dataset, "SUCCESS", "Synthetic generation queued",
+                toJson(Map.of("savedJob", savedJob == null ? "DIRECT" : savedJob.id(),
+                        "receiver", job.receiver, "plannedRows", job.plannedRows,
+                        "planHash", job.planHash == null ? "" : job.planHash)));
         Future<?> future = syntheticExecutor.submit(() -> {
             job.status = "RUNNING";
             updateJob(job, 1, "Starting", "Starting synthetic generation");
             // Distributed workers claim only partitions whose parent is visibly RUNNING in the shared DB.
             // The regular progress throttle would otherwise leave this row PENDING for the first 900 ms.
             persistSyntheticJob(job, true);
+            audit.record(job.ownerUsername, "SYNTHETIC_JOB_STARTED", "GENERATE", "SYNTHETIC_JOB", job.id,
+                    job.dataset, "SUCCESS", "Synthetic generation started",
+                    toJson(Map.of("receiver", job.receiver, "plannedRows", job.plannedRows,
+                            "planHash", job.planHash == null ? "" : job.planHash)));
             try {
                 if (syntheticCancelRequested(job)) throw new SyntheticJobCancelledException();
                 ProgressSink sink = new ProgressSink() {
@@ -593,6 +599,7 @@ public class SyntheticGenService {
                 updateJob(job, 100, "Completed", "Generation completed");
                 job.status = "COMPLETED";
                 persistSyntheticJob(job, true);
+                auditSyntheticTerminal(job, "COMPLETED", "SUCCESS");
             } catch (SyntheticJobCancelledException | CancellationException e) {
                 markCancelled(job);
             } catch (Throwable e) {
@@ -608,6 +615,7 @@ public class SyntheticGenService {
                     job.status = "FAILED";
                     job.percent = Math.max(1, job.percent);
                     persistSyntheticJob(job, true);
+                    auditSyntheticTerminal(job, "FAILED", "FAILURE");
                 }
             } finally {
                 job.activeStatement = null;
@@ -651,7 +659,11 @@ public class SyntheticGenService {
                         ts(Instant.now()), ts(Instant.now()), id);
                 cancelPersistedPartitions(id);
             }
-            audit.log("system", "SYNTHETIC_JOB_CANCEL_REQUESTED", "run=" + id + " persistedOnly=true");
+            String dataset = String.valueOf(saved.getOrDefault("dataset", "synthetic"));
+            audit.record(requesterName(), "SYNTHETIC_JOB_CANCEL_REQUESTED", "CANCEL", "SYNTHETIC_JOB", id,
+                    dataset, "SUCCESS", "Cancellation requested for persisted job", null);
+            audit.record(requesterName(), "SYNTHETIC_JOB_CANCELLED", "CANCEL", "SYNTHETIC_JOB", id,
+                    dataset, "SUCCESS", "Persisted job canceled; no active worker was attached", null);
             return querySyntheticJob(id, false);
         }
         ensureCanSee(job.ownerUserId, job.ownerUsername);
@@ -677,7 +689,9 @@ public class SyntheticGenService {
         if (future != null) future.cancel(true);
         if ("PENDING".equals(previousStatus)) markCancelled(job);
         persistSyntheticJob(job, true);
-        audit.log("system", "SYNTHETIC_JOB_CANCEL_REQUESTED", "run=" + id + " status=" + previousStatus);
+        audit.record(requesterName(), "SYNTHETIC_JOB_CANCEL_REQUESTED", "CANCEL", "SYNTHETIC_JOB", id,
+                job.dataset, "SUCCESS", "Synthetic generation cancellation requested",
+                toJson(Map.of("previousStatus", previousStatus)));
         return snapshot(job, false);
     }
 
@@ -756,7 +770,9 @@ public class SyntheticGenService {
         } catch (DuplicateKeyException e) {
             throw ApiException.conflict("You already have a saved synthetic job named " + name);
         }
-        audit.log(p.username(), "SYNTHETIC_JOB_SAVED", "savedJob=" + id + " name=" + name + " rows=" + requestedRows(plan));
+        audit.record(p.username(), "SYNTHETIC_JOB_SAVED", "SYNTHETIC", "synthetic-saved-job",
+                id, name, "SUCCESS", "Saved reusable synthetic generation job",
+                toJson(Map.of("requestedRows", requestedRows(plan))));
         return querySavedJob(id, true);
     }
 
@@ -776,14 +792,17 @@ public class SyntheticGenService {
         } catch (DuplicateKeyException e) {
             throw ApiException.conflict("You already have a saved synthetic job named " + name);
         }
-        audit.log("system", "SYNTHETIC_JOB_UPDATED", "savedJob=" + id + " name=" + name + " approval reset to DRAFT");
+        audit.record(requesterName(), "SYNTHETIC_JOB_UPDATED", "SYNTHETIC", "synthetic-saved-job",
+                id, name, "SUCCESS", "Updated reusable synthetic job; approval reset to DRAFT",
+                toJson(Map.of("approvalStatus", "DRAFT", "requestedRows", requestedRows(plan))));
         return querySavedJob(id, true);
     }
 
     public void deleteSavedJob(String id) {
         Map<String, Object> existing = querySavedJob(id, false);
         jdbc.update("DELETE FROM synthetic_saved_jobs WHERE id = ?", id);
-        audit.log("system", "SYNTHETIC_JOB_DELETED", "savedJob=" + id + " name=" + existing.get("name"));
+        audit.record(requesterName(), "SYNTHETIC_JOB_DELETED", "SYNTHETIC", "synthetic-saved-job",
+                id, String.valueOf(existing.get("name")), "SUCCESS", "Deleted reusable synthetic job", null);
     }
 
     public Map<String, Object> runSavedJob(String id) {
@@ -835,7 +854,9 @@ public class SyntheticGenService {
         jdbc.update("UPDATE synthetic_saved_jobs SET approval_status = 'PENDING_APPROVAL', " +
                         "approval_requested_at = ?, approved_at = NULL, approved_by = NULL, approval_note = ?, updated_at = ? WHERE id = ?",
                 ts(Instant.now()), note, ts(Instant.now()), id);
-        audit.log("system", "SYNTHETIC_JOB_APPROVAL_REQUESTED", "savedJob=" + id + " name=" + saved.get("name"));
+        audit.record(null, "SYNTHETIC_JOB_APPROVAL_REQUESTED", "APPROVAL", "SYNTHETIC_SAVED_JOB", id,
+                String.valueOf(saved.get("name")), "SUCCESS", "Approval requested",
+                toJson(Map.of("decision", "PENDING_APPROVAL", "comment", note == null ? "" : note)));
         return querySavedJob(id, true);
     }
 
@@ -853,7 +874,9 @@ public class SyntheticGenService {
         jdbc.update("UPDATE synthetic_saved_jobs SET approval_status = 'APPROVED', approved_at = ?, approved_by = ?, " +
                         "approval_note = ?, updated_at = ? WHERE id = ?",
                 ts(Instant.now()), p.username(), note, ts(Instant.now()), id);
-        audit.log(p.username(), "SYNTHETIC_JOB_APPROVED", "savedJob=" + id + " name=" + saved.get("name"));
+        audit.record(p.username(), "SYNTHETIC_JOB_APPROVED", "APPROVAL", "SYNTHETIC_SAVED_JOB", id,
+                String.valueOf(saved.get("name")), "SUCCESS", "Approved by checker",
+                toJson(Map.of("decision", "APPROVED", "comment", note)));
         return querySavedJobForApproval(id, true);
     }
 
@@ -867,7 +890,9 @@ public class SyntheticGenService {
         jdbc.update("UPDATE synthetic_saved_jobs SET approval_status = 'REJECTED', approved_at = NULL, approved_by = ?, " +
                         "approval_note = ?, updated_at = ? WHERE id = ?",
                 p.username(), note, ts(Instant.now()), id);
-        audit.log(p.username(), "SYNTHETIC_JOB_REJECTED", "savedJob=" + id + " name=" + saved.get("name"));
+        audit.record(p.username(), "SYNTHETIC_JOB_REJECTED", "APPROVAL", "SYNTHETIC_SAVED_JOB", id,
+                String.valueOf(saved.get("name")), "SUCCESS", "Rejected by checker",
+                toJson(Map.of("decision", "REJECTED", "comment", note)));
         return querySavedJobForApproval(id, true);
     }
 
@@ -875,8 +900,9 @@ public class SyntheticGenService {
         Map<String, Object> saved = querySavedJob(id, false);
         String kind = body == null ? "" : String.valueOf(body.getOrDefault("kind", ""));
         kind = kind.equalsIgnoreCase("sh") ? "sh" : "ps1";
-        audit.log("system", "SYNTHETIC_JOB_RUNNER_EXPORTED",
-                "savedJob=" + id + " name=" + saved.get("name") + " kind=" + kind);
+        audit.record(requesterName(), "SYNTHETIC_JOB_RUNNER_EXPORTED", "SYNTHETIC",
+                "synthetic-saved-job", id, String.valueOf(saved.get("name")), "SUCCESS",
+                "Exported scheduler runner", toJson(Map.of("format", kind)));
         return Map.of("ok", true, "id", id, "kind", kind);
     }
 
@@ -1540,6 +1566,15 @@ public class SyntheticGenService {
         if (job.finishedAt == null) job.finishedAt = Instant.now();
         job.percent = Math.max(1, job.percent);
         persistSyntheticJob(job, true);
+        auditSyntheticTerminal(job, "CANCELLED", "SUCCESS");
+    }
+
+    private void auditSyntheticTerminal(SyntheticJob job, String terminalState, String outcome) {
+        audit.record(job.ownerUsername == null ? "system" : job.ownerUsername,
+                "SYNTHETIC_JOB_" + terminalState, "GENERATE", "SYNTHETIC_JOB", job.id,
+                job.dataset, outcome,
+                "receiver=" + job.receiver + " rows=" + job.rowsDone + "/" + job.plannedRows,
+                toJson(Map.of("status", terminalState, "planHash", job.planHash == null ? "" : job.planHash)));
     }
 
     private static boolean isTerminal(String status) {
@@ -2033,7 +2068,9 @@ public class SyntheticGenService {
         return switch (dialect) {
             case POSTGRES -> "PostgreSQL COPY";
             case ORACLE -> "Oracle direct-path / SQL*Loader";
-            case SQLSERVER -> "SQLServerBulkCopy";
+            // ForgeTDM's optional SQL Server native executor invokes the vendor bcp client.
+            // Keep the generated execution evidence aligned with the command that actually runs.
+            case SQLSERVER -> "SQL Server bcp";
             case DB2 -> "DB2 LOAD";
             case MYSQL -> "LOAD DATA INFILE";
             default -> null;

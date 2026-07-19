@@ -17,6 +17,8 @@ public class MainframeJobEntity {
     @Column(name = "files_total") private int filesTotal;
     @Column(name = "files_done") private int filesDone;
     @Column(name = "records_processed") private long recordsProcessed;
+    @Column(name = "cancel_requested", nullable = false) private boolean cancelRequested;
+    @Column(name = "created_by") private String createdBy;
     @Column(name = "created_at") private Instant createdAt = Instant.now();
     @Column(name = "started_at") private Instant startedAt;
     @Column(name = "finished_at") private Instant finishedAt;
@@ -41,6 +43,10 @@ public class MainframeJobEntity {
     public void setFilesDone(int v) { filesDone = v; }
     public long getRecordsProcessed() { return recordsProcessed; }
     public void setRecordsProcessed(long v) { recordsProcessed = v; }
+    public boolean isCancelRequested() { return cancelRequested; }
+    public void setCancelRequested(boolean v) { cancelRequested = v; }
+    public String getCreatedBy() { return createdBy; }
+    public void setCreatedBy(String v) { createdBy = v; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant v) { createdAt = v; }
     public Instant getStartedAt() { return startedAt; }

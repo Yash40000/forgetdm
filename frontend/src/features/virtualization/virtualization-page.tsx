@@ -32,6 +32,7 @@ import {
 
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { useConfirm } from '@/components/confirm';
+import { usePermissions } from '@/lib/use-permissions';
 import {
   ActivityPanel,
   CaptureDrawer,
@@ -68,6 +69,8 @@ export function VirtualizationPage() {
   const dataSourcesQuery = useVirtDataSources();
   const mutations = useVirtualizationMutations();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canManage = can('virtualization.manage');
 
   const snapshots = useMemo(() => snapshotsQuery.data || [], [snapshotsQuery.data]);
   const vdbs = vdbsQuery.data || [];
@@ -284,9 +287,11 @@ export function VirtualizationPage() {
               <Paper className="forge-card" p={0}>
                 <div className="virt-panel-head">
                   <Text fw={750}>Source snapshots</Text>
-                  <Button leftSection={<IconCamera size={16} />} onClick={() => setCaptureOpen(true)}>
-                    Capture snapshot
-                  </Button>
+                  {canManage ? (
+                    <Button leftSection={<IconCamera size={16} />} onClick={() => setCaptureOpen(true)}>
+                      Capture snapshot
+                    </Button>
+                  ) : null}
                 </div>
                 <div className="virt-table-wrap">
                   <Table verticalSpacing="sm" horizontalSpacing="md" highlightOnHover>
@@ -346,24 +351,28 @@ export function VirtualizationPage() {
                           </Table.Td>
                           <Table.Td>
                             <Group gap={4} wrap="nowrap" justify="flex-end">
-                              <Tooltip label={snapshot.tableCount > 0 ? 'Provision a writable VDB' : 'No tables were captured. Re-capture this source using the schema browser.'}>
-                                <span>
-                                  <Button
-                                    size="compact-xs"
-                                    variant="light"
-                                    leftSection={<IconDatabaseExport size={13} />}
-                                    disabled={snapshot.tableCount <= 0}
-                                    onClick={() => setProvisionSnapshot(snapshot)}
-                                  >
-                                    Provision
-                                  </Button>
-                                </span>
-                              </Tooltip>
-                              <Tooltip label="Delete">
-                                <ActionIcon variant="subtle" color="red" onClick={() => void removeSnapshot(snapshot)}>
-                                  <IconTrash size={16} />
-                                </ActionIcon>
-                              </Tooltip>
+                              {canManage ? (
+                                <>
+                                  <Tooltip label={snapshot.tableCount > 0 ? 'Provision a writable VDB' : 'No tables were captured. Re-capture this source using the schema browser.'}>
+                                    <span>
+                                      <Button
+                                        size="compact-xs"
+                                        variant="light"
+                                        leftSection={<IconDatabaseExport size={13} />}
+                                        disabled={snapshot.tableCount <= 0}
+                                        onClick={() => setProvisionSnapshot(snapshot)}
+                                      >
+                                        Provision
+                                      </Button>
+                                    </span>
+                                  </Tooltip>
+                                  <Tooltip label="Delete">
+                                    <ActionIcon variant="subtle" color="red" onClick={() => void removeSnapshot(snapshot)}>
+                                      <IconTrash size={16} />
+                                    </ActionIcon>
+                                  </Tooltip>
+                                </>
+                              ) : null}
                             </Group>
                           </Table.Td>
                         </Table.Tr>
@@ -437,26 +446,32 @@ export function VirtualizationPage() {
                           </Table.Td>
                           <Table.Td>
                             <Group gap={4} wrap="nowrap" justify="flex-end">
-                              <Tooltip label="Refresh to latest snapshot">
-                                <ActionIcon variant="subtle" onClick={() => setPicker({ open: true, mode: 'refresh', vdb })}>
-                                  <IconRefresh size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                              <Tooltip label="Rewind to an earlier snapshot">
-                                <ActionIcon variant="subtle" onClick={() => setPicker({ open: true, mode: 'rewind', vdb })}>
-                                  <IconArrowBackUp size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                              <Tooltip label="Bookmark this VDB (named rewind point)">
-                                <ActionIcon variant="subtle" onClick={() => setBookmark({ vdb, name: '' })}>
-                                  <IconBookmark size={16} />
-                                </ActionIcon>
-                              </Tooltip>
-                              <Tooltip label="Delete">
-                                <ActionIcon variant="subtle" color="red" onClick={() => void removeVdb(vdb)}>
-                                  <IconTrash size={16} />
-                                </ActionIcon>
-                              </Tooltip>
+                              {canManage ? (
+                                <>
+                                  <Tooltip label="Refresh to latest snapshot">
+                                    <ActionIcon variant="subtle" onClick={() => setPicker({ open: true, mode: 'refresh', vdb })}>
+                                      <IconRefresh size={16} />
+                                    </ActionIcon>
+                                  </Tooltip>
+                                  <Tooltip label="Rewind to an earlier snapshot">
+                                    <ActionIcon variant="subtle" onClick={() => setPicker({ open: true, mode: 'rewind', vdb })}>
+                                      <IconArrowBackUp size={16} />
+                                    </ActionIcon>
+                                  </Tooltip>
+                                  <Tooltip label="Bookmark this VDB (named rewind point)">
+                                    <ActionIcon variant="subtle" onClick={() => setBookmark({ vdb, name: '' })}>
+                                      <IconBookmark size={16} />
+                                    </ActionIcon>
+                                  </Tooltip>
+                                  <Tooltip label="Delete">
+                                    <ActionIcon variant="subtle" color="red" onClick={() => void removeVdb(vdb)}>
+                                      <IconTrash size={16} />
+                                    </ActionIcon>
+                                  </Tooltip>
+                                </>
+                              ) : (
+                                <Text size="xs" c="dimmed">Read-only</Text>
+                              )}
                             </Group>
                           </Table.Td>
                         </Table.Tr>
@@ -484,9 +499,11 @@ export function VirtualizationPage() {
               <Paper className="forge-card" p={0}>
                 <div className="virt-panel-head">
                   <Text fw={750}>Target environments</Text>
-                  <Button leftSection={<IconPlus size={16} />} onClick={() => setEnvOpen(true)}>
-                    Add environment
-                  </Button>
+                  {canManage ? (
+                    <Button leftSection={<IconPlus size={16} />} onClick={() => setEnvOpen(true)}>
+                      Add environment
+                    </Button>
+                  ) : null}
                 </div>
                 <div className="virt-table-wrap">
                   <Table verticalSpacing="sm" horizontalSpacing="md" highlightOnHover>

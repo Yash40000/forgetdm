@@ -33,10 +33,13 @@ public class ReservationService {
     private final AuditService audit;
     private final ObjectMapper json = new ObjectMapper();
 
+    private final io.forgetdm.security.OwnershipGuard ownership;
+
     public ReservationService(ReservationRepository repo, DataSourceService dataSources,
-                              ConnectionFactory connections, SubsetService subsets, AuditService audit) {
+                              ConnectionFactory connections, SubsetService subsets, AuditService audit,
+                              io.forgetdm.security.OwnershipGuard ownership) {
         this.repo = repo; this.dataSources = dataSources; this.connections = connections;
-        this.subsets = subsets; this.audit = audit;
+        this.subsets = subsets; this.audit = audit; this.ownership = ownership;
     }
 
     public synchronized ReservationEntity findAndReserve(Long dsId, String table, String criteria,
@@ -73,6 +76,11 @@ public class ReservationService {
         r.setReservedBy(reservedBy == null ? "anonymous" : reservedBy);
         r.setPurpose(purpose);
         r.setExpiresAt(Instant.now().plus(Math.max(1, ttlHours), ChronoUnit.HOURS));
+        r.setOwnerUserId(ownership.defaultOwnerUserId());
+        r.setOwnerGroupId(ownership.defaultOwnerGroupId());
+        if (r.getVisibility() == null || r.getVisibility().isBlank()) {
+            r.setVisibility(ownership.defaultVisibility());
+        }
         try { r.setRowKeysJson(json.writeValueAsString(picked)); }
         catch (Exception e) { throw new IllegalStateException(e); }
         ReservationEntity saved = repo.save(r);
@@ -91,13 +99,18 @@ public class ReservationService {
 
     public ReservationEntity release(Long id) {
         ReservationEntity r = repo.findById(id).orElseThrow(() -> ApiException.notFound("Reservation " + id + " not found"));
+        // Releasing another group's reservation would free their test data underneath them.
+        ownership.assertCanSee("reservation", id, r.getOwnerUserId(), r.getOwnerGroupId(), r.getVisibility());
         r.setStatus("RELEASED");
         audit.log(r.getReservedBy(), "DATA_RELEASED", "reservation=" + id);
         return repo.save(r);
     }
 
+    /** Tenant-scoped: only reservations the caller owns, their group owns, or that are SHARED. */
     public List<ReservationEntity> list() {
-        List<ReservationEntity> all = repo.findAll();
+        List<ReservationEntity> all = new java.util.ArrayList<>(repo.findAll().stream()
+                .filter(r -> ownership.canSee(r.getOwnerUserId(), r.getOwnerGroupId(), r.getVisibility()))
+                .toList());
         all.sort(Comparator.comparing(ReservationEntity::getId).reversed());
         return all;
     }

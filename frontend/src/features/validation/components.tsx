@@ -284,6 +284,7 @@ export function ReportDetail({
   diagnosing,
   onApplyFix,
   applyingKey,
+  canApplyFix = true,
   dsName,
   policyName
 }: {
@@ -294,6 +295,7 @@ export function ReportDetail({
   diagnosing: boolean;
   onApplyFix: (remedy: ValidationRemedy) => void;
   applyingKey: string | null;
+  canApplyFix?: boolean;
   dsName: (id?: number | null) => string;
   policyName: (id?: number | null) => string;
 }) {
@@ -411,15 +413,17 @@ export function ReportDetail({
                         {remedy.suggestedFunction}
                         {remedy.suggestedParam1 ? ` · ${remedy.suggestedParam1}` : ''}
                       </Badge>
-                      <Button
-                        size="compact-xs"
-                        variant="light"
-                        loading={applyingKey === key}
-                        disabled={!report.policyId}
-                        onClick={() => onApplyFix(remedy)}
-                      >
-                        Apply fix
-                      </Button>
+                      {canApplyFix ? (
+                        <Button
+                          size="compact-xs"
+                          variant="light"
+                          loading={applyingKey === key}
+                          disabled={!report.policyId}
+                          onClick={() => onApplyFix(remedy)}
+                        >
+                          Apply fix
+                        </Button>
+                      ) : null}
                       {!report.policyId ? (
                         <Text size="xs" c="dimmed">
                           (no policy on this report)

@@ -21,6 +21,7 @@ public class ProvisionController {
     @GetMapping("/{id}") public ProvisionJobEntity get(@PathVariable Long id) { return svc.get(id); }
     @PostMapping public ProvisionJobEntity submit(@RequestBody ProvisionJobEntity job) { return svc.submit(job); }
     @PostMapping("/{id}/cancel") public ProvisionJobEntity cancel(@PathVariable Long id) { return svc.cancel(id); }
+    @PostMapping("/{id}/retry") public ProvisionJobEntity retry(@PathVariable Long id) { return svc.retry(id); }
 
     /** Maker-checker: approve/reject a job in AWAITING_APPROVAL (requires provision.approve). */
     @PostMapping("/{id}/approval/approve")

@@ -17,6 +17,9 @@ frontend/node_modules/
 frontend/out/
 frontend/.env*.local
 frontend/next-dev*.log
+frontend/test-results/**/trace.zip
+frontend/test-results/**/server.out.log
+frontend/test-results/**/server.err.log
 jdbc-drivers/*.jar
 scripts/**/*.class
 test-results/**/*.dat

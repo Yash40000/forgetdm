@@ -39,6 +39,14 @@ public class AccessControlService {
     private final String bootstrapPassword;
     private final Duration sessionTtl;
 
+    /**
+     * A real PBKDF2 hash of an unguessable value, verified against when no user matches so that the
+     * "unknown user" path performs the same work as the "wrong password" path (DEF-0016). Built once
+     * at construction with the same algorithm and iteration count as stored credentials, so the two
+     * paths stay cost-matched if those parameters ever change.
+     */
+    private final String dummyHash = PasswordHasher.hash(UUID.randomUUID().toString());
+
     public AccessControlService(JdbcTemplate jdbc,
                                 AuditService audit,
                                 @Value("${forgetdm.security.bootstrap-password:admin123}") String bootstrapPassword,
@@ -112,7 +120,8 @@ public class AccessControlService {
         } catch (org.springframework.dao.DuplicateKeyException e) {
             throw ApiException.conflict("You already have an API token named " + name);
         }
-        audit.log(principal.username(), "API_TOKEN_CREATED", "token=" + id + " name=" + name);
+        audit.record(principal.username(), "API_TOKEN_CREATED", "SECURITY", "api-token", id, name,
+                "SUCCESS", "Created API token", expiresAt == null ? null : "{\"expiresAt\":\"" + expiresAt + "\"}");
         return new ApiTokenCreated(id, name, clear, expiresAt, now);
     }
 
@@ -132,7 +141,8 @@ public class AccessControlService {
         int changed = jdbc.update("UPDATE forge_api_tokens SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL",
                 ts(Instant.now()), id, principal.userId());
         if (changed == 0) throw ApiException.notFound("Active API token " + id + " not found");
-        audit.log(principal.username(), "API_TOKEN_REVOKED", "token=" + id);
+        audit.record(principal.username(), "API_TOKEN_REVOKED", "SECURITY", "api-token", id, null,
+                "SUCCESS", "Revoked API token", null);
     }
 
     @Transactional
@@ -147,12 +157,19 @@ public class AccessControlService {
                         rs.getBoolean("active")),
                 username == null ? "" : username.trim());
 
-        if (rows.isEmpty() || !rows.get(0).active || !PasswordHasher.verify(password, rows.get(0).passwordHash)) {
+        // Constant-work verification (DEF-0016). PBKDF2 runs 160k iterations (~600ms); short-circuiting
+        // on "user not found" or "user inactive" skipped that work and answered in ~23ms, a 27x timing
+        // gap with no overlap — a reliable username-enumeration oracle even though the status and body
+        // are identical. Always perform exactly one verification, against a dummy hash when there is no
+        // candidate, so every failure path costs the same.
+        UserSecret candidate = rows.isEmpty() ? null : rows.get(0);
+        boolean passwordOk = PasswordHasher.verify(password, candidate == null ? dummyHash : candidate.passwordHash);
+        if (candidate == null || !candidate.active || !passwordOk) {
             audit.log(username == null || username.isBlank() ? "anonymous" : username, "LOGIN_FAILED", "Invalid username/password");
             throw new ApiException(HttpStatus.UNAUTHORIZED, "Invalid username or password");
         }
 
-        UserSecret user = rows.get(0);
+        UserSecret user = candidate;
         String token = newToken();
         Instant now = Instant.now();
         Instant expires = now.plus(sessionTtl);
@@ -177,7 +194,10 @@ public class AccessControlService {
         if (user == null || !user.active()) throw new ApiException(HttpStatus.UNAUTHORIZED, "User is inactive");
         Set<String> roles = rolesForUser(user.id());
         Set<String> permissions = permissionsForRoles(roles);
-        return new AccessPrincipal(user.id(), user.username(), user.displayName(), roles, permissions);
+        // Group membership is part of the principal: /api/auth/me exposes it (DEF-0002) and
+        // tenant scoping uses it to decide which group-owned objects the caller may see (DEF-0007).
+        List<GroupLite> groups = groupsForUser(user.id());
+        return new AccessPrincipal(user.id(), user.username(), user.displayName(), roles, permissions, groups);
     }
 
     public List<UserView> users() {
@@ -200,13 +220,14 @@ public class AccessControlService {
         Long id = insertUser(req.username().trim(), blankToNull(req.displayName()), PasswordHasher.hash(password), req.active() == null || req.active());
         setUserRoles(id, cleanRoles(req.roles()));
         setUserGroups(id, cleanIds(req.groupIds()));
-        audit.log(null, "SECURITY_USER_CREATE", "Created user " + req.username());
+        audit.record(currentActor(), "SECURITY_USER_CREATED", "SECURITY", "security-user",
+                String.valueOf(id), req.username().trim(), "SUCCESS", "Created security user", null);
         return users().stream().filter(u -> u.id().equals(id)).findFirst().orElseThrow();
     }
 
     @Transactional
     public UserView updateUser(long id, UserRequest req) {
-        requireUser(id);
+        UserView existing = requireUser(id);
         if (req.displayName() != null || req.active() != null) {
             jdbc.update("UPDATE forge_users SET display_name = COALESCE(?, display_name), active = COALESCE(?, active), updated_at = ? WHERE id = ?",
                     req.displayName(), req.active(), ts(Instant.now()), id);
@@ -218,8 +239,11 @@ public class AccessControlService {
         }
         if (req.roles() != null) setUserRoles(id, cleanRoles(req.roles()));
         if (req.groupIds() != null) setUserGroups(id, cleanIds(req.groupIds()));
-        audit.log(null, "SECURITY_USER_UPDATE", "Updated user id " + id);
-        return users().stream().filter(u -> u.id().equals(id)).findFirst().orElseThrow();
+        UserView updated = users().stream().filter(u -> u.id().equals(id)).findFirst().orElseThrow();
+        audit.record(currentActor(), "SECURITY_USER_UPDATED", "SECURITY", "security-user",
+                String.valueOf(id), updated.username(), "SUCCESS", "Updated security user",
+                "{\"previousActive\":" + existing.active() + ",\"active\":" + updated.active() + "}");
+        return updated;
     }
 
     @Transactional
@@ -229,7 +253,8 @@ public class AccessControlService {
             throw ApiException.conflict("Cannot delete the only active admin bootstrap user");
         }
         jdbc.update("DELETE FROM forge_users WHERE id = ?", id);
-        audit.log(null, "SECURITY_USER_DELETE", "Deleted user " + user.username());
+        audit.record(currentActor(), "SECURITY_USER_DELETED", "SECURITY", "security-user",
+                String.valueOf(id), user.username(), "SUCCESS", "Deleted security user", null);
     }
 
     @Transactional
@@ -237,27 +262,40 @@ public class AccessControlService {
         if (req.name() == null || req.name().isBlank()) throw ApiException.bad("Group name is required");
         Long id = insertGroup(req.name().trim(), blankToNull(req.description()));
         setGroupRoles(id, cleanRoles(req.roles()));
-        audit.log(null, "SECURITY_GROUP_CREATE", "Created group " + req.name());
+        audit.record(currentActor(), "SECURITY_GROUP_CREATED", "SECURITY", "security-group",
+                String.valueOf(id), req.name().trim(), "SUCCESS", "Created security group", null);
         return groups().stream().filter(g -> g.id().equals(id)).findFirst().orElseThrow();
     }
 
     @Transactional
     public GroupView updateGroup(long id, GroupRequest req) {
-        requireGroup(id);
+        GroupView existing = requireGroup(id);
         if (req.name() != null || req.description() != null) {
             jdbc.update("UPDATE forge_groups SET name = COALESCE(?, name), description = COALESCE(?, description) WHERE id = ?",
                     blankToNull(req.name()), req.description(), id);
         }
         if (req.roles() != null) setGroupRoles(id, cleanRoles(req.roles()));
-        audit.log(null, "SECURITY_GROUP_UPDATE", "Updated group id " + id);
-        return groups().stream().filter(g -> g.id().equals(id)).findFirst().orElseThrow();
+        GroupView updated = groups().stream().filter(g -> g.id().equals(id)).findFirst().orElseThrow();
+        audit.record(currentActor(), "SECURITY_GROUP_UPDATED", "SECURITY", "security-group",
+                String.valueOf(id), updated.name(), "SUCCESS", "Updated security group",
+                "{\"previousName\":\"" + jsonSafe(existing.name()) + "\"}");
+        return updated;
     }
 
     @Transactional
     public void deleteGroup(long id) {
         GroupView group = requireGroup(id);
         jdbc.update("DELETE FROM forge_groups WHERE id = ?", id);
-        audit.log(null, "SECURITY_GROUP_DELETE", "Deleted group " + group.name());
+        audit.record(currentActor(), "SECURITY_GROUP_DELETED", "SECURITY", "security-group",
+                String.valueOf(id), group.name(), "SUCCESS", "Deleted security group", null);
+    }
+
+    private static String currentActor() {
+        return AccessContext.current().map(AccessPrincipal::username).orElse("system");
+    }
+
+    private static String jsonSafe(String value) {
+        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 
     private Long insertUser(String username, String displayName, String passwordHash, boolean active) {
@@ -322,6 +360,18 @@ public class AccessControlService {
     private Set<String> rolesForGroup(long groupId) {
         return new LinkedHashSet<>(jdbc.query("SELECT role_name FROM forge_group_roles WHERE group_id = ? ORDER BY role_name",
                 (rs, rowNum) -> rs.getString(1), groupId));
+    }
+
+    /**
+     * Group ids for a username — used to bound an approver to the creator's tenant
+     * (DEF-0007 / RBAC-002-05). Returns empty for unknown/legacy free-text creators.
+     */
+    public Set<Long> groupIdsForUsername(String username) {
+        if (username == null || username.isBlank()) return Set.of();
+        return new LinkedHashSet<>(jdbc.query(
+                "SELECT ug.group_id FROM forge_user_groups ug JOIN forge_users u ON u.id = ug.user_id " +
+                        "WHERE LOWER(u.username) = LOWER(?)",
+                (rs, rowNum) -> rs.getLong(1), username.trim()));
     }
 
     private List<GroupLite> groupsForUser(long userId) {

@@ -17,6 +17,19 @@ public class ReservationEntity {
     @Column(name = "expires_at", nullable = false) private Instant expiresAt;
     @Column(name = "created_at") private Instant createdAt = Instant.now();
 
+    // Tenancy (V61 / DEF-0007). reserved_by was free text and never enforced; these are the
+    // structured owner fields. visibility: PRIVATE | GROUP | SHARED — legacy rows are SHARED.
+    @Column(name = "owner_user_id")  private Long ownerUserId;
+    @Column(name = "owner_group_id") private Long ownerGroupId;
+    @Column(name = "visibility")     private String visibility = "GROUP";
+
+    public Long getOwnerUserId() { return ownerUserId; }
+    public void setOwnerUserId(Long v) { ownerUserId = v; }
+    public Long getOwnerGroupId() { return ownerGroupId; }
+    public void setOwnerGroupId(Long v) { ownerGroupId = v; }
+    public String getVisibility() { return visibility; }
+    public void setVisibility(String v) { visibility = v; }
+
     public Long getId() { return id; }
     public Long getDataSourceId() { return dataSourceId; }
     public void setDataSourceId(Long v) { dataSourceId = v; }

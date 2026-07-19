@@ -23,10 +23,11 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public Map<String, Object> login(@RequestBody LoginRequest req, HttpServletResponse response) {
+    public Map<String, Object> login(@RequestBody LoginRequest req, HttpServletRequest request, HttpServletResponse response) {
         AccessControlService.LoginResult result = access.login(req.username(), req.password());
         response.addHeader(HttpHeaders.SET_COOKIE, ResponseCookie.from(AccessControlService.SESSION_COOKIE, result.token())
                 .httpOnly(true)
+                .secure(isSecure(request))
                 .sameSite("Lax")
                 .path("/")
                 .maxAge(Duration.between(java.time.Instant.now(), result.expiresAt()))
@@ -48,12 +49,21 @@ public class AuthController {
         }
         response.addHeader(HttpHeaders.SET_COOKIE, ResponseCookie.from(AccessControlService.SESSION_COOKIE, "")
                 .httpOnly(true)
+                .secure(isSecure(request))
                 .sameSite("Lax")
                 .path("/")
                 .maxAge(Duration.ZERO)
                 .build()
                 .toString());
         return Map.of("authenticated", false);
+    }
+
+    /** Mark the session cookie Secure on the HTTPS lane (directly TLS-terminated or behind a proxy that sets
+     *  X-Forwarded-Proto), while leaving it usable on the local HTTP development lane. */
+    private static boolean isSecure(HttpServletRequest request) {
+        if (request.isSecure()) return true;
+        String forwardedProto = request.getHeader("X-Forwarded-Proto");
+        return forwardedProto != null && "https".equalsIgnoreCase(forwardedProto.split(",")[0].trim());
     }
 
     @GetMapping("/me")

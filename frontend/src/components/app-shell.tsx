@@ -8,9 +8,12 @@ import {
   Avatar,
   Burger,
   Button,
+  Center,
   Group,
+  Loader,
   Menu,
   NavLink,
+  Stack,
   Text,
   Tooltip,
   useComputedColorScheme,
@@ -19,6 +22,7 @@ import {
 import { useDisclosure, useLocalStorage } from '@mantine/hooks';
 import {
   IconChevronDown,
+  IconBook2,
   IconDatabase,
   IconDatabaseSearch,
   IconDatabaseExport,
@@ -65,6 +69,8 @@ type NavigationItem = {
   href: string;
   icon: typeof IconId;
   adminOnly?: boolean;
+  /** Read permission required to see this module; omitted = visible to any authenticated user. */
+  permission?: string;
 };
 
 type NavigationGroup = {
@@ -79,51 +85,52 @@ const navigationGroups: NavigationGroup[] = [
   {
     label: 'Data foundation',
     items: [
-      { label: 'Data Sources', href: '/datasources', icon: IconPlugConnected },
-      { label: 'Business Entities', href: '/business-entities', icon: IconId },
-      { label: 'Forge Data Store', href: '/intelligence-store', icon: IconDatabaseSearch }
+      { label: 'Data Sources', href: '/datasources', icon: IconPlugConnected, permission: 'datasource.read' },
+      { label: 'Business Entities', href: '/business-entities', icon: IconId, permission: 'datascope.read' },
+      { label: 'Forge Data Store', href: '/intelligence-store', icon: IconDatabaseSearch, permission: 'assistant.use' }
     ]
   },
   {
     label: 'Discover & protect',
     items: [
-      { label: 'PII Discovery', href: '/pii-discovery', icon: IconShieldSearch },
-      { label: 'Masking Studio', href: '/masking-studio', icon: IconCode },
-      { label: 'Masking Scripts', href: '/masking-scripts', icon: IconScript },
-      { label: 'Masking Policies', href: '/masking-policies', icon: IconShieldCheck },
-      { label: 'Unstructured Masking', href: '/unstructured-masking', icon: IconFileTextShield }
+      { label: 'PII Discovery', href: '/pii-discovery', icon: IconShieldSearch, permission: 'discovery.read' },
+      { label: 'Masking Studio', href: '/masking-studio', icon: IconCode, permission: 'policy.read' },
+      { label: 'Masking Scripts', href: '/masking-scripts', icon: IconScript, permission: 'policy.read' },
+      { label: 'Masking Policies', href: '/masking-policies', icon: IconShieldCheck, permission: 'policy.read' },
+      { label: 'Unstructured Masking', href: '/unstructured-masking', icon: IconFileTextShield, permission: 'unstructured.read' }
     ]
   },
   {
     label: 'Design & generate',
     items: [
-      { label: 'Mapping Designer', href: '/mapping-designer', icon: IconArrowsExchange },
-      { label: 'Synthetic Data', href: '/synthetic', icon: IconFlask }
+      { label: 'Design Catalogue', href: '/data-catalog', icon: IconBook2, permission: 'synthetic.read' },
+      { label: 'Mapping Designer', href: '/mapping-designer', icon: IconArrowsExchange, permission: 'mapping.read' },
+      { label: 'Synthetic Data', href: '/synthetic', icon: IconFlask, permission: 'synthetic.read' }
     ]
   },
   {
     label: 'Provision & deliver',
     items: [
-      { label: 'DataScope', href: '/datascope', icon: IconDatabase },
-      { label: 'Auto Provision', href: '/auto-provision', icon: IconRobot },
-      { label: 'Self-Service', href: '/self-service', icon: IconForms },
-      { label: 'Virtualization', href: '/virtualization', icon: IconDatabaseExport }
+      { label: 'DataScope', href: '/datascope', icon: IconDatabase, permission: 'datascope.read' },
+      { label: 'Auto Provision', href: '/auto-provision', icon: IconRobot, permission: 'provision.read' },
+      { label: 'Self-Service', href: '/self-service', icon: IconForms, permission: 'provision.read' },
+      { label: 'Virtualization', href: '/virtualization', icon: IconDatabaseExport, permission: 'virtualization.read' }
     ]
   },
   {
     label: 'Mainframe',
     items: [
-      { label: 'Copybook Studio', href: '/copybook-studio', icon: IconFileCode },
-      { label: 'Mainframe Files', href: '/mainframe-files', icon: IconServerCog },
-      { label: 'File Generator', href: '/mf-file-generator', icon: IconFileExport }
+      { label: 'Copybook Studio', href: '/copybook-studio', icon: IconFileCode, permission: 'mainframe.read' },
+      { label: 'Mainframe Files', href: '/mainframe-files', icon: IconServerCog, permission: 'mainframe.read' },
+      { label: 'File Generator', href: '/mf-file-generator', icon: IconFileExport, permission: 'mainframe.read' }
     ]
   },
   {
     label: 'Operations & governance',
     items: [
-      { label: 'Automation', href: '/automation', icon: IconApi },
-      { label: 'Validation', href: '/validation', icon: IconChecklist },
-      { label: 'Audit Trail', href: '/audit', icon: IconListDetails }
+      { label: 'Automation', href: '/automation', icon: IconApi, permission: 'integration.read' },
+      { label: 'Validation', href: '/validation', icon: IconChecklist, permission: 'validation.read' },
+      { label: 'Audit Trail', href: '/audit', icon: IconListDetails, permission: 'audit.read' }
     ]
   },
   {
@@ -155,9 +162,11 @@ export function ForgeAppShell({ children }: { children: ReactNode }) {
   });
 
   const user = meQuery.data?.authenticated ? meQuery.data.user : null;
-  const isAdmin = Boolean(user?.roles?.includes('ADMIN'));
+  const perms = user?.permissions ?? [];
+  const isAdmin = Boolean(user?.roles?.includes('ADMIN')) || perms.includes('admin.all');
+  const canRead = (permission?: string) => !permission || isAdmin || perms.includes(permission);
   const visibleNavigationGroups = navigationGroups
-    .map((group) => ({ ...group, items: group.items.filter((item) => !item.adminOnly || isAdmin) }))
+    .map((group) => ({ ...group, items: group.items.filter((item) => (!item.adminOnly || isAdmin) && canRead(item.permission)) }))
     .filter((group) => group.items.length > 0);
   const displayName = user?.displayName || user?.username || 'User';
   const initials = initialsFor(displayName);
@@ -204,6 +213,26 @@ export function ForgeAppShell({ children }: { children: ReactNode }) {
       router.replace('/login');
     }
   };
+
+  // Never render protected page content until the session check has positively authenticated the
+  // caller. This also covers browser-history restoration after logout: the shell may be restored
+  // before /api/auth/me resolves, but its protected children remain outside the rendered tree.
+  if (!user) {
+    return (
+      <Center component="main" h="100vh" role="status" aria-live="polite">
+        <Stack align="center" gap="xs">
+          <Loader size="sm" />
+          <Text size="sm" c="dimmed">
+            {meQuery.isError
+              ? 'Unable to verify the current session'
+              : meQuery.isPending
+                ? 'Verifying session'
+                : 'Returning to sign in'}
+          </Text>
+        </Stack>
+      </Center>
+    );
+  }
 
   return (
     <MantineAppShell
@@ -407,6 +436,8 @@ type AuthMe = {
     username?: string;
     displayName?: string;
     roles?: string[];
+    permissions?: string[];
+    groups?: { id: number; name: string }[];
   };
 };
 

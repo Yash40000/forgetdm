@@ -1,0 +1,64 @@
+{
+    "story":  "DSRC-001",
+    "scope":  "H2 embedded live JDBC lane",
+    "executedAt":  "2026-07-19T16:14:24.9207057Z",
+    "baseUrl":  "http://localhost:8099",
+    "passed":  9,
+    "failed":  0,
+    "results":  [
+                    {
+                        "lane":  "H2",
+                        "case":  "create-version-redaction",
+                        "result":  "PASS",
+                        "detail":  "Create returned a version token without returning the fixture credential"
+                    },
+                    {
+                        "lane":  "H2",
+                        "case":  "connection",
+                        "result":  "PASS",
+                        "detail":  "ForgeTDM opened the embedded H2 database"
+                    },
+                    {
+                        "lane":  "H2",
+                        "case":  "schema-browse",
+                        "result":  "PASS",
+                        "detail":  "APP was returned by JDBC metadata"
+                    },
+                    {
+                        "lane":  "H2",
+                        "case":  "table-browse",
+                        "result":  "PASS",
+                        "detail":  "APP.CUSTOMERS was returned by JDBC metadata"
+                    },
+                    {
+                        "lane":  "H2",
+                        "case":  "column-browse",
+                        "result":  "PASS",
+                        "detail":  "ID and EMAIL column metadata was returned"
+                    },
+                    {
+                        "lane":  "H2",
+                        "case":  "optimistic-lock",
+                        "result":  "PASS",
+                        "detail":  "A stale editor received sanitized 409 without overwriting session A"
+                    },
+                    {
+                        "lane":  "H2",
+                        "case":  "credential-retention",
+                        "result":  "PASS",
+                        "detail":  "Metadata-only edit retained the credential"
+                    },
+                    {
+                        "lane":  "H2",
+                        "case":  "source-discovery",
+                        "result":  "PASS",
+                        "detail":  "BOTH completed a one-table H2 discovery scan"
+                    },
+                    {
+                        "lane":  "H2",
+                        "case":  "target-preflight",
+                        "result":  "PASS",
+                        "detail":  "BOTH passed target-role validation and entered execution"
+                    }
+                ]
+}

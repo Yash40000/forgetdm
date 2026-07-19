@@ -36,6 +36,17 @@ public class ExternalNativeLoadExecutor implements NativeLoadExecutor {
 
     @Override
     public NativeLoadStrategy describe(DataSourceEntity target) {
+        if (isDb2Zos(target)) {
+            return new NativeLoadStrategy(
+                    strategy,
+                    NativeLoadRegistry.engineOf(target),
+                    false,
+                    getClass().getSimpleName(),
+                    "JDBC_BATCH",
+                    "JDBC_FALLBACK",
+                    "No built-in DB2 z/OS native loader is available. Keep JDBC_BATCH, or install and integrate the site's approved z/OS LOAD/JCL adapter.",
+                    "DB2 z/OS cannot use the DB2 LUW command-line LOAD adapter; ForgeTDM will use JDBC_BATCH.");
+        }
         boolean enabled = NativeLoadSupport.truthy(System.getenv(envFlag));
         String bin = System.getenv(binaryEnv);
         boolean hasBinary = bin != null && !bin.isBlank();
@@ -48,6 +59,11 @@ public class ExternalNativeLoadExecutor implements NativeLoadExecutor {
                 "EXTERNAL_NATIVE_CLIENT",
                 envFlag + "=true and " + binaryEnv + "=<client path>",
                 notes + (enabled && hasBinary ? "" : " Native client not configured; approved runs use " + fallback + "."));
+    }
+
+    private boolean isDb2Zos(DataSourceEntity target) {
+        return "DB2_LOAD".equals(strategy)
+                && "DB2ZOS".equals(NativeLoadRegistry.engineOf(target));
     }
 
     @Override

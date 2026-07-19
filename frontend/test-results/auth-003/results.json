@@ -1,0 +1,434 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "D:\\forgetdm - Copy\\frontend\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config=playwright.auth003.config.ts"
+    ],
+    "configFile": "D:\\forgetdm - Copy\\frontend\\playwright.auth003.config.ts",
+    "rootDir": "D:/forgetdm - Copy/frontend/e2e/auth-003",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "D:/forgetdm - Copy/frontend/test-results/auth-003/artifacts",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "D:/forgetdm - Copy/frontend/e2e/auth-003",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 45000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/auth-003/results.json"
+        }
+      ],
+      [
+        "junit",
+        {
+          "outputFile": "test-results/auth-003/junit.xml"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.61.1",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "expired-session.spec.ts",
+      "file": "expired-session.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "AUTH-003 expired-session browser contract",
+          "file": "expired-session.spec.ts",
+          "line": 20,
+          "column": 6,
+          "specs": [
+            {
+              "title": "AUTH-003-01: one expired action redirects once and preserves path plus query",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 13084,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T16:21:27.223Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\auth-003\\artifacts\\expired-session-AUTH-003-e-da8fe-d-preserves-path-plus-query\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\auth-003\\artifacts\\expired-session-AUTH-003-e-da8fe-d-preserves-path-plus-query\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "677ef63387c60b01dd53-8f75ad91a75761f17ffe",
+              "file": "expired-session.spec.ts",
+              "line": 21,
+              "column": 7
+            },
+            {
+              "title": "AUTH-003-02: five concurrent 401 responses cause one redirect and zero notification storm",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 14450,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T16:21:41.514Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\auth-003\\artifacts\\expired-session-AUTH-003-e-5354d-and-zero-notification-storm\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\auth-003\\artifacts\\expired-session-AUTH-003-e-5354d-and-zero-notification-storm\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "677ef63387c60b01dd53-965913fcdf2e4269e026",
+              "file": "expired-session.spec.ts",
+              "line": 40,
+              "column": 7
+            },
+            {
+              "title": "AUTH-003-03: successful sign-in returns to the exact same-origin path and query",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 15440,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T16:21:56.345Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\auth-003\\artifacts\\expired-session-AUTH-003-e-e9475--same-origin-path-and-query\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\auth-003\\artifacts\\expired-session-AUTH-003-e-e9475--same-origin-path-and-query\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "677ef63387c60b01dd53-0b4308fa40992c4cad60",
+              "file": "expired-session.spec.ts",
+              "line": 62,
+              "column": 7
+            },
+            {
+              "title": "AUTH-003-04: unsafe next targets always land on the application default route",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 135000,
+                  "annotations": [
+                    {
+                      "type": "slow",
+                      "location": {
+                        "file": "D:\\forgetdm - Copy\\frontend\\e2e\\auth-003\\expired-session.spec.ts",
+                        "line": 83,
+                        "column": 10
+                      }
+                    }
+                  ],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 29836,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T16:22:12.269Z",
+                      "annotations": [
+                        {
+                          "type": "slow",
+                          "location": {
+                            "file": "D:\\forgetdm - Copy\\frontend\\e2e\\auth-003\\expired-session.spec.ts",
+                            "line": 83,
+                            "column": 10
+                          }
+                        }
+                      ],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\auth-003\\artifacts\\expired-session-AUTH-003-e-4c2a8-e-application-default-route\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\auth-003\\artifacts\\expired-session-AUTH-003-e-4c2a8-e-application-default-route\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "677ef63387c60b01dd53-6a6390280a815fd0113d",
+              "file": "expired-session.spec.ts",
+              "line": 82,
+              "column": 7
+            },
+            {
+              "title": "AUTH-003-05: an expiry redirect cannot silently discard a dirty synthetic draft",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 8782,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T16:22:42.870Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\auth-003\\artifacts\\expired-session-AUTH-003-e-a7f6e-ard-a-dirty-synthetic-draft\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\auth-003\\artifacts\\expired-session-AUTH-003-e-a7f6e-ard-a-dirty-synthetic-draft\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "677ef63387c60b01dd53-68f27d894352a4aab2c4",
+              "file": "expired-session.spec.ts",
+              "line": 107,
+              "column": 7
+            },
+            {
+              "title": "AUTH-003-06: login 401 shows one actionable error and refresh never recurses",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7411,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T16:22:51.991Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\auth-003\\artifacts\\expired-session-AUTH-003-e-a0c43--and-refresh-never-recurses\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\auth-003\\artifacts\\expired-session-AUTH-003-e-a0c43--and-refresh-never-recurses\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "677ef63387c60b01dd53-ecd81e3bef1c428e9d48",
+              "file": "expired-session.spec.ts",
+              "line": 152,
+              "column": 7
+            },
+            {
+              "title": "AUTH-003-08: Back cannot reveal protected content after the session becomes logged out",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 45000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 23026,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T16:22:59.557Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\auth-003\\artifacts\\expired-session-AUTH-003-e-96480--session-becomes-logged-out\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\auth-003\\artifacts\\expired-session-AUTH-003-e-96480--session-becomes-logged-out\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "677ef63387c60b01dd53-006cbab2e9557fd5ebd9",
+              "file": "expired-session.spec.ts",
+              "line": 182,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-07-19T16:21:26.278Z",
+    "duration": 117993.421,
+    "expected": 7,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

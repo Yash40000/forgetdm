@@ -3,7 +3,7 @@
 **Priority:** P0
 
 **Lane:** All
-**Execution status:** NOT RUN
+**Execution status:** EXECUTED LIVE 2026-07-17/18 — failure found and **fixed**. Core objects originally had no group/tenant isolation (cross-group delete succeeded) → DEF-0007 (HIGH/S1); product decision was **multi-tenant**, implemented via the V61 tenancy migration + `OwnershipGuard`. **Re-verified live: cross-group list/read/delete now 403 + audited, owner unaffected, legacy rows non-breaking.** DEF-0007 CLOSED. Evidence: `docs/testing/evidence/RBAC-002-EVIDENCE.md`.
 
 ## Objective
 

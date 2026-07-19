@@ -73,6 +73,7 @@ public class ProvisioningService {
     private final ExecutorService executor;
     private final io.forgetdm.ri.RiRegistryService riRegistry;
     private final DbMaskPushdown dbPushdown;
+    private final io.forgetdm.security.AccessControlService access;
     private final ObjectMapper json = new ObjectMapper();
     private final ConcurrentMap<Long, Future<?>> runningJobs = new ConcurrentHashMap<>();
     /** One in-flight provisioning job per target (dataSource + schema) — prevents concurrent loads from
@@ -115,11 +116,12 @@ public class ProvisioningService {
                                DataSourceService dataSources, ConnectionFactory connections,
                                MaskingEngine engine, SubsetService subsets, DataSetService datasets,
                                AuditService audit, ForgeProps props, ExecutorService provisioningExecutor,
-                               io.forgetdm.ri.RiRegistryService riRegistry, DbMaskPushdown dbPushdown) {
+                               io.forgetdm.ri.RiRegistryService riRegistry, DbMaskPushdown dbPushdown,
+                               io.forgetdm.security.AccessControlService access) {
         this.jobs = jobs; this.rules = rules; this.dataSources = dataSources;
         this.connections = connections; this.engine = engine; this.subsets = subsets;
         this.datasets = datasets; this.audit = audit; this.props = props; this.executor = provisioningExecutor;
-        this.riRegistry = riRegistry; this.dbPushdown = dbPushdown;
+        this.riRegistry = riRegistry; this.dbPushdown = dbPushdown; this.access = access;
     }
 
     @PostConstruct
@@ -145,6 +147,7 @@ public class ProvisioningService {
     public ProvisionJobEntity submit(ProvisionJobEntity job) {
         if (!Set.of("MASK_COPY", "SUBSET_MASK", "SYNTHETIC_LOAD").contains(job.getJobType()))
             throw ApiException.bad("jobType must be MASK_COPY, SUBSET_MASK or SYNTHETIC_LOAD");
+        validateDataSourceCapabilities(job);
         job.setCreatedBy(io.forgetdm.security.AccessContext.current()
                 .map(io.forgetdm.security.AccessPrincipal::username).orElse("system"));
         enforceGovernance(job);   // hard block: unmasked PROD copy
@@ -154,16 +157,28 @@ public class ProvisioningService {
             job.setApprovalRequestedAt(Instant.now());
             job.setMessage("Awaiting maker-checker approval (source is governed)");
             ProvisionJobEntity saved = jobs.save(job);
-            audit.log(job.getCreatedBy(), "PROVISION_APPROVAL_REQUESTED",
-                    saved.getJobType() + " '" + saved.getName() + "' id=" + saved.getId());
+            audit.record(job.getCreatedBy(), "PROVISION_APPROVAL_REQUESTED", "APPROVAL", "provision-job",
+                    String.valueOf(saved.getId()), saved.getName(), "SUCCESS",
+                    "Provisioning approval requested", "{\"status\":\"AWAITING_APPROVAL\"}");
             return saved;
         }
         job.setStatus("PENDING");
         ProvisionJobEntity saved = jobs.save(job);
-        audit.log("system", "JOB_SUBMITTED", saved.getJobType() + " '" + saved.getName() + "' id=" + saved.getId());
+        audit.record(saved.getCreatedBy(), "PROVISION_JOB_QUEUED", "PROVISIONING", "provision-job",
+                String.valueOf(saved.getId()), saved.getName(), "SUCCESS", "Provisioning job queued",
+                "{\"jobType\":\"" + saved.getJobType() + "\"}");
         Future<?> future = executor.submit(() -> run(saved.getId()));
         runningJobs.put(saved.getId(), future);
         return saved;
+    }
+
+    private void validateDataSourceCapabilities(ProvisionJobEntity job) {
+        if (Set.of("MASK_COPY", "SUBSET_MASK").contains(job.getJobType()) && job.getSourceId() != null) {
+            dataSources.getSourceCapable(job.getSourceId());
+        }
+        if (job.getTargetId() != null) {
+            dataSources.getTargetCapable(job.getTargetId());
+        }
     }
 
     // ─── Maker-checker approval (SUBSET_MASK / MASK_COPY; synthetic has its own saved-job gate) ───
@@ -220,6 +235,10 @@ public class ProvisioningService {
                 .orElseThrow(() -> ApiException.bad("Login required to approve"));
         if (p.username().equalsIgnoreCase(String.valueOf(job.getCreatedBy())))
             throw ApiException.bad("Maker-checker approval requires a different user than the job creator.");
+        // Tenant scoping (DEF-0007 / RBAC-002-05): a reviewer may only approve work from a group
+        // they belong to. Without this, any provision.approve holder could approve another
+        // group's job — maker-checker alone does not bound the reviewer to the tenant.
+        requireSameTenantAsCreator(p, job);
         if (note == null || note.isBlank())
             throw ApiException.bad("Approval note / e-signature reason is required.");
         job.setApprovalStatus("APPROVED");
@@ -229,10 +248,29 @@ public class ProvisioningService {
         job.setStatus("PENDING");
         job.setMessage("Approved by " + p.username());
         ProvisionJobEntity saved = jobs.save(job);
-        audit.log(p.username(), "PROVISION_APPROVED", saved.getJobType() + " '" + saved.getName() + "' id=" + saved.getId());
+        audit.record(p.username(), "PROVISION_APPROVED", "APPROVAL", "provision-job",
+                String.valueOf(saved.getId()), saved.getName(), "SUCCESS", "Provisioning request approved",
+                "{\"decision\":\"APPROVED\",\"comment\":\"" + jsonSafe(note.trim()) + "\"}");
         Future<?> future = executor.submit(() -> run(saved.getId()));
         runningJobs.put(saved.getId(), future);
         return saved;
+    }
+
+    /**
+     * Bound the reviewer to the creator's tenant. Admins bypass. If the creator can't be resolved
+     * to a user (legacy jobs with a free-text createdBy), we don't block — the maker-checker rule
+     * still applies.
+     */
+    private void requireSameTenantAsCreator(io.forgetdm.security.AccessPrincipal reviewer, ProvisionJobEntity job) {
+        if (reviewer.hasPermission("admin.all")) return;
+        java.util.Set<Long> creatorGroups = access.groupIdsForUsername(String.valueOf(job.getCreatedBy()));
+        if (creatorGroups.isEmpty()) return;                       // unknown/legacy creator — maker-checker only
+        if (java.util.Collections.disjoint(creatorGroups, reviewer.groupIds())) {
+            audit.log(reviewer.username(), "ACCESS_DENIED",
+                    "approval of job " + job.getId() + " created by another tenant (" + job.getCreatedBy() + ")");
+            throw new io.forgetdm.common.ApiException(org.springframework.http.HttpStatus.FORBIDDEN,
+                    "This job belongs to another group");
+        }
     }
 
     /** Rejection is terminal: submit a fresh job to retry after fixing the blueprint. */
@@ -250,7 +288,9 @@ public class ProvisioningService {
         job.setMessage("Rejected by " + p.username() + ": " + note.trim());
         job.setFinishedAt(Instant.now());
         ProvisionJobEntity saved = jobs.save(job);
-        audit.log(p.username(), "PROVISION_REJECTED", saved.getJobType() + " '" + saved.getName() + "' id=" + saved.getId());
+        audit.record(p.username(), "PROVISION_REJECTED", "APPROVAL", "provision-job",
+                String.valueOf(saved.getId()), saved.getName(), "SUCCESS", "Provisioning request rejected",
+                "{\"decision\":\"REJECTED\",\"comment\":\"" + jsonSafe(note.trim()) + "\"}");
         return saved;
     }
 
@@ -262,7 +302,9 @@ public class ProvisioningService {
             job.setMessage("Approval request withdrawn");
             job.setFinishedAt(Instant.now());
             jobs.save(job);
-            audit.log("system", "JOB_CANCEL_REQUESTED", "id=" + jobId + " (awaiting approval)");
+            audit.record(currentActor(), "PROVISION_JOB_CANCEL_REQUESTED", "CANCEL", "provision-job",
+                    String.valueOf(jobId), job.getName(), "SUCCESS", "Approval request withdrawal requested", null);
+            auditTerminal(job);
             return job;
         }
         if (!Set.of("PENDING", "RUNNING", "CANCEL_REQUESTED").contains(job.getStatus())) return job;
@@ -278,8 +320,31 @@ public class ProvisioningService {
             runningJobs.remove(jobId);
         }
         jobs.save(job);
-        audit.log("system", "JOB_CANCEL_REQUESTED", "id=" + jobId);
+        audit.record(currentActor(), "PROVISION_JOB_CANCEL_REQUESTED", "CANCEL", "provision-job",
+                String.valueOf(jobId), job.getName(), "SUCCESS", "Provisioning cancellation requested", null);
+        if ("CANCELED".equals(job.getStatus())) auditTerminal(job);
         return job;
+    }
+
+    /** Create a new governed attempt; the historical run remains immutable evidence. */
+    public ProvisionJobEntity retry(Long jobId) {
+        ProvisionJobEntity previous = get(jobId);
+        if (!Set.of("FAILED", "CANCELED").contains(previous.getStatus())) {
+            throw ApiException.bad("Only failed or canceled provisioning jobs can be retried");
+        }
+        ProvisionJobEntity retry = new ProvisionJobEntity();
+        retry.setName(previous.getName());
+        retry.setJobType(previous.getJobType());
+        retry.setSourceId(previous.getSourceId());
+        retry.setTargetId(previous.getTargetId());
+        retry.setPolicyId(previous.getPolicyId());
+        retry.setDatasetId(previous.getDatasetId());
+        retry.setSpecJson(previous.getSpecJson());
+        ProvisionJobEntity started = submit(retry);
+        audit.record(currentActor(), "PROVISION_JOB_RETRIED", "PROVISIONING", "provision-job",
+                String.valueOf(started.getId()), started.getName(), "SUCCESS", "Created retry attempt",
+                "{\"previousJobId\":" + previous.getId() + "}");
+        return started;
     }
 
     public List<ProvisionJobEntity> list() {
@@ -369,6 +434,7 @@ public class ProvisioningService {
             job.setFinishedAt(Instant.now());
             jobs.save(job);
             runningJobs.remove(jobId);
+            auditTerminal(job);
             return;
         }
         String lockKey = provisionLockKey(job);
@@ -381,11 +447,13 @@ public class ProvisioningService {
                 job.setFinishedAt(Instant.now());
                 jobs.save(job);
                 runningJobs.remove(jobId);
-                audit.log("system", "JOB_FAILED", "id=" + jobId + " reason=target-busy target=" + lockKey);
+                auditTerminal(job);
                 return;
             }
         }
         job.setStatus("RUNNING"); job.setStartedAt(Instant.now()); jobs.save(job);
+        audit.record(job.getCreatedBy(), "PROVISION_JOB_STARTED", "PROVISIONING", "provision-job",
+                String.valueOf(job.getId()), job.getName(), "SUCCESS", "Provisioning execution started", null);
         try {
             boolean exchange = !"SYNTHETIC_LOAD".equals(job.getJobType()) && spec(job).hasNonNull("exchangePartition");
             long rows = exchange ? runPartitionExchange(job) : switch (job.getJobType()) {
@@ -423,7 +491,25 @@ public class ProvisioningService {
         }
         job.setFinishedAt(Instant.now());
         jobs.save(job);
-        audit.log("system", "JOB_" + job.getStatus(), "id=" + job.getId() + " rows=" + job.getRowsProcessed());
+        auditTerminal(job);
+    }
+
+    private void auditTerminal(ProvisionJobEntity job) {
+        String status = job.getStatus() == null ? "FAILED" : job.getStatus().toUpperCase(Locale.ROOT);
+        String outcome = "FAILED".equals(status) ? "FAILURE" : "SUCCESS";
+        audit.record(job.getCreatedBy(), "PROVISION_JOB_" + status, "PROVISIONING", "provision-job",
+                String.valueOf(job.getId()), job.getName(), outcome,
+                "rows=" + job.getRowsProcessed(), "{\"status\":\"" + status + "\"}");
+    }
+
+    private static String currentActor() {
+        return io.forgetdm.security.AccessContext.current()
+                .map(io.forgetdm.security.AccessPrincipal::username).orElse("system");
+    }
+
+    private static String jsonSafe(String value) {
+        return value == null ? "" : value.replace("\\", "\\\\").replace("\"", "\\\"")
+                .replace("\r", "\\r").replace("\n", "\\n");
     }
 
     // -------------------- per-table provisioning states (live progress) --------------------

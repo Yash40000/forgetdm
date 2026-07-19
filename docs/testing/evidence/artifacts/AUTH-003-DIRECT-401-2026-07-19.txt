@@ -1,0 +1,13 @@
+AUTH-003-07 direct API evidence
+Executed: 2026-07-19T15:34:58-04:00
+Endpoint: GET http://127.0.0.1:8099/api/policies without a session
+
+HTTP/1.1 401
+X-Correlation-ID: 5396139b-0219-49a6-82c9-bc2334c975af
+Content-Type: application/json;charset=ISO-8859-1
+Content-Length: 26
+Location: absent
+
+{"error":"Login required"}
+
+Result: PASS - structured JSON 401, no HTML, no Location header, and no server redirect.

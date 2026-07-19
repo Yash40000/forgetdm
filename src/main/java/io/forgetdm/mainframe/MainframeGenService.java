@@ -1,5 +1,6 @@
 package io.forgetdm.mainframe;
 
+import io.forgetdm.audit.AuditService;
 import io.forgetdm.common.ApiException;
 import io.forgetdm.core.copybook.Copybook;
 import io.forgetdm.core.copybook.Field;
@@ -30,11 +31,12 @@ public class MainframeGenService {
     private final MainframeConnectionRepository connections;
     private final TransportFactory transports;
     private final SyntheticGenService synth;
+    private final AuditService audit;
 
     public MainframeGenService(CopybookDefRepository copybooks, MainframeConnectionRepository connections,
-                              TransportFactory transports, SyntheticGenService synth) {
+                              TransportFactory transports, SyntheticGenService synth, AuditService audit) {
         this.copybooks = copybooks; this.connections = connections;
-        this.transports = transports; this.synth = synth;
+        this.transports = transports; this.synth = synth; this.audit = audit;
     }
 
     public record GenFileColumn(String field, String generator, String param1, String param2) {}
@@ -104,6 +106,13 @@ public class MainframeGenService {
             String name = (req.targetName() != null && !req.targetName().isBlank()) ? req.targetName() : (base + ".dat");
             transports.forConnection(conn).put(conn, name, ebcdic, recfm, len);
             result.put("delivered", Map.of("connection", conn.getName(), "name", name, "bytes", ebcdic.length));
+            audit.record(null, "MAINFRAME_FILE_DELIVERED", "MAINFRAME", "copybook", String.valueOf(def.getId()),
+                    name, "SUCCESS", "Delivered " + rows.size() + " records (" + ebcdic.length + " bytes)",
+                    "{\"format\":\"" + recfm + "\",\"rows\":" + rows.size() + ",\"bytes\":" + ebcdic.length + "}");
+        } else {
+            audit.record(null, "MAINFRAME_FILE_EXPORTED", "MAINFRAME", "copybook", String.valueOf(def.getId()),
+                    base + ".dat", "SUCCESS", "Generated " + rows.size() + " records for download",
+                    "{\"format\":\"" + recfm + "\",\"rows\":" + rows.size() + ",\"bytes\":" + ebcdic.length + "}");
         }
         return result;
     }

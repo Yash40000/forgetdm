@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test:auth003": "playwright test --config=playwright.auth003.config.ts",
+    "test:auth003:headed": "playwright test --config=playwright.auth003.config.ts --headed"
   },
   "dependencies": {
     "@mantine/core": "^8.3.9",
@@ -23,6 +25,7 @@
     "react-icons": "^5.5.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "^24.10.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",

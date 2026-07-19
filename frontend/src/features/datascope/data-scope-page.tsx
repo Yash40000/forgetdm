@@ -8,6 +8,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { useConfirm } from '@/components/confirm';
+import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import {
   useBlueprints,
   useDataSources,
@@ -29,6 +30,9 @@ export function DataScopePage() {
   const [workspaceDirty, setWorkspaceDirty] = useState(false);
   const [libraryOpened, setLibraryOpened] = useState(false);
   const [createOpened, setCreateOpened] = useState(false);
+
+  // Never let a session-expiry redirect silently destroy unsaved blueprint edits (AUTH-003-05 / DEF-0003).
+  useUnsavedGuard(workspaceDirty);
 
   const dataSourcesQuery = useDataSources();
   const policiesQuery = usePolicies();

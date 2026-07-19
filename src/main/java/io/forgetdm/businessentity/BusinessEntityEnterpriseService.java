@@ -253,12 +253,14 @@ public class BusinessEntityEnterpriseService {
     }
 
     public Map<String, Object> createGovernanceRequest(Long entityId, GovernanceRequestRequest request) {
-        entities.getDetail(entityId);
+        BusinessEntityService.BusinessEntityDetail detail = entities.getDetail(entityId);
         String objectType = upperDefault(request == null ? null : request.objectType(), "BUSINESS_ENTITY");
         Long objectId = request == null || request.objectId() == null ? entityId : request.objectId();
         String action = upperDefault(request == null ? null : request.action(), "RELEASE");
         String requestedBy = currentUsername();
         String riskLevel = upperDefault(request == null ? null : request.riskLevel(), "MEDIUM");
+        String reviewer = blank(request == null ? null : request.reviewer());
+        String comments = blank(request == null ? null : request.comments());
         Map<String, Object> risk = Map.of(
                 "riskLevel", riskLevel,
                 "makerCheckerRequired", true,
@@ -270,10 +272,20 @@ public class BusinessEntityEnterpriseService {
                     reviewer, status, risk_level, risk_json, evidence_json, comments, due_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?, ?, ?)
                 """,
-                entityId, objectType, objectId, action, requestedBy, blank(request == null ? null : request.reviewer()),
+                entityId, objectType, objectId, action, requestedBy, reviewer,
                 riskLevel, writeJson(risk), writeJson(Map.of("createdFrom", "BusinessEntityEnterpriseService")),
-                blank(request == null ? null : request.comments()), ts(Instant.now().plus(7, ChronoUnit.DAYS)), ts(Instant.now()));
-        audit.log(requestedBy, "BUSINESS_ENTITY_GOVERNANCE_REQUEST", "request=" + id + " action=" + action);
+                comments, ts(Instant.now().plus(7, ChronoUnit.DAYS)), ts(Instant.now()));
+        audit.record(requestedBy, "BUSINESS_ENTITY_GOVERNANCE_REQUEST", "GOVERNANCE",
+                "business-entity-governance-request", String.valueOf(id), detail.entity().getName() + " / " + action,
+                "SUCCESS", "Created governance request for " + objectType + " " + objectId,
+                auditMetadata(
+                        "entityId", entityId,
+                        "objectType", objectType,
+                        "objectId", objectId,
+                        "governanceAction", action,
+                        "riskLevel", riskLevel,
+                        "reviewerAssigned", reviewer != null,
+                        "commentsPresent", comments != null));
         return getGovernanceRequest(id);
     }
 
@@ -285,7 +297,10 @@ public class BusinessEntityEnterpriseService {
             throw ApiException.conflict("Maker-checker violation: requester cannot approve their own governance request.");
         }
         updateDecision(id, "APPROVED", actor, decision == null ? null : decision.comments(), decision == null ? null : decision.eSignature());
-        audit.log(actor, "BUSINESS_ENTITY_GOVERNANCE_APPROVED", "request=" + id);
+        audit.record(actor, "BUSINESS_ENTITY_GOVERNANCE_APPROVED", "GOVERNANCE",
+                "business-entity-governance-request", String.valueOf(id), row.get("action") + " / " + row.get("objectType"),
+                "SUCCESS", "Approved governance request " + id,
+                governanceDecisionMetadata(row, "APPROVED", decision));
         return getGovernanceRequest(id);
     }
 
@@ -293,7 +308,10 @@ public class BusinessEntityEnterpriseService {
         Map<String, Object> row = getGovernanceRequest(id);
         String actor = authenticatedDecisionActor(decision);
         updateDecision(id, "REJECTED", actor, decision == null ? null : decision.comments(), decision == null ? null : decision.eSignature());
-        audit.log(actor, "BUSINESS_ENTITY_GOVERNANCE_REJECTED", "request=" + id + " prior=" + row.get("status"));
+        audit.record(actor, "BUSINESS_ENTITY_GOVERNANCE_REJECTED", "GOVERNANCE",
+                "business-entity-governance-request", String.valueOf(id), row.get("action") + " / " + row.get("objectType"),
+                "SUCCESS", "Rejected governance request " + id,
+                governanceDecisionMetadata(row, "REJECTED", decision));
         return getGovernanceRequest(id);
     }
 
@@ -476,6 +494,7 @@ public class BusinessEntityEnterpriseService {
     public Map<String, Object> createPackageVersion(Long packageId, PackageVersionRequest request) {
         Map<String, Object> pkg = getOperationalPackageRaw(packageId);
         Long entityId = num(pkg.get("entityId"));
+        String createdBy = currentUsername();
         Integer max = jdbc.queryForObject(
                 "SELECT COALESCE(MAX(version_number), 0) FROM be_operational_package_versions WHERE package_id = ?",
                 Integer.class, packageId);
@@ -490,7 +509,7 @@ public class BusinessEntityEnterpriseService {
         immutable.put("retentionPolicy", retentionPolicy);
         immutable.put("retentionUntil", retentionUntil.toString());
         immutable.put("changeNote", blank(request == null ? null : request.changeNote()));
-        immutable.put("createdBy", currentUsername());
+        immutable.put("createdBy", createdBy);
         String artifact = String.join("\n---FORGETDM-ARTIFACT---\n",
                 String.valueOf(pkg.get("manifestJson")), String.valueOf(pkg.get("shellScript")),
                 String.valueOf(pkg.get("healthCheckJson")), String.valueOf(pkg.get("promotionJson")),
@@ -505,10 +524,20 @@ public class BusinessEntityEnterpriseService {
                 """,
                 packageId, entityId, version, hash, pkg.get("manifestJson"), pkg.get("shellScript"),
                 pkg.get("healthCheckJson"), pkg.get("promotionJson"), writeJson(immutable),
-                retentionPolicy, ts(retentionUntil), currentUsername());
+                retentionPolicy, ts(retentionUntil), createdBy);
         jdbc.update("UPDATE be_operational_packages SET updated_at = ? WHERE id = ?", ts(Instant.now()), packageId);
-        audit.log("system", "BUSINESS_ENTITY_PACKAGE_VERSION_CREATE",
-                "package=" + packageId + " version=" + version + " hash=" + hash);
+        audit.record(createdBy, "BUSINESS_ENTITY_PACKAGE_VERSION_CREATE", "RELEASE",
+                "business-entity-package-version", String.valueOf(id), pkg.get("name") + " v" + version,
+                "SUCCESS", "Created immutable package version " + version,
+                auditMetadata(
+                        "entityId", entityId,
+                        "packageId", packageId,
+                        "executionPlanId", pkg.get("executionPlanId"),
+                        "versionNumber", version,
+                        "artifactHash", hash,
+                        "retentionPolicy", retentionPolicy,
+                        "retentionUntil", retentionUntil.toString(),
+                        "changeNotePresent", blank(request == null ? null : request.changeNote()) != null));
         return getPackageVersion(id);
     }
 
@@ -520,9 +549,19 @@ public class BusinessEntityEnterpriseService {
         Map<String, Object> version = getPackageVersion(versionId);
         if (!Objects.equals(num(version.get("packageId")), packageId)) throw ApiException.bad("Package version does not belong to package " + packageId);
         Long entityId = num(pkg.get("entityId"));
+        String requestedBy = currentUsername();
         String from = blankToDefault(request == null ? null : request.fromEnvironment(), "DEV");
         String to = required(request == null ? null : request.toEnvironment(), "Target environment");
         Long approved = latestApprovedRequest(entityId, "PROMOTE");
+        String approvedBy = null;
+        if (approved != null) {
+            Object signedBy = getGovernanceRequest(approved).get("signedBy");
+            approvedBy = signedBy == null ? null : blank(String.valueOf(signedBy));
+            String suppliedApprover = blank(request == null ? null : request.approver());
+            if (suppliedApprover != null && approvedBy != null && !suppliedApprover.equalsIgnoreCase(approvedBy)) {
+                throw ApiException.bad("Approver must match the signer of the approved governance request.");
+            }
+        }
         String status = approved == null ? "READY_FOR_APPROVAL" : "PROMOTED";
         Map<String, Object> evidence = new LinkedHashMap<>();
         evidence.put("packageId", packageId);
@@ -540,13 +579,25 @@ public class BusinessEntityEnterpriseService {
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 packageId, entityId, versionId, from, to, status, approved, writeJson(evidence),
-                currentUsername(), approved == null ? null : blank(request == null ? null : request.approver()),
+                requestedBy, approvedBy,
                 approved == null ? null : ts(Instant.now()), ts(Instant.now()));
         jdbc.update("UPDATE be_operational_packages SET status = ?, promotion_json = ?, updated_at = ? WHERE id = ?",
                 approved == null ? "PROMOTION_APPROVAL_REQUIRED" : "PROMOTED",
                 writeJson(evidence), ts(Instant.now()), packageId);
-        audit.log("system", "BUSINESS_ENTITY_PACKAGE_PROMOTION",
-                "package=" + packageId + " version=" + versionId + " status=" + status + " to=" + to);
+        audit.record(requestedBy, "BUSINESS_ENTITY_PACKAGE_PROMOTION", "RELEASE",
+                "business-entity-package-promotion", String.valueOf(id), pkg.get("name") + " / " + from + " -> " + to,
+                "SUCCESS", "Package promotion status " + status,
+                auditMetadata(
+                        "entityId", entityId,
+                        "packageId", packageId,
+                        "versionId", versionId,
+                        "artifactHash", version.get("artifactHash"),
+                        "fromEnvironment", from,
+                        "toEnvironment", to,
+                        "promotionStatus", status,
+                        "approvedRequestId", approved,
+                        "governanceApprovedBy", approvedBy,
+                        "commentsPresent", blank(request == null ? null : request.comments()) != null));
         return getPackagePromotion(id);
     }
 
@@ -1222,6 +1273,33 @@ public class BusinessEntityEnterpriseService {
         try { return json.writeValueAsString(v); }
         catch (Exception e) { throw ApiException.bad("Could not write enterprise manifest: " + e.getMessage()); }
     }
+
+    private String governanceDecisionMetadata(Map<String, Object> request, String decisionStatus, DecisionRequest decision) {
+        return auditMetadata(
+                "entityId", request.get("entityId"),
+                "objectType", request.get("objectType"),
+                "objectId", request.get("objectId"),
+                "governanceAction", request.get("action"),
+                "decision", decisionStatus,
+                "priorStatus", request.get("status"),
+                "requestedBy", request.get("requestedBy"),
+                "riskLevel", request.get("riskLevel"),
+                "commentsPresent", blank(decision == null ? null : decision.comments()) != null,
+                "eSignaturePresent", blank(decision == null ? null : decision.eSignature()) != null);
+    }
+
+    private String auditMetadata(Object... entries) {
+        if (entries == null || entries.length % 2 != 0) {
+            throw ApiException.bad("Audit metadata requires key/value pairs");
+        }
+        Map<String, Object> metadata = new LinkedHashMap<>();
+        for (int i = 0; i < entries.length; i += 2) {
+            Object value = entries[i + 1];
+            if (value != null) metadata.put(String.valueOf(entries[i]), value);
+        }
+        return writeJson(metadata);
+    }
+
     private JsonNode readJson(Object v, String label) {
         try {
             if (v == null) return json.createObjectNode();

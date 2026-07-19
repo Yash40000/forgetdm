@@ -36,8 +36,18 @@ Defects found while executing the ForgeTDM test stories. Each defect is a tracke
 | [DEF-0017](DEF-0017-datasource-create-has-no-validation.md) | Data-source create/update accepts invalid input and persists it | MEDIUM | CLOSED | DSRC-001 (DSRC-001-02) | `validate()` on create+update — verified live (6/6 rejected, 11→11 rows) |
 | [DEF-0018](DEF-0018-raw-db-exception-leaked-to-clients.md) | Raw DB exceptions (SQL, schema, row values) returned to clients | MEDIUM | CLOSED | DSRC-001 (DSRC-001-02) | Sanitising `GlobalExceptionHandler` — verified live (zero leaks, app-wide) |
 | [DEF-0019](DEF-0019-datasource-dependency-and-test-audit-gaps.md) | Blocked delete names no dependencies; connection tests unaudited | MEDIUM | CLOSED | DSRC-001 (06, 08) | 409 naming all 6 blockers; `DATASOURCE_TESTED` recorded — verified live |
+| [DEF-0020](DEF-0020-connection-failures-not-classified.md) | Connection failures unclassified; DNS and timeout indistinguishable | MEDIUM | FIX WRITTEN | DSRC-002 (01, 03, 04, 05) | SQLState-first `classify()` → `[AUTH]/[DNS]/[TIMEOUT]/[TLS]/…` + `elapsedMs` |
 
 **FIX WRITTEN** = code committed but not yet verified live — requires a backend rebuild.
+
+| [DEF-0021](DEF-0021-unstructured-tika-commons-lang-mismatch.md) | Tika runtime mismatch failed unstructured masking before cancellation | HIGH | CLOSED | AUD-001 (02) | Commons Lang 3.20.0 pin + pre-detection cancellation guard; live lifecycle 27/27 |
+| [DEF-0022](DEF-0022-business-entity-governance-audit-attribution.md) | Business-entity governance audit attribution was incomplete | HIGH | FIX WRITTEN | AUD-001 (03, 09) | Structured governance/package audit and approved-reviewer validation; live proof pending |
+| [DEF-0023](DEF-0023-catalog-value-set-typecheck.md) | Catalog value-set metadata typing broke the frontend type gate | LOW | CLOSED | AUTH-003 exit gate | Explicit metadata typing; frontend typecheck green |
+| [DEF-0024](DEF-0024-datasource-stale-update-and-role-capability.md) | Data-source stale updates and role misuse were not blocked | HIGH | CLOSED | DSRC-001 (04, 07) | V64 optimistic locking + source/target capability preflight; PostgreSQL, Oracle, and MySQL live proof retained |
+| [DEF-0025](DEF-0025-db2-zos-native-loader-misroute.md) | DB2 z/OS could be routed to the DB2 LUW native LOAD adapter | HIGH | CLOSED | DSRC-001 connector contract | DB2 z/OS now uses JDBC fallback unless a site-specific adapter exists; focused contract tests green |
+| [DEF-0026](DEF-0026-cancelled-auth-redirect-latch.md) | Canceled expiry navigation left the redirect latch permanently set | MEDIUM | CLOSED | AUTH-003 (AUTH-003-05) | Bounded latch reset; two consecutive dirty-draft expiry attempts pass in Edge |
+| [DEF-0027](DEF-0027-protected-content-flash-after-logout-back.md) | Browser Back briefly rendered protected content after logout | HIGH | CLOSED | AUTH-003 (AUTH-003-08) | Gate shell children until positive authentication; hardened browser trace independently accepted |
+| [DEF-0028](DEF-0028-auth-notification-counter-navigation-reset.md) | AUTH notification counter reset during login navigation | MEDIUM (test) | CLOSED | AUTH-003 (AUTH-003-02) | Persist counter across same-origin documents; hardened trace independently accepted |
 
 ## Mirror to GitHub
 

@@ -44,6 +44,11 @@ public class DiscoveryController {
         return jobs.get(jobId);
     }
 
+    @PostMapping("/scan-jobs/{jobId}/cancel")
+    public DiscoveryJobService.JobSnapshot cancelScanJob(@PathVariable String jobId) {
+        return jobs.cancel(jobId);
+    }
+
     /** Built-in + custom PII types the user can target on the Scan Source page. */
     @GetMapping("/pii-types")
     public List<String> piiTypes() {

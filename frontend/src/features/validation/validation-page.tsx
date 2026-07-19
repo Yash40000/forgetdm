@@ -5,12 +5,16 @@ import { Badge, Group, Loader, Paper, Stack, Text, Title } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import { QueryErrorBanner } from '@/components/query-error-banner';
+import { usePermissions } from '@/lib/use-permissions';
 import { ReportDetail, ReportsList, RunLauncher, Scorecard } from './components';
 import { useValidationDataSources, useValidationMutations, useValidationPolicies, useValidationReports } from './hooks';
 import type { RunValidationRequest, ValidationDiagnosis, ValidationRemedy, ValidationReport } from './types';
 import { parseFindings } from './utils';
 
 export function ValidationPage() {
+  const { can } = usePermissions();
+  const canRun = can('validation.run');
+  const canManagePolicy = can('policy.manage');
   const reportsQuery = useValidationReports();
   const dataSourcesQuery = useValidationDataSources();
   const policiesQuery = useValidationPolicies();
@@ -116,7 +120,9 @@ export function ValidationPage() {
 
         <QueryErrorBanner errors={[reportsQuery.error, dataSourcesQuery.error]} onRetry={() => reportsQuery.refetch()} title="Validation could not be loaded" />
 
-        <RunLauncher dataSources={dataSources} policies={policies} onRun={runValidation} running={mutations.run.isPending} />
+        {canRun ? (
+          <RunLauncher dataSources={dataSources} policies={policies} onRun={runValidation} running={mutations.run.isPending} />
+        ) : null}
 
         {loading ? (
           <Paper className="forge-card" p="xl">
@@ -143,6 +149,7 @@ export function ValidationPage() {
                 diagnosing={mutations.diagnose.isPending}
                 onApplyFix={applyFix}
                 applyingKey={applyingKey}
+                canApplyFix={canManagePolicy}
                 dsName={dsName}
                 policyName={policyName}
               />

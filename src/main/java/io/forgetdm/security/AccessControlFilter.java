@@ -13,10 +13,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 import java.util.Locale;
 import java.util.Optional;
+import java.util.UUID;
 
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class AccessControlFilter extends OncePerRequestFilter {
+    public static final String CORRELATION_ID_ATTRIBUTE = "forgetdm.correlationId";
+    public static final String CORRELATION_ID_HEADER = "X-Correlation-ID";
     private final AccessControlService access;
     private final AuditService audit;
 
@@ -28,6 +31,9 @@ public class AccessControlFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
+        String correlationId = correlationId(request.getHeader(CORRELATION_ID_HEADER));
+        request.setAttribute(CORRELATION_ID_ATTRIBUTE, correlationId);
+        response.setHeader(CORRELATION_ID_HEADER, correlationId);
         String path = request.getRequestURI();
         if (!path.startsWith("/api/") || isPublicApi(path)) {
             filterChain.doFilter(request, response);
@@ -43,7 +49,11 @@ public class AccessControlFilter extends OncePerRequestFilter {
         String permission = requiredPermission(request.getMethod(), path);
         AccessPrincipal p = principal.get();
         if (permission != null && !p.hasPermission(permission)) {
-            audit.log(p.username(), "ACCESS_DENIED", request.getMethod() + " " + path + " requires " + permission);
+            String detail = request.getMethod() + " " + path + " requires " + permission;
+            audit.record(p.username(), "ACCESS_DENIED", "SECURITY", "api-request", null, path,
+                    "FAILURE", detail,
+                    "{\"correlationId\":\"" + correlationId + "\",\"method\":\""
+                            + request.getMethod() + "\",\"path\":\"" + json(path) + "\"}");
             writeJson(response, HttpServletResponse.SC_FORBIDDEN, "You do not have permission: " + permission);
             return;
         }
@@ -55,6 +65,11 @@ public class AccessControlFilter extends OncePerRequestFilter {
         } finally {
             AccessContext.clear();
         }
+    }
+
+    private static String correlationId(String supplied) {
+        if (supplied != null && supplied.matches("[A-Za-z0-9._-]{8,64}")) return supplied;
+        return UUID.randomUUID().toString();
     }
 
     private boolean isPublicApi(String path) {
@@ -140,5 +155,9 @@ public class AccessControlFilter extends OncePerRequestFilter {
         response.setStatus(status);
         response.setContentType("application/json");
         response.getWriter().write("{\"error\":\"" + error.replace("\\", "\\\\").replace("\"", "\\\"") + "\"}");
+    }
+
+    private static String json(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
     }
 }

@@ -45,6 +45,7 @@ public class DataSetService {
     private final AuditService       audit;
     private final ClassificationRepository classifications;
     private final MaskingRuleRepository    maskingRules;
+    private final io.forgetdm.security.OwnershipGuard ownership;
 
     public DataSetService(DataSetDefinitionRepository defs,
                           TableProfileRepository profiles,
@@ -57,12 +58,14 @@ public class DataSetService {
                           ConnectionFactory connections,
                           AuditService audit,
                           ClassificationRepository classifications,
-                          MaskingRuleRepository maskingRules) {
+                          MaskingRuleRepository maskingRules,
+                          io.forgetdm.security.OwnershipGuard ownership) {
         this.defs = defs; this.profiles = profiles; this.overrides = overrides;
         this.userPks = userPks; this.userRels = userRels; this.traversalRules = traversalRules;
         this.subsets = subsets; this.dataSources = dataSources;
         this.connections = connections; this.audit = audit;
         this.classifications = classifications; this.maskingRules = maskingRules;
+        this.ownership = ownership;
     }
 
     // ─── DTO for relationship discovery ─────────────────────────────────────
@@ -87,15 +90,22 @@ public class DataSetService {
 
     // ─── Definition CRUD ────────────────────────────────────────────────────
 
+    /** Tenant-scoped: only blueprints the caller owns, their group owns, or that are SHARED. */
     public List<DataSetDefinitionEntity> list() {
-        List<DataSetDefinitionEntity> all = defs.findAll();
+        List<DataSetDefinitionEntity> all = new java.util.ArrayList<>(defs.findAll().stream()
+                .filter(d -> ownership.canSee(d.getOwnerUserId(), d.getOwnerGroupId(), d.getVisibility()))
+                .toList());
         all.sort(Comparator.comparing(DataSetDefinitionEntity::getId).reversed());
         return all;
     }
 
+    /** Object-level tenancy gate — every blueprint read/mutate/run path resolves through here. */
     public DataSetDefinitionEntity get(Long id) {
-        return defs.findById(id).orElseThrow(() ->
+        DataSetDefinitionEntity def = defs.findById(id).orElseThrow(() ->
                 ApiException.notFound("DataScope " + id + " not found"));
+        ownership.assertCanSee("DataScope blueprint", id,
+                def.getOwnerUserId(), def.getOwnerGroupId(), def.getVisibility());
+        return def;
     }
 
     public DataSetDefinitionEntity create(DataSetDefinitionEntity req) {
@@ -107,8 +117,16 @@ public class DataSetService {
         });
         req.setName(name);
         req.setUpdatedAt(Instant.now());
+        req.setOwnerUserId(ownership.defaultOwnerUserId());
+        req.setOwnerUsername(ownership.defaultOwnerUsername());
+        req.setOwnerGroupId(ownership.defaultOwnerGroupId());
+        if (req.getVisibility() == null || req.getVisibility().isBlank()) {
+            req.setVisibility(ownership.defaultVisibility());
+        }
         DataSetDefinitionEntity saved = defs.save(req);
-        audit.log("system", "DATASET_CREATED", saved.getName() + " id=" + saved.getId());
+        audit.record(currentActor(), "DATASET_CREATED", "DATASCOPE", "dataset",
+                String.valueOf(saved.getId()), saved.getName(), "SUCCESS",
+                "Created DataScope blueprint", null);
         return saved;
     }
 
@@ -133,7 +151,9 @@ public class DataSetService {
         existing.setGlobalQ2(req.isGlobalQ2());
         existing.setUpdatedAt(Instant.now());
         DataSetDefinitionEntity saved = defs.save(existing);
-        audit.log("system", "DATASET_UPDATED", saved.getName() + " id=" + saved.getId());
+        audit.record(currentActor(), "DATASET_UPDATED", "DATASCOPE", "dataset",
+                String.valueOf(saved.getId()), saved.getName(), "SUCCESS",
+                "Updated DataScope blueprint", null);
         return saved;
     }
 
@@ -142,8 +162,9 @@ public class DataSetService {
         existing.setPolicyId(policyId);
         existing.setUpdatedAt(Instant.now());
         DataSetDefinitionEntity saved = defs.save(existing);
-        audit.log("system", "DATASET_POLICY_UPDATED",
-                saved.getName() + " id=" + saved.getId() + " policyId=" + policyId);
+        audit.record(currentActor(), "DATASET_POLICY_UPDATED", "DATASCOPE", "dataset",
+                String.valueOf(saved.getId()), saved.getName(), "SUCCESS",
+                "Updated default masking policy", "{\"policyId\":" + (policyId == null ? "null" : policyId) + "}");
         return saved;
     }
 
@@ -197,14 +218,20 @@ public class DataSetService {
 
     @Transactional
     public void delete(Long id) {
-        get(id);
+        DataSetDefinitionEntity definition = get(id);
         profiles.deleteByDatasetId(id);
         overrides.deleteByDatasetId(id);
         userPks.deleteByDatasetId(id);
         userRels.deleteByDatasetId(id);
         traversalRules.deleteByDatasetId(id);
         defs.deleteById(id);
-        audit.log("system", "DATASET_DELETED", "id=" + id);
+        audit.record(currentActor(), "DATASET_DELETED", "DATASCOPE", "dataset",
+                String.valueOf(id), definition.getName(), "SUCCESS",
+                "Deleted DataScope blueprint", null);
+    }
+
+    private String currentActor() {
+        return ownership.caller().map(io.forgetdm.security.AccessPrincipal::username).orElse("system");
     }
 
     // ─── Table Profile CRUD ─────────────────────────────────────────────────

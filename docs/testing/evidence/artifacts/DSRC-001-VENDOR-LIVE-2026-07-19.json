@@ -1,0 +1,118 @@
+{
+    "story":  "DSRC-001",
+    "scope":  "Oracle and MySQL live JDBC lanes",
+    "executedAt":  "2026-07-19T15:09:15.7665568Z",
+    "baseUrl":  "http://localhost:8099",
+    "passed":  18,
+    "failed":  0,
+    "results":  [
+                    {
+                        "lane":  "ORACLE",
+                        "case":  "create-version-redaction",
+                        "result":  "PASS",
+                        "detail":  "Create returned a version token without returning the connector secret"
+                    },
+                    {
+                        "lane":  "ORACLE",
+                        "case":  "connection",
+                        "result":  "PASS",
+                        "detail":  "ForgeTDM opened a real JDBC connection"
+                    },
+                    {
+                        "lane":  "ORACLE",
+                        "case":  "schema-browse",
+                        "result":  "PASS",
+                        "detail":  "Expected application schema was returned by JDBC metadata"
+                    },
+                    {
+                        "lane":  "ORACLE",
+                        "case":  "table-browse",
+                        "result":  "PASS",
+                        "detail":  "Expected application table was returned by JDBC metadata"
+                    },
+                    {
+                        "lane":  "ORACLE",
+                        "case":  "column-browse",
+                        "result":  "PASS",
+                        "detail":  "Column metadata was returned for the selected table"
+                    },
+                    {
+                        "lane":  "ORACLE",
+                        "case":  "optimistic-lock",
+                        "result":  "PASS",
+                        "detail":  "A stale editor received a sanitized 409 and did not overwrite the saved row"
+                    },
+                    {
+                        "lane":  "ORACLE",
+                        "case":  "credential-retention",
+                        "result":  "PASS",
+                        "detail":  "Metadata-only edit retained the encrypted credential"
+                    },
+                    {
+                        "lane":  "ORACLE",
+                        "case":  "source-discovery",
+                        "result":  "PASS",
+                        "detail":  "BOTH completed a live one-table discovery scan"
+                    },
+                    {
+                        "lane":  "ORACLE",
+                        "case":  "target-preflight",
+                        "result":  "PASS",
+                        "detail":  "BOTH passed target-role validation and entered execution"
+                    },
+                    {
+                        "lane":  "MYSQL",
+                        "case":  "create-version-redaction",
+                        "result":  "PASS",
+                        "detail":  "Create returned a version token without returning the connector secret"
+                    },
+                    {
+                        "lane":  "MYSQL",
+                        "case":  "connection",
+                        "result":  "PASS",
+                        "detail":  "ForgeTDM opened a real JDBC connection"
+                    },
+                    {
+                        "lane":  "MYSQL",
+                        "case":  "schema-browse",
+                        "result":  "PASS",
+                        "detail":  "Expected application schema was returned by JDBC metadata"
+                    },
+                    {
+                        "lane":  "MYSQL",
+                        "case":  "table-browse",
+                        "result":  "PASS",
+                        "detail":  "Expected application table was returned by JDBC metadata"
+                    },
+                    {
+                        "lane":  "MYSQL",
+                        "case":  "column-browse",
+                        "result":  "PASS",
+                        "detail":  "Column metadata was returned for the selected table"
+                    },
+                    {
+                        "lane":  "MYSQL",
+                        "case":  "optimistic-lock",
+                        "result":  "PASS",
+                        "detail":  "A stale editor received a sanitized 409 and did not overwrite the saved row"
+                    },
+                    {
+                        "lane":  "MYSQL",
+                        "case":  "credential-retention",
+                        "result":  "PASS",
+                        "detail":  "Metadata-only edit retained the encrypted credential"
+                    },
+                    {
+                        "lane":  "MYSQL",
+                        "case":  "source-discovery",
+                        "result":  "PASS",
+                        "detail":  "BOTH completed a live one-table discovery scan"
+                    },
+                    {
+                        "lane":  "MYSQL",
+                        "case":  "target-preflight",
+                        "result":  "PASS",
+                        "detail":  "BOTH passed target-role validation and entered execution"
+                    }
+                ]
+}

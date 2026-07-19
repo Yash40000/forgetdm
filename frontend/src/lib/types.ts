@@ -1,5 +1,6 @@
 export type DataSource = {
   id: number;
+  version: number;
   name: string;
   kind: string;
   role: 'SOURCE' | 'TARGET' | 'BOTH' | string;

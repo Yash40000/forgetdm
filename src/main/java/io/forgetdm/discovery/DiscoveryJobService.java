@@ -1,6 +1,7 @@
 package io.forgetdm.discovery;
 
 import io.forgetdm.common.ApiException;
+import io.forgetdm.audit.AuditService;
 import io.forgetdm.security.AccessContext;
 import io.forgetdm.security.AccessPrincipal;
 import org.springframework.stereotype.Service;
@@ -23,11 +24,13 @@ public class DiscoveryJobService {
 
     private final DiscoveryService discovery;
     private final ExecutorService executor;
+    private final AuditService audit;
     private final ConcurrentMap<String, DiscoveryJob> jobs = new ConcurrentHashMap<>();
 
-    public DiscoveryJobService(DiscoveryService discovery, ExecutorService provisioningExecutor) {
+    public DiscoveryJobService(DiscoveryService discovery, ExecutorService provisioningExecutor, AuditService audit) {
         this.discovery = discovery;
         this.executor = provisioningExecutor;
+        this.audit = audit;
     }
 
     public JobSnapshot start(Long dataSourceId, String schemaName, Set<String> selectedTypes) {
@@ -60,6 +63,9 @@ public class DiscoveryJobService {
                 Instant.now());
         jobs.put(job.jobId, job);
         trimFinishedJobs();
+        audit.record(owner, "DISCOVERY_JOB_QUEUED", "DISCOVERY", "DISCOVERY_JOB", job.jobId,
+                job.requestedSchemaName, "SUCCESS", "dataSourceId=" + dataSourceId,
+                "{\"selectedTypes\":" + job.selectedTypes.size() + ",\"selectedTables\":" + job.selectedTables.size() + "}");
 
         executor.submit(() -> AccessContext.callAs(caller, token, () -> {
             runJob(job);
@@ -86,6 +92,16 @@ public class DiscoveryJobService {
                 .toList();
     }
 
+    public JobSnapshot cancel(String jobId) {
+        DiscoveryJob job = jobs.get(jobId);
+        if (job == null || !canSee(job)) throw ApiException.notFound("Discovery job not found: " + jobId);
+        if (!job.active()) return job.snapshot();
+        job.requestCancel();
+        audit.record(job.ownerUsername, "DISCOVERY_JOB_CANCEL_REQUESTED", "CANCEL", "DISCOVERY_JOB",
+                job.jobId, job.requestedSchemaName, "SUCCESS", "Cancellation requested", null);
+        return job.snapshot();
+    }
+
     private void runJob(DiscoveryJob job) {
         job.running("Opening source metadata");
         try {
@@ -93,8 +109,25 @@ public class DiscoveryJobService {
                     job.selectedTypes.isEmpty() ? null : job.selectedTypes,
                     job.selectedTables.isEmpty() ? null : job.selectedTables, job.progress());
             job.completed(result.size());
+            audit.record(job.ownerUsername, "DISCOVERY_JOB_COMPLETED", "DISCOVERY", "DISCOVERY_JOB",
+                    job.jobId, job.schemaName, "SUCCESS", "findings=" + result.size(), null);
+        } catch (DiscoveryJobCancelledException e) {
+            job.cancelled();
+            audit.record(job.ownerUsername, "DISCOVERY_JOB_CANCELLED", "CANCEL", "DISCOVERY_JOB",
+                    job.jobId, job.schemaName, "SUCCESS", "Discovery cancelled", null);
         } catch (Exception e) {
-            job.failed(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            // DiscoveryService deliberately translates source exceptions to ApiException. A cancellation
+            // raised by the progress callback therefore arrives here wrapped; the job's own flag remains
+            // the authoritative operator intent and prevents a requested stop being reported as failure.
+            if (job.isCancellationRequested()) {
+                job.cancelled();
+                audit.record(job.ownerUsername, "DISCOVERY_JOB_CANCELLED", "CANCEL", "DISCOVERY_JOB",
+                        job.jobId, job.schemaName, "SUCCESS", "Discovery cancelled", null);
+            } else {
+                job.failed(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+                audit.record(job.ownerUsername, "DISCOVERY_JOB_FAILED", "DISCOVERY", "DISCOVERY_JOB",
+                        job.jobId, job.schemaName, "FAILURE", "Discovery failed", null);
+            }
         }
     }
 
@@ -153,6 +186,7 @@ public class DiscoveryJobService {
         private int findings;
         private String message = "Queued";
         private String error;
+        private volatile boolean cancelRequested;
 
         private DiscoveryJob(String jobId, Long dataSourceId, String requestedSchemaName, Set<String> selectedTypes,
                              Set<String> selectedTables, String ownerUsername, Instant startedAt) {
@@ -172,7 +206,11 @@ public class DiscoveryJobService {
 
         DiscoveryService.ScanProgress progress() {
             return new DiscoveryService.ScanProgress() {
+                private void checkCancelled() {
+                    if (cancelRequested || Thread.currentThread().isInterrupted()) throw new DiscoveryJobCancelledException();
+                }
                 @Override public void schemaResolved(String resolvedSchema) {
+                    checkCancelled();
                     synchronized (DiscoveryJob.this) {
                         schemaName = resolvedSchema;
                         message = "Schema resolved: " + safe(resolvedSchema);
@@ -180,6 +218,7 @@ public class DiscoveryJobService {
                 }
 
                 @Override public void tablesDiscovered(List<String> tableNames) {
+                    checkCancelled();
                     synchronized (DiscoveryJob.this) {
                         tables.clear();
                         for (String table : tableNames) tables.put(table, new TableState(table));
@@ -190,6 +229,7 @@ public class DiscoveryJobService {
                 }
 
                 @Override public void tableStarted(String tableName, int tableIndex, int totalTables) {
+                    checkCancelled();
                     synchronized (DiscoveryJob.this) {
                         TableState t = table(tableName);
                         t.status = "RUNNING";
@@ -201,6 +241,7 @@ public class DiscoveryJobService {
                 }
 
                 @Override public void tableColumns(String tableName, int totalColumns) {
+                    checkCancelled();
                     synchronized (DiscoveryJob.this) {
                         TableState t = table(tableName);
                         t.totalColumns = totalColumns;
@@ -209,6 +250,7 @@ public class DiscoveryJobService {
                 }
 
                 @Override public void columnScanned(String tableName, String columnName, int scannedColumns, int totalColumns) {
+                    checkCancelled();
                     synchronized (DiscoveryJob.this) {
                         TableState t = table(tableName);
                         t.scannedColumns = scannedColumns;
@@ -222,6 +264,7 @@ public class DiscoveryJobService {
                 }
 
                 @Override public void findingDiscovered(String tableName, String columnName, String piiType) {
+                    checkCancelled();
                     synchronized (DiscoveryJob.this) {
                         TableState t = table(tableName);
                         t.findings++;
@@ -231,6 +274,7 @@ public class DiscoveryJobService {
                 }
 
                 @Override public void tableCompleted(String tableName, int findingsForTable) {
+                    checkCancelled();
                     synchronized (DiscoveryJob.this) {
                         TableState t = table(tableName);
                         t.status = "COMPLETED";
@@ -275,6 +319,27 @@ public class DiscoveryJobService {
             }
         }
 
+        synchronized void requestCancel() {
+            cancelRequested = true;
+            message = "Cancellation requested";
+        }
+
+        boolean isCancellationRequested() {
+            return cancelRequested;
+        }
+
+        synchronized void cancelled() {
+            status = "CANCELLED";
+            finishedAt = Instant.now();
+            currentColumn = null;
+            message = "Discovery cancelled";
+            if (currentTable != null) {
+                TableState t = table(currentTable);
+                t.status = "CANCELLED";
+                t.finishedAt = finishedAt;
+            }
+        }
+
         synchronized JobSnapshot snapshot() {
             List<TableSnapshot> tableSnapshots = new ArrayList<>();
             for (TableState t : tables.values()) tableSnapshots.add(t.snapshot());
@@ -311,6 +376,8 @@ public class DiscoveryJobService {
             return value == null || value.isBlank() ? "(default)" : value;
         }
     }
+
+    private static final class DiscoveryJobCancelledException extends RuntimeException {}
 
     private static final class TableState {
         private final String tableName;

@@ -1,0 +1,71 @@
+<testsuites id="" name="" tests="7" failures="0" skipped="0" errors="0" time="117.993421">
+<testsuite name="expired-session.spec.ts" timestamp="2026-07-19T16:21:26.339Z" hostname="" tests="7" failures="0" skipped="0" time="112.029" errors="0">
+<testcase name="AUTH-003 expired-session browser contract › AUTH-003-01: one expired action redirects once and preserves path plus query" classname="expired-session.spec.ts" time="13.084">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts\expired-session-AUTH-003-e-da8fe-d-preserves-path-plus-query\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts\expired-session-AUTH-003-e-da8fe-d-preserves-path-plus-query\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="AUTH-003 expired-session browser contract › AUTH-003-02: five concurrent 401 responses cause one redirect and zero notification storm" classname="expired-session.spec.ts" time="14.45">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts\expired-session-AUTH-003-e-5354d-and-zero-notification-storm\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts\expired-session-AUTH-003-e-5354d-and-zero-notification-storm\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="AUTH-003 expired-session browser contract › AUTH-003-03: successful sign-in returns to the exact same-origin path and query" classname="expired-session.spec.ts" time="15.44">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts\expired-session-AUTH-003-e-e9475--same-origin-path-and-query\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts\expired-session-AUTH-003-e-e9475--same-origin-path-and-query\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="AUTH-003 expired-session browser contract › AUTH-003-04: unsafe next targets always land on the application default route" classname="expired-session.spec.ts" time="29.836">
+<properties>
+<property name="slow" value="">
+</property>
+</properties>
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts\expired-session-AUTH-003-e-4c2a8-e-application-default-route\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts\expired-session-AUTH-003-e-4c2a8-e-application-default-route\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="AUTH-003 expired-session browser contract › AUTH-003-05: an expiry redirect cannot silently discard a dirty synthetic draft" classname="expired-session.spec.ts" time="8.782">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts\expired-session-AUTH-003-e-a7f6e-ard-a-dirty-synthetic-draft\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts\expired-session-AUTH-003-e-a7f6e-ard-a-dirty-synthetic-draft\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="AUTH-003 expired-session browser contract › AUTH-003-06: login 401 shows one actionable error and refresh never recurses" classname="expired-session.spec.ts" time="7.411">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts\expired-session-AUTH-003-e-a0c43--and-refresh-never-recurses\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts\expired-session-AUTH-003-e-a0c43--and-refresh-never-recurses\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="AUTH-003 expired-session browser contract › AUTH-003-08: Back cannot reveal protected content after the session becomes logged out" classname="expired-session.spec.ts" time="23.026">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts\expired-session-AUTH-003-e-96480--session-becomes-logged-out\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts\expired-session-AUTH-003-e-96480--session-becomes-logged-out\trace.zip]]
+]]>
+</system-out>
+</testcase>
+</testsuite>
+</testsuites>

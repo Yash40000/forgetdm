@@ -3,7 +3,14 @@
 **Priority:** P0
 
 **Lane:** Each bundled connector
-**Execution status:** NOT RUN
+**Execution status:** COMPLETE WITH HARD-PASS EXCEPTIONS - PostgreSQL, Oracle, MySQL, and H2 live lanes verified on 2026-07-19.
+The PostgreSQL concurrency and role preflight runner passed 9/9, the Oracle/MySQL lifecycle
+runner passed 18/18, and the embedded H2 lifecycle runner passed 9/9. DEF-0024 is closed with live evidence. DB2, SQL Server, and Teradata remain
+HARD-PASS because no live vendor fixture is available; they are not passed or certified. The story
+is closed for this test cycle under its documented certification-status exit rule, without treating
+those unavailable lanes as functional passes.
+Focused evidence: `docs/testing/evidence/DSRC-001-CONCURRENCY-2026-07-19.md`
+Evidence: `docs/testing/evidence/DSRC-001-EVIDENCE.md`
 
 ## Objective
 

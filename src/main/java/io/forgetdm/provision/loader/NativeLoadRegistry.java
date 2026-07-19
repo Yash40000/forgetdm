@@ -121,6 +121,13 @@ public class NativeLoadRegistry {
 
     static String engineOf(DataSourceEntity target) {
         if (target == null || target.getKind() == null || target.getKind().isBlank()) return "GENERIC";
-        return target.getKind().trim().toUpperCase(Locale.ROOT);
+        String engine = target.getKind().trim().toUpperCase(Locale.ROOT);
+        return switch (engine) {
+            case "POSTGRESQL" -> "POSTGRES";
+            case "SQL_SERVER" -> "SQLSERVER";
+            case "DB2_UDB", "DB2LUW" -> "DB2UDB";
+            case "DB2_ZOS", "DB2-ZOS" -> "DB2ZOS";
+            default -> engine;
+        };
     }
 }

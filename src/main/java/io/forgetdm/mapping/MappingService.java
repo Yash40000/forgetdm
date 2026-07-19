@@ -48,6 +48,7 @@ public class MappingService {
     @Transactional
     public MappingEntity save(MappingEntity in) {
         if (in.getName() == null || in.getName().isBlank()) throw ApiException.bad("Mapping name is required");
+        boolean creating = in.getId() == null;
         MappingEntity m = in.getId() != null
                 ? repo.findById(in.getId()).orElseThrow(() -> ApiException.notFound("Mapping " + in.getId() + " not found"))
                 : new MappingEntity();
@@ -78,13 +79,20 @@ public class MappingService {
             version.setCreatedBy(actor());
             versions.save(version);
         }
-        audit.log("system", "MAPPING_SAVED", saved.getName() + " id=" + saved.getId());
+        int versionNo = existing.isEmpty() ? 1 : existing.get(0).getVersionNo()
+                + (Objects.equals(existing.get(0).getSpecHash(), hash) ? 0 : 1);
+        audit.record(actor(), creating ? "MAPPING_CREATED" : "MAPPING_UPDATED", "MAPPING", "mapping",
+                String.valueOf(saved.getId()), saved.getName(), "SUCCESS",
+                creating ? "Created mapping definition" : "Updated mapping definition",
+                "{\"version\":" + versionNo + ",\"specHash\":\"" + hash + "\"}");
         return saved;
     }
 
     public void delete(Long id) {
+        MappingEntity mapping = get(id);
         repo.deleteById(id);
-        audit.log("system", "MAPPING_DELETED", "id=" + id);
+        audit.record(actor(), "MAPPING_DELETED", "MAPPING", "mapping",
+                String.valueOf(id), mapping.getName(), "SUCCESS", "Deleted mapping definition", null);
     }
 
     public List<MappingVersionEntity> versions(Long mappingId) {

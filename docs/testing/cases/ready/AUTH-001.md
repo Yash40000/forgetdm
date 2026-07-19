@@ -3,7 +3,20 @@
 **Priority:** P0
 
 **Lane:** All
-**Execution status:** NOT RUN
+**Execution status:** **8/10 EXECUTABLE — 2 genuinely blocked** (2026-07-18).
+
+- **Executed live (4):** 01 (no credential leak), 02 (identity parity — DEF-0002 closed), 04 (**FAILED
+  → DEF-0016**, timing oracle), 10 (failed-login audited — DEF-0008 closed).
+- **Automated in `docs/testing/run-all-tests.ps1` (4):** 03 (cookie flags), 05 (inactive denied),
+  06 (logout invalidation), 07 (two concurrent sessions). These moved to PowerShell because browser
+  JS cannot read `Set-Cookie` (HttpOnly) nor hold two independent cookie jars.
+- **Blocked (2):** 08 session-TTL expiry — `session-hours` is floored at 1, so it needs a dedicated
+  short-TTL run or a 1-hour wait; 09 at-rest inspection — needs direct DB access (sandbox VM down).
+
+**Correction:** case 10 was previously marked CODE-VERIFIED in error — the code called
+`audit.log(…LOGIN_FAILED…)` but the event never persisted (rolled back by `@Transactional`). Found by
+executing AUD-001-05 live; raised as DEF-0008 (HIGH), fixed and re-verified.
+Evidence: `docs/testing/evidence/AUTH-001-EVIDENCE.md`
 
 ## Objective
 

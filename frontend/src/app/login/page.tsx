@@ -82,8 +82,18 @@ function LoginForm() {
   );
 }
 
-/** Only allow same-origin path redirects - never absolute URLs (open-redirect guard). */
+/** Only allow same-origin path redirects — never absolute or off-origin URLs (open-redirect guard). */
 function safeNextPath(raw: string | null) {
-  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/datascope';
+  if (!raw || !raw.startsWith('/')) return '/datascope';
+  // Reject protocol-relative ("//host") and backslash-normalized ("/\host") bypasses.
+  if (raw.length >= 2 && (raw[1] === '/' || raw[1] === '\\')) return '/datascope';
+  // Defense in depth: the value must resolve to this exact origin.
+  if (typeof window !== 'undefined') {
+    try {
+      if (new URL(raw, window.location.origin).origin !== window.location.origin) return '/datascope';
+    } catch {
+      return '/datascope';
+    }
+  }
   return raw;
 }

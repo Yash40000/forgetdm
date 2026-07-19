@@ -88,9 +88,10 @@ Create the database and user ForgeTDM expects, then run with Maven.
         GRANT ALL ON SCHEMA public TO forgetdm;
 
   2. (If your DB is not the defaults) point the app at it — PowerShell:
-        $env:FORGETDM_DB_URL  = "jdbc:postgresql://localhost:5432/forgetdm"
+        $env:FORGETDM_DB_URL  = "jdbc:postgresql://localhost:5433/forgetdm"
         $env:FORGETDM_DB_USER = "forgetdm"
         $env:FORGETDM_DB_PASS = "forgetdm"
+        mvn clean spring-boot:run
         $env:FORGETDM_MASKING_SECRET = "pick-a-long-random-secret"
 
   3. Build fresh and run:

@@ -1,4 +1,5 @@
 let authRedirectStarted = false;
+const AUTH_REDIRECT_RETRY_MS = 1_500;
 
 export class ApiError extends Error {
   readonly status: number;
@@ -41,6 +42,12 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       authRedirectStarted = true;
       const next = encodeURIComponent(window.location.pathname + window.location.search);
       window.location.assign(`/login?next=${next}`);
+      // A dirty-work beforeunload guard can cancel the navigation. The current document then stays
+      // alive, so release the one-shot latch after concurrent 401s have drained and allow a later
+      // request to offer the login redirect again. Successful navigation unloads this module first.
+      window.setTimeout(() => {
+        authRedirectStarted = false;
+      }, AUTH_REDIRECT_RETRY_MS);
     }
     throw new ApiError(apiErrorMessage(data, response), response.status, path, data);
   }

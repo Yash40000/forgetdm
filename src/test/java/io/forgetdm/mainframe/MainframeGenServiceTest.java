@@ -46,7 +46,8 @@ class MainframeGenServiceTest {
         generated.put("CRF-CUSTOMER-RECORD.NAME-GROUP.FIRST-NAME", "Alex");
         when(synth.generateRows(any(), eq(1L), eq(42L))).thenReturn(List.of(generated));
 
-        MainframeGenService service = new MainframeGenService(copybooks, connections, transports, synth);
+        MainframeGenService service = new MainframeGenService(copybooks, connections, transports, synth,
+                mock(io.forgetdm.audit.AuditService.class));
         MainframeGenService.GenFileReq request = new MainframeGenService.GenFileReq(
                 7L, "Cp037", "FB", 42L, 1L,
                 List.of(

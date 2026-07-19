@@ -59,12 +59,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { NameInput } from '@/components/name-input';
 import { useConfirm } from '@/components/confirm';
+import { usePermissions } from '@/lib/use-permissions';
 import { apiFetch, apiPost, apiPut } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { DataSource, DataSourceSchema, NativeLoaderStatus } from '@/lib/types';
 import { dataSourceSchemasPath, useDataSources, useNativeLoaders } from './hooks';
 
 type Draft = {
+  version: number | null;
   name: string;
   kind: string;
   role: string;
@@ -146,6 +148,7 @@ const ENGINE_CATALOG: Array<{ value: string; label: string; family: string; desc
 const ROLE_OPTIONS = ['SOURCE', 'TARGET', 'BOTH'].map((role) => ({ value: role, label: role }));
 
 const EMPTY_DRAFT: Draft = {
+  version: null,
   name: '',
   kind: 'POSTGRES',
   role: 'BOTH',
@@ -158,6 +161,8 @@ const EMPTY_DRAFT: Draft = {
 
 export function DataSourcesPage() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('datasource.manage');
   const { confirm, confirmElement } = useConfirm();
   const dataSourcesQuery = useDataSources();
   const nativeLoadersQuery = useNativeLoaders();
@@ -419,9 +424,11 @@ export function DataSourcesPage() {
               >
                 Refresh
               </Button>
-              <Button leftSection={<IconPlugConnected size={16} />} onClick={() => void startNew()}>
-                Add connection
-              </Button>
+              {canManage ? (
+                <Button leftSection={<IconPlugConnected size={16} />} onClick={() => void startNew()}>
+                  Add connection
+                </Button>
+              ) : null}
             </Group>
           </Group>
 
@@ -543,22 +550,26 @@ export function DataSourcesPage() {
                                       <IconDatabaseCog size={16} />
                                     </ActionIcon>
                                   </Tooltip>
-                                  <Tooltip label="Edit connection">
-                                    <ActionIcon size="lg" variant="default" aria-label={`Edit ${source.name}`} onClick={() => void startEdit(source)}>
-                                      <IconEdit size={16} />
-                                    </ActionIcon>
-                                  </Tooltip>
-                                  <Tooltip label="Delete connection">
-                                    <ActionIcon
-                                      size="lg"
-                                      variant="subtle"
-                                      color="red"
-                                      aria-label={`Delete ${source.name}`}
-                                      onClick={() => setDeleteTarget(source)}
-                                    >
-                                      <IconTrash size={15} />
-                                    </ActionIcon>
-                                  </Tooltip>
+                                  {canManage ? (
+                                    <>
+                                      <Tooltip label="Edit connection">
+                                        <ActionIcon size="lg" variant="default" aria-label={`Edit ${source.name}`} onClick={() => void startEdit(source)}>
+                                          <IconEdit size={16} />
+                                        </ActionIcon>
+                                      </Tooltip>
+                                      <Tooltip label="Delete connection">
+                                        <ActionIcon
+                                          size="lg"
+                                          variant="subtle"
+                                          color="red"
+                                          aria-label={`Delete ${source.name}`}
+                                          onClick={() => setDeleteTarget(source)}
+                                        >
+                                          <IconTrash size={15} />
+                                        </ActionIcon>
+                                      </Tooltip>
+                                    </>
+                                  ) : null}
                                 </Group>
                               </Table.Td>
                             </Table.Tr>
@@ -1147,6 +1158,7 @@ function NativeLoaderCard({ loader }: { loader: NativeLoaderStatus }) {
 
 function payloadFromDraft(draft: Draft) {
   return {
+    version: draft.version,
     name: draft.name.trim(),
     kind: draft.kind.trim() || 'GENERIC',
     role: draft.role.trim() || 'BOTH',
@@ -1160,6 +1172,7 @@ function payloadFromDraft(draft: Draft) {
 
 function draftFromDataSource(source: DataSource): Draft {
   return {
+    version: source.version,
     name: source.name || '',
     kind: source.kind || 'GENERIC',
     role: source.role || 'BOTH',

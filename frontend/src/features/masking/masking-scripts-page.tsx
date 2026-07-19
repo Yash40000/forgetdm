@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch, apiPost } from '@/lib/api';
 import { useConfirm } from '@/components/confirm';
+import { usePermissions } from '@/lib/use-permissions';
 import { NameInput } from '@/components/name-input';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { keys } from '@/lib/keys';
@@ -27,6 +28,8 @@ const emptyDraft: ScriptDraft = {
 export function MaskingScriptsPage() {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canManage = can('policy.manage');
   const scriptsQuery = useMaskingScripts();
   const scripts = useMemo(() => scriptsQuery.data || [], [scriptsQuery.data]);
   const [draft, setDraft] = useState<ScriptDraft>(emptyDraft);
@@ -214,9 +217,11 @@ export function MaskingScriptsPage() {
             ))}
           </Group>
           <Group mt="md" justify="space-between" align="end">
-            <Button leftSection={<IconCode size={16} />} loading={saveMutation.isPending} disabled={saveDisabled} onClick={() => saveMutation.mutate()}>
-              Save script
-            </Button>
+            {canManage ? (
+              <Button leftSection={<IconCode size={16} />} loading={saveMutation.isPending} disabled={saveDisabled} onClick={() => saveMutation.mutate()}>
+                Save script
+              </Button>
+            ) : <div />}
             <Group align="end">
               <TextInput label="Test value" value={testValue} onChange={(event) => setTestValue(safeInputValue(event))} {...technicalInputProps} />
               <Button variant="default" leftSection={<IconPlayerPlay size={16} />} loading={testMutation.isPending} disabled={!draft.name.trim()} onClick={() => testMutation.mutate()}>
@@ -259,11 +264,13 @@ export function MaskingScriptsPage() {
                       <IconEdit size={16} />
                     </ActionIcon>
                   </Tooltip>
-                  <Tooltip label="Delete">
-                    <ActionIcon variant="subtle" color="red" aria-label={`Delete ${script.name}`} onClick={() => void removeScript(script)}>
-                      <IconTrash size={16} />
-                    </ActionIcon>
-                  </Tooltip>
+                  {canManage ? (
+                    <Tooltip label="Delete">
+                      <ActionIcon variant="subtle" color="red" aria-label={`Delete ${script.name}`} onClick={() => void removeScript(script)}>
+                        <IconTrash size={16} />
+                      </ActionIcon>
+                    </Tooltip>
+                  ) : null}
                 </Group>
               </div>
             ))}

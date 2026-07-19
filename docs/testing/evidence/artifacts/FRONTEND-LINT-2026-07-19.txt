@@ -1,0 +1,5 @@
+
+> forgetdm-frontend@0.1.0 lint
+> eslint .
+
+FRONTEND_LINT_EXIT_CODE: 0

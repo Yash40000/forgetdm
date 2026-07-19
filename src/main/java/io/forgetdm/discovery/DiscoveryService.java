@@ -87,7 +87,7 @@ public class DiscoveryService {
     @Transactional
     public List<ClassificationEntity> scan(Long dataSourceId, String schemaName, Set<String> selectedTypes,
                                            Set<String> selectedTables, ScanProgress progress) {
-        DataSourceEntity ds = dataSources.get(dataSourceId);
+        DataSourceEntity ds = dataSources.getSourceCapable(dataSourceId);
         List<ClassificationEntity> found = new ArrayList<>();
         ScanProgress scanProgress = progress == null ? new ScanProgress() {} : progress;
 
@@ -192,7 +192,7 @@ public class DiscoveryService {
     }
 
     public List<String> validateScanScope(Long dataSourceId, String schemaName, Set<String> selectedTables) {
-        DataSourceEntity ds = dataSources.get(dataSourceId);
+        DataSourceEntity ds = dataSources.getSourceCapable(dataSourceId);
         try (Connection c = connections.openPooled(ds)) {
             String schema = DataSourceService.normalizeSchema(c, schemaName);
             return List.copyOf(selectScanTables(scannableTables(c, schema), normalizeNames(selectedTables), schema));

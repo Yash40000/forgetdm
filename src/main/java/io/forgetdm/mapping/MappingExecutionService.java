@@ -19,6 +19,8 @@ import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVPrinter;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.BufferedWriter;
 import java.io.OutputStreamWriter;
@@ -82,8 +84,19 @@ public class MappingExecutionService {
         Long runId = run.getId();
         audit.record(actor(), "MAPPING_RUN_QUEUED", "MAPPING", "MAPPING_RUN", String.valueOf(runId),
                 mapping.getName(), "SUCCESS", "version=" + version, null);
-        executor.submit(() -> execute(runId));
+        submitAfterCommit(runId);
         return run;
+    }
+
+    private void submitAfterCommit(Long runId) {
+        Runnable submit = () -> executor.submit(() -> execute(runId));
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { submit.run(); }
+            });
+        } else {
+            submit.run();
+        }
     }
 
     public List<MappingRunEntity> list() {
@@ -106,8 +119,31 @@ public class MappingExecutionService {
         requirePayloadAccess(run);
         if (Set.of("COMPLETED", "FAILED", "CANCELED").contains(run.getStatus())) return run;
         run.setCancelRequested(true); run.setMessage("Cancellation requested; current database batch will finish safely");
-        audit.log(actor(), "MAPPING_RUN_CANCEL_REQUESTED", "run=" + id);
+        MappingEntity mapping = mappings.get(run.getMappingId());
+        audit.record(actor(), "MAPPING_RUN_CANCEL_REQUESTED", "CANCEL", "MAPPING_RUN", String.valueOf(id),
+                mapping.getName(), "SUCCESS", "Mapping cancellation requested", null);
         return runs.save(run);
+    }
+
+    @Transactional
+    public MappingRunEntity retry(Long id) {
+        MappingRunEntity previous = get(id);
+        requirePayloadAccess(previous);
+        if (!Set.of("FAILED", "CANCELED").contains(previous.getStatus())) {
+            throw ApiException.bad("Only failed or canceled mapping runs can be retried");
+        }
+        try {
+            MappingRunEntity retry = start(previous.getMappingId(), json.readTree(previous.getRequestJson()));
+            MappingEntity mapping = mappings.get(previous.getMappingId());
+            audit.record(actor(), "MAPPING_RUN_RETRIED", "MAPPING", "MAPPING_RUN", String.valueOf(retry.getId()),
+                    mapping.getName(), "SUCCESS", "Created retry attempt",
+                    "{\"previousRunId\":" + previous.getId() + "}");
+            return retry;
+        } catch (ApiException e) {
+            throw e;
+        } catch (Exception e) {
+            throw ApiException.bad("Stored mapping request cannot be retried: " + safeError(e));
+        }
     }
 
     public InputStreamDownload output(Long id) {
@@ -216,6 +252,11 @@ public class MappingExecutionService {
         MappingEntity mapping = mappings.get(run.getMappingId());
         try {
             update(run, "RUNNING", "VALIDATE", 5, "Validating immutable mapping version");
+            run = get(runId);
+            run.setStartedAt(Instant.now());
+            runs.save(run);
+            audit.record(run.getCreatedBy(), "MAPPING_RUN_STARTED", "MAPPING", "MAPPING_RUN", String.valueOf(runId),
+                    mapping.getName(), "SUCCESS", "Mapping execution started", null);
             JsonNode spec = json.readTree(mapping.getSpecJson());
             if (spec.path("sources").isArray() && !spec.path("sources").isEmpty()) executeV2(run, spec);
             else executeLegacy(run, spec);
@@ -232,7 +273,8 @@ public class MappingExecutionService {
         } catch (Canceled e) {
             run = get(runId); run.setStatus("CANCELED"); run.setStage("CANCELED");
             run.setMessage("Canceled safely; active target transaction was rolled back"); run.setFinishedAt(Instant.now()); runs.save(run);
-            audit.log(run.getCreatedBy(), "MAPPING_RUN_CANCELED", "run=" + runId);
+            audit.record(run.getCreatedBy(), "MAPPING_RUN_CANCELED", "CANCEL", "MAPPING_RUN", String.valueOf(runId),
+                    mapping.getName(), "SUCCESS", "Mapping execution canceled safely", null);
         } catch (Exception e) {
             run = get(runId); run.setStatus("FAILED"); run.setStage("FAILED");
             run.setMessage("Execution failed"); run.setErrorMessage(safeError(e)); run.setFinishedAt(Instant.now()); runs.save(run);

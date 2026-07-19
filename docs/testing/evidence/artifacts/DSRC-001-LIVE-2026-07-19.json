@@ -1,0 +1,54 @@
+{
+    "story":  "DSRC-001",
+    "executedAt":  "2026-07-19T14:55:06.4969804Z",
+    "baseUrl":  "http://localhost:8099",
+    "passed":  9,
+    "failed":  0,
+    "results":  [
+                    {
+                        "case":  "DSRC-001-07 migration",
+                        "result":  "PASS",
+                        "detail":  "V64 succeeded and lock_version is non-null"
+                    },
+                    {
+                        "case":  "DSRC-001-01 version token",
+                        "result":  "PASS",
+                        "detail":  "Create response exposes a non-secret version token"
+                    },
+                    {
+                        "case":  "DSRC-001-07 stale update",
+                        "result":  "PASS",
+                        "detail":  "Session B received sanitized 409 and did not overwrite session A"
+                    },
+                    {
+                        "case":  "DSRC-001-07 missing version",
+                        "result":  "PASS",
+                        "detail":  "Versionless update was rejected before save"
+                    },
+                    {
+                        "case":  "DSRC-001-04 target-only discovery",
+                        "result":  "PASS",
+                        "detail":  "Rejected before a discovery job was created"
+                    },
+                    {
+                        "case":  "DSRC-001-04 source-only provision target",
+                        "result":  "PASS",
+                        "detail":  "Rejected before a provisioning job was persisted or queued"
+                    },
+                    {
+                        "case":  "DSRC-001-04 target-only provision source",
+                        "result":  "PASS",
+                        "detail":  "Rejected before a provisioning job was persisted or queued"
+                    },
+                    {
+                        "case":  "DSRC-001-04 BOTH as source",
+                        "result":  "PASS",
+                        "detail":  "BOTH completed a live one-table discovery scan"
+                    },
+                    {
+                        "case":  "DSRC-001-04 BOTH as target",
+                        "result":  "PASS",
+                        "detail":  "BOTH passed target preflight and entered execution"
+                    }
+                ]
+}

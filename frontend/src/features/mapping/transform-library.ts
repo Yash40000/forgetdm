@@ -64,7 +64,7 @@ export function compileSpec(spec: MappingSpec, dataSources: DataSource[]): Mappi
   const groups = array<Record<string, unknown>>(router?.groups).filter((group) => text(group.target));
   if (router && groups.length && spec.target.type === 'DATABASE' && spec.target.dataSourceId) {
     const explicit = groups.map((group) => text(group.condition)).filter(Boolean);
-    const statements = groups.map((group, index) => {
+    const statements = groups.map((group) => {
       const condition = text(group.condition) || (explicit.length ? explicit.map((item) => `(${item}) IS NOT TRUE`).join(' AND ') : '1=1');
       const transforms = (spec.transforms || []).map((transform) => transform.id === router.id ? { ...transform, groups: [{ ...group, condition }], active: 0 } : transform);
       const routeSql = compileSql({ ...spec, transforms, sqlOverride: undefined }, dialect);

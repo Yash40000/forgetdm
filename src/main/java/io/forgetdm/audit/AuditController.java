@@ -8,6 +8,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
@@ -80,6 +82,13 @@ public class AuditController {
         return audit.verifyChain();
     }
 
+    @PostMapping("/reanchor")
+    public Map<String, Object> reanchor(@RequestBody ReanchorRequest request) {
+        return audit.reanchor(request == null ? null : request.reason());
+    }
+
+    public record ReanchorRequest(String reason) {}
+
     /** CSV export of the filtered result set (compliance evidence). */
     @GetMapping("/export.csv")
     public ResponseEntity<String> export(
@@ -91,9 +100,25 @@ public class AuditController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
+        final int EXPORT_LIMIT = 5000;
         Page<AuditEventEntity> result = repo.search(
                 blank(actor), blank(action), blank(category), blank(outcome), blank(resourceType),
-                fromOrMin(from), toOrMax(to), blank(q), PageRequest.of(0, 5000));
+                fromOrMin(from), toOrMax(to), blank(q), PageRequest.of(0, EXPORT_LIMIT));
+        long matched = result.getTotalElements();
+        int exported = result.getContent().size();
+        boolean truncated = matched > exported;
+
+        // DEF-0012: bulk extraction of the security record must itself be recorded, and recorded
+        // BEFORE delivery, so an interrupted or refused download still leaves a trace.
+        // Outcome stays within the modelled SUCCESS/FAILURE domain (the facets expose only those);
+        // truncation is carried in the detail and the metadata instead of inventing a third value.
+        audit.record(null, "AUDIT_EXPORTED", "SECURITY", "audit", null, "audit-trail.csv",
+                "SUCCESS",
+                "Exported " + exported + " of " + matched + " matching events (csv)"
+                        + (truncated ? " - TRUNCATED at limit " + EXPORT_LIMIT : ""),
+                "{\"format\":\"csv\",\"exported\":" + exported + ",\"matched\":" + matched
+                        + ",\"limit\":" + EXPORT_LIMIT + ",\"truncated\":" + truncated + "}");
+
         StringBuilder csv = new StringBuilder("seq,timestamp,actor,ip,category,action,outcome,severity,resource_type,resource_id,resource_name,detail\n");
         for (AuditEventEntity e : result.getContent()) {
             csv.append(csv(e.getSeq())).append(',')
@@ -109,8 +134,19 @@ public class AuditController {
                .append(csv(e.getResourceName())).append(',')
                .append(csv(e.getDetail())).append('\n');
         }
+        // DEF-0011: a truncated export must never be mistakable for a complete one. Signal it both
+        // in headers (for tooling) and as a trailing comment row (for a human opening the file).
+        if (truncated) {
+            csv.append("# TRUNCATED: exported ").append(exported).append(" of ").append(matched)
+               .append(" matching events (limit ").append(EXPORT_LIMIT)
+               .append("). Narrow the filter or page the API for a complete extract.\n");
+        }
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"audit-trail.csv\"")
+                .header("X-Total-Count", String.valueOf(matched))
+                .header("X-Exported-Count", String.valueOf(exported))
+                .header("X-Export-Limit", String.valueOf(EXPORT_LIMIT))
+                .header("X-Truncated", String.valueOf(truncated))
                 .contentType(MediaType.valueOf("text/csv"))
                 .body(csv.toString());
     }

@@ -183,7 +183,10 @@ public class UnstructuredMaskingService {
         requirePayloadAccess(job);
         if (Set.of("COMPLETED", "FAILED", "CANCELED").contains(job.getStatus())) return job;
         job.setCancelRequested(true); job.setMessage("Cancellation requested; the current extraction stage will stop at its safe boundary");
-        return jobs.save(job);
+        UnstructuredJobEntity saved = jobs.save(job);
+        audit.record(actor(), "UNSTRUCTURED_JOB_CANCEL_REQUESTED", "CANCEL", "UNSTRUCTURED_JOB", String.valueOf(id),
+                job.getOriginalFilename(), "SUCCESS", "Cancellation requested", null);
+        return saved;
     }
 
     public Download output(Long id) {
@@ -209,8 +212,12 @@ public class UnstructuredMaskingService {
         try {
             UnstructuredJobEntity job = getJob(id);
             update(job, "RUNNING", "DETECT", 5, "Detecting content type without trusting the filename");
+            job = getJob(id);
+            audit.record(job.getCreatedBy(), "UNSTRUCTURED_JOB_STARTED", "MASKING", "UNSTRUCTURED_JOB", String.valueOf(id),
+                    job.getOriginalFilename(), "SUCCESS", "Unstructured masking worker started", null);
             UnstructuredProfileEntity profile = getProfile(job.getProfileId());
             List<Rule> rules = parseRules(profile.getRulesJson());
+            checkCanceled(id);
             String mediaType = detectMediaType(job);
             job = getJob(id); job.setDetectedFormat(mediaType); jobs.save(job);
             checkCanceled(id);
@@ -232,6 +239,8 @@ public class UnstructuredMaskingService {
         } catch (Canceled e) {
             UnstructuredJobEntity job = getJob(id); job.setStatus("CANCELED"); job.setStage("CANCELED"); job.setMessage("Canceled; encrypted source and incomplete output were destroyed");
             job.setFinishedAt(Instant.now()); jobs.save(job); vault.delete(job.getSourceStorageKey()); vault.delete(job.getOutputStorageKey()); clearSource(job);
+            audit.record(job.getCreatedBy(), "UNSTRUCTURED_JOB_CANCELED", "CANCEL", "UNSTRUCTURED_JOB", String.valueOf(id),
+                    job.getOriginalFilename(), "SUCCESS", "Encrypted payloads destroyed", null);
         } catch (Throwable e) {
             failJob(id, e, "Masking failed closed; no unmasked output was released");
         }
