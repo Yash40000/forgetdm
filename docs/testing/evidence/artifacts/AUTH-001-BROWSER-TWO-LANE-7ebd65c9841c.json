@@ -1,0 +1,1672 @@
+{
+    "schemaVersion":  "1.0",
+    "caseId":  "AUTH-001-01",
+    "executedAtUtc":  "2026-07-19T19:46:08.2242393+00:00",
+    "result":  "PASS",
+    "browserChannel":  "msedge",
+    "serverMode":  "next-start-optimized",
+    "buildIdentity":  {
+                          "commit":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916",
+                          "sourceTreeSha256":  "7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af",
+                          "nextBuildId":  "Pz7dP9KLBo_cwPoXVUmGl"
+                      },
+    "lanes":  [
+                  {
+                      "schemaVersion":  "1.0",
+                      "caseId":  "AUTH-001-01",
+                      "lane":  "HTTP",
+                      "executedAtUtc":  "2026-07-19T19:46:01.581Z",
+                      "baseOrigin":  "http://127.0.0.1:3101",
+                      "browserChannel":  "msedge",
+                      "serverMode":  "next-start-optimized",
+                      "buildIdentity":  {
+                                            "commit":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916",
+                                            "sourceTreeSha256":  "7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af",
+                                            "nextBuildId":  "Pz7dP9KLBo_cwPoXVUmGl"
+                                        },
+                      "protectedRouteRedirected":  true,
+                      "returnedToRequestedRoute":  true,
+                      "responseBodyInspection":  {
+                                                     "inspectedCount":  57,
+                                                     "unreadableCount":  0,
+                                                     "boundedCaptureExceeded":  false,
+                                                     "actualUsernameChecked":  true,
+                                                     "expectedPrincipalUsernameObserved":  true,
+                                                     "unexpectedUsernameExposureDetected":  false,
+                                                     "actualPasswordChecked":  true,
+                                                     "passwordExposureDetected":  false,
+                                                     "actualSessionCookieChecked":  true,
+                                                     "sessionCookieExposureDetected":  false
+                                                 },
+                      "browserExposure":  {
+                                              "inspectedUrlCount":  221,
+                                              "inspectedConsoleMessageCount":  1,
+                                              "inspectedStorageEntryCount":  3,
+                                              "actualUsernameChecked":  true,
+                                              "actualPasswordChecked":  true,
+                                              "actualSessionCookieChecked":  true,
+                                              "urlExposureDetected":  false,
+                                              "storageSensitiveKeyDetected":  false,
+                                              "storageValueExposureDetected":  false,
+                                              "consoleExposureDetected":  false
+                                          },
+                      "sessionCookie":  {
+                                            "present":  true,
+                                            "httpOnly":  true,
+                                            "secureMatchesLane":  true,
+                                            "pathIsRoot":  true,
+                                            "sameSiteIsLax":  true,
+                                            "positiveFiniteLifetime":  true
+                                        },
+                      "retainedEvidenceSecretScan":  {
+                                                         "actualUsernameChecked":  true,
+                                                         "actualPasswordChecked":  true,
+                                                         "actualSessionCookieChecked":  true,
+                                                         "exposureDetected":  false
+                                                     },
+                      "networkEvents":  [
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/datascope",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1z_lg8_5mlut1.css",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2od4o208dj0j3.css",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2_f7onw_b1cqk.css",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/39fgd6pk3g6t8.css",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/media/70bc3e132a0a741e-s.p.3t6q91iet4nsy.woff2",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2zjueh7t2vecu.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2a6u__jnmx9y3.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0n-zjr76qg7uq.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/media/83afe278b6a6bb3c-s.p.2bn3s6zvc0dyp.woff2",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/27jktro2p5rq9.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3avu313c4f4ax.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/turbopack-2gmg_iv84usve.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1soyu52vios1l.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0iec5q4ack_04.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3bnwykz5h2bhp.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1_1ha9aerqr1f.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/14mrh2-p_w84d.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3wg99l5r7lzhg.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/18z5n0ragthin.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0nslg3jqjwzhk.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1vp43kxb_yruo.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0n4epmh9qwrlp.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/371pywebl962u.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/23ulw4xiu2ao2.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/29ok0l9dr3ri5.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/api/auth/me",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/login",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3d5eywy6s8ty0.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "POST",
+                                                "path":  "/api/auth/login",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/datascope",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/api/datasources",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/api/policies",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/api/datascope/saved-jobs",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/api/datasets",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/synthetic",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/data-catalog",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/mapping-designer",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/unstructured-masking",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-policies",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-scripts",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/pii-discovery",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-studio",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/business-entities",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/intelligence-store",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/datasources",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/synthetic",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/synthetic",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/synthetic",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/synthetic",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/mapping-designer",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/mapping-designer",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/mapping-designer",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/data-catalog",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/data-catalog",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/20gyfretu67cd.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/data-catalog",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2xoejkxjxds_n.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/unstructured-masking",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3op9atxg-i12i.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3nlk70q017g1d.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/unstructured-masking",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/unstructured-masking",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1zhd5fcag7o8r.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-policies",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-policies",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-policies",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0d2drl-ettjwu.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3_tlfbm88x0hg.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-scripts",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/11391a2fdzu_6.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-scripts",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-scripts",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3cuzj8qxg56dr.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/13tigh7h4pgu7.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3efxm95gro8z-.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-studio",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-studio",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-studio",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/pii-discovery",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0-mttsgn8osnl.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3vca9gwe4em1v.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1ujq6nnrj63uz.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2azvltzyuwv2c.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/pii-discovery",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/pii-discovery",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/intelligence-store",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/intelligence-store",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/intelligence-store",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0o9ortqt6wgjn.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/15xodbcir3_ud.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/business-entities",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/business-entities",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/37y6yvh9poumo.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/business-entities",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1g_i98nbpuiom.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2b3p7u5o1j6hz.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/datasources",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/datasources",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/14skh9inu5eq-.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/datasources",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3bzje-1718o4v.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1w1c2vhhqgwbc.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2hm66kof9kjwh.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0f97dkv9rou6q.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2m6y_3zan_lgl.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/22xsamn9ll92k.js",
+                                                "status":  200,
+                                                "lane":  "HTTP",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            }
+                                        ],
+                      "screenshot":  "AUTH-001-BROWSER-TWO-LANE-7ebd65c9841c-http.png",
+                      "productionTrustGate":  "Local HTTPS proves physical TLS termination with an ephemeral self-signed certificate. Production CA chain, ingress policy, and HSTS remain deployment evidence gates."
+                  },
+                  {
+                      "schemaVersion":  "1.0",
+                      "caseId":  "AUTH-001-01",
+                      "lane":  "HTTPS",
+                      "executedAtUtc":  "2026-07-19T19:46:06.905Z",
+                      "baseOrigin":  "https://127.0.0.1:3443",
+                      "browserChannel":  "msedge",
+                      "serverMode":  "next-start-optimized",
+                      "buildIdentity":  {
+                                            "commit":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916",
+                                            "sourceTreeSha256":  "7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af",
+                                            "nextBuildId":  "Pz7dP9KLBo_cwPoXVUmGl"
+                                        },
+                      "protectedRouteRedirected":  true,
+                      "returnedToRequestedRoute":  true,
+                      "responseBodyInspection":  {
+                                                     "inspectedCount":  57,
+                                                     "unreadableCount":  0,
+                                                     "boundedCaptureExceeded":  false,
+                                                     "actualUsernameChecked":  true,
+                                                     "expectedPrincipalUsernameObserved":  true,
+                                                     "unexpectedUsernameExposureDetected":  false,
+                                                     "actualPasswordChecked":  true,
+                                                     "passwordExposureDetected":  false,
+                                                     "actualSessionCookieChecked":  true,
+                                                     "sessionCookieExposureDetected":  false
+                                                 },
+                      "browserExposure":  {
+                                              "inspectedUrlCount":  221,
+                                              "inspectedConsoleMessageCount":  1,
+                                              "inspectedStorageEntryCount":  3,
+                                              "actualUsernameChecked":  true,
+                                              "actualPasswordChecked":  true,
+                                              "actualSessionCookieChecked":  true,
+                                              "urlExposureDetected":  false,
+                                              "storageSensitiveKeyDetected":  false,
+                                              "storageValueExposureDetected":  false,
+                                              "consoleExposureDetected":  false
+                                          },
+                      "sessionCookie":  {
+                                            "present":  true,
+                                            "httpOnly":  true,
+                                            "secureMatchesLane":  true,
+                                            "pathIsRoot":  true,
+                                            "sameSiteIsLax":  true,
+                                            "positiveFiniteLifetime":  true
+                                        },
+                      "retainedEvidenceSecretScan":  {
+                                                         "actualUsernameChecked":  true,
+                                                         "actualPasswordChecked":  true,
+                                                         "actualSessionCookieChecked":  true,
+                                                         "exposureDetected":  false
+                                                     },
+                      "networkEvents":  [
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/datascope",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2od4o208dj0j3.css",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/media/70bc3e132a0a741e-s.p.3t6q91iet4nsy.woff2",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/39fgd6pk3g6t8.css",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2_f7onw_b1cqk.css",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1z_lg8_5mlut1.css",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/media/83afe278b6a6bb3c-s.p.2bn3s6zvc0dyp.woff2",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2zjueh7t2vecu.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2a6u__jnmx9y3.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/27jktro2p5rq9.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0iec5q4ack_04.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0n-zjr76qg7uq.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1_1ha9aerqr1f.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3avu313c4f4ax.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/turbopack-2gmg_iv84usve.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3bnwykz5h2bhp.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/14mrh2-p_w84d.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1soyu52vios1l.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3wg99l5r7lzhg.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/18z5n0ragthin.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0nslg3jqjwzhk.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1vp43kxb_yruo.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/371pywebl962u.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/23ulw4xiu2ao2.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0n4epmh9qwrlp.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/29ok0l9dr3ri5.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/api/auth/me",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/login",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3d5eywy6s8ty0.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "POST",
+                                                "path":  "/api/auth/login",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/datascope",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/api/datasources",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/api/datascope/saved-jobs",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/api/policies",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/api/datasets",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/mapping-designer",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/synthetic",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/data-catalog",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/unstructured-masking",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-policies",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-scripts",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-studio",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/pii-discovery",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/intelligence-store",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/business-entities",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/datasources",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/synthetic",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/synthetic",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/synthetic",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/synthetic",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/mapping-designer",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/mapping-designer",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/mapping-designer",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/data-catalog",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/20gyfretu67cd.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/data-catalog",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/data-catalog",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3nlk70q017g1d.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2xoejkxjxds_n.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3op9atxg-i12i.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/unstructured-masking",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/unstructured-masking",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/unstructured-masking",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3_tlfbm88x0hg.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1zhd5fcag7o8r.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-policies",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/11391a2fdzu_6.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0d2drl-ettjwu.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-policies",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-policies",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-scripts",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-scripts",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-scripts",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/13tigh7h4pgu7.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3cuzj8qxg56dr.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3efxm95gro8z-.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-studio",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-studio",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/masking-studio",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3vca9gwe4em1v.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0-mttsgn8osnl.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/pii-discovery",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/pii-discovery",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/pii-discovery",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1ujq6nnrj63uz.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2azvltzyuwv2c.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/intelligence-store",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0o9ortqt6wgjn.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/intelligence-store",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/intelligence-store",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/15xodbcir3_ud.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/business-entities",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/business-entities",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/business-entities",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1g_i98nbpuiom.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/37y6yvh9poumo.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2b3p7u5o1j6hz.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/14skh9inu5eq-.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/datasources",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/datasources",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/datasources",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/3bzje-1718o4v.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/1w1c2vhhqgwbc.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2hm66kof9kjwh.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/0f97dkv9rou6q.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/2m6y_3zan_lgl.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            },
+                                            {
+                                                "method":  "GET",
+                                                "path":  "/_next/static/chunks/22xsamn9ll92k.js",
+                                                "status":  200,
+                                                "lane":  "HTTPS",
+                                                "buildIdentity":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916:7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af:Pz7dP9KLBo_cwPoXVUmGl"
+                                            }
+                                        ],
+                      "screenshot":  "AUTH-001-BROWSER-TWO-LANE-7ebd65c9841c-https.png",
+                      "productionTrustGate":  "Local HTTPS proves physical TLS termination with an ephemeral self-signed certificate. Production CA chain, ingress policy, and HSTS remain deployment evidence gates."
+                  }
+              ],
+    "productionTrustGate":  "Local HTTPS proves physical TLS termination with an ephemeral self-signed certificate. Production CA chain, ingress policy, and HSTS remain deployment evidence gates."
+}

@@ -1,12 +1,12 @@
 # AUTH-001 - Valid Login, Logout, and Session Identity - Evidence
 
 **Story:** AUTH-001 (P0, authentication contract)
-**Build under test:** verification worktree based on `42e0d39` (checkpoint pending)
+**Build under test:** committed source checkpoint `9f9ca023552ed2d0a807a1119ac7c2e8ba20c916`
 **Backend:** ForgeTDM verification instance at `http://localhost:8099`
 **Frontend:** optimized Next.js build served locally and exercised with Microsoft Edge through Playwright
 **Metadata database:** local PostgreSQL 17 fixture on port 5433
 **Executed:** 2026-07-18 and 2026-07-19
-**Execution status:** READY FOR INDEPENDENT RE-REVIEW - all 10 cases pass on both required physical transports
+**Execution status:** COMPLETE - all 10 cases pass on both required physical transports and independent review accepted the evidence
 
 ## Acceptance Results
 
@@ -25,17 +25,14 @@
 
 ## Retained Artifacts
 
-- `docs/testing/evidence/artifacts/AUTH-001-BROWSER-TWO-LANE-716db6d1b4cb.json` - final sanitized two-lane Edge evidence, bound to Git commit, frontend source SHA-256, optimized Next build ID, origin, and transport.
-- `docs/testing/evidence/artifacts/AUTH-001-BROWSER-TWO-LANE-716db6d1b4cb.junit.xml` - 2 browser tests passed, zero failures/errors/skips.
-- `docs/testing/evidence/artifacts/AUTH-001-BROWSER-TWO-LANE-716db6d1b4cb-http.png` and `-https.png` - settled DataScope screenshots from each physical origin.
-- `frontend/test-results/auth-001/artifacts/` - post-login screenshot and sanitized Playwright attachment; no trace or video containing credentials is retained.
+- `docs/testing/evidence/artifacts/AUTH-001-BROWSER-TWO-LANE-7ebd65c9841c.json` - final sanitized two-lane Edge evidence, bound to Git commit `9f9ca02`, frontend source SHA-256, optimized Next build ID, origin, transport, and the exact retained screenshot names.
+- `docs/testing/evidence/artifacts/AUTH-001-BROWSER-TWO-LANE-7ebd65c9841c.junit.xml` - 2 browser tests passed, zero failures/errors/skips.
+- `docs/testing/evidence/artifacts/AUTH-001-BROWSER-TWO-LANE-7ebd65c9841c-http.png` and `-https.png` - settled DataScope screenshots from each physical origin.
 - `docs/testing/evidence/artifacts/AUTH-001-ACCEPTANCE-2026-07-19.json` - sanitized cases 02-10, including physical localhost TLS, exact identity parity, session replay, storage, bounded logs, and audit assertions.
-- `docs/testing/evidence/artifacts/AUTH-001-STORAGE-EXPIRY-2026-07-19.json` - earlier focused storage/expiry corroboration.
-- `docs/testing/evidence/artifacts/AUTH-001-LIVE-2026-07-19.txt` - reusable live pack exit status.
 - `docs/testing/run-auth-001-acceptance.ps1` - disposable comprehensive acceptance runner; credentials are accepted only through explicit parameters or `FORGETDM_TEST_*` variables.
 - `docs/testing/run-auth-001-storage-expiry.ps1` - focused expiry and at-rest assertion runner.
 - `frontend/e2e/auth-001/login-session.spec.ts` and `frontend/playwright.auth001.config.ts` - browser acceptance runner with traces/video disabled and no credential defaults.
-- `docs/testing/evidence/artifacts/READINESS-CHECKPOINT-2026-07-19.json` - complete backend, frontend build/lint, focused, and browser regression summary.
+- `docs/testing/evidence/artifacts/READINESS-CHECKPOINT-2026-07-19.json` - machine-readable regression and acceptance summary for source checkpoint `9f9ca02`.
 
 ## Defects Closed
 
@@ -53,4 +50,4 @@ Physical HTTPS application behavior is directly proven with a disposable local c
 
 ## Exit Decision
 
-All ten cases now satisfy the explicit physical HTTP/HTTPS requirement. AUTH-001 remains review-pending until an independent reviewer accepts the complete evidence set; production CA-chain, ingress, rotation, and HSTS remain deployment gates rather than application pass claims.
+All ten cases satisfy the explicit physical HTTP/HTTPS requirement against committed source checkpoint `9f9ca02`. Independent review found no functional or security blocker and accepted AUTH-001 for completion. Production CA-chain, ingress, rotation, and HSTS remain deployment gates rather than application pass claims.

@@ -3,13 +3,13 @@
 **Priority:** P0
 
 **Lane:** All
-**Execution status:** READY FOR INDEPENDENT RE-REVIEW - all 10 cases passed on required physical HTTP and HTTPS lanes.
+**Execution status:** COMPLETE - 10/10 cases passed on required physical HTTP and HTTPS lanes against committed checkpoint `9f9ca02`; independent review accepted the evidence.
 
 - The strengthened Edge/Playwright login creates a unique disposable user, proves protected-route return navigation, scans actual username/password/session-token values, and retains sanitized network metadata plus settled screenshots for both browser transports.
 - The comprehensive disposable runner now executes every assertion in cases 02-10 against separate physical HTTP and HTTPS Spring servers, including exact identity parity, deliberate cookie replay, nonempty bounded logs, complete token canaries, and lane-correlated audit events.
 - DEF-0030 fixed the stale unauthenticated client cache that the browser acceptance test exposed after an otherwise successful login.
 - Production CA-chain, ingress, rotation, and HSTS checks remain an explicit deployment gate; application behavior under physical TLS is proven.
-- Story status remains review-pending until an independent reviewer accepts every claim against the retained artifacts and implementation.
+- Independent review found no functional or security blocker. Production CA-chain, ingress, rotation, and HSTS remain deployment certification gates only.
 Evidence: `docs/testing/evidence/AUTH-001-EVIDENCE.md`
 
 ## Objective

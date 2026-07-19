@@ -1,0 +1,10 @@
+<testsuites id="" name="" tests="2" failures="0" skipped="0" errors="0" time="10.92666">
+<testsuite name="login-session.spec.ts" timestamp="2026-07-19T19:45:56.686Z" hostname="auth001-http-edge" tests="1" failures="0" skipped="0" time="3.442" errors="0">
+<testcase name="AUTH-001 real browser login evidence › AUTH-001-01: protected route returns after UI sign-in without client credential exposure" classname="login-session.spec.ts" time="3.442">
+</testcase>
+</testsuite>
+<testsuite name="login-session.spec.ts" timestamp="2026-07-19T19:45:56.686Z" hostname="auth001-https-edge" tests="1" failures="0" skipped="0" time="3.261" errors="0">
+<testcase name="AUTH-001 real browser login evidence › AUTH-001-01: protected route returns after UI sign-in without client credential exposure" classname="login-session.spec.ts" time="3.261">
+</testcase>
+</testsuite>
+</testsuites>

@@ -16,7 +16,7 @@ This directory contains the executable specifications for the ten stories curren
 
 | Story | Specification | Primary gate | Cases | Status (2026-07-19) |
 |---|---|---:|---:|---|
-| AUTH-001 | [Valid login, logout, and session identity](AUTH-001.md) | Authentication contract | 10 | 10/10 pass on physical HTTP + HTTPS; independent re-review pending |
+| AUTH-001 | [Valid login, logout, and session identity](AUTH-001.md) | Authentication contract | 10 | COMPLETE - 10/10 pass on physical HTTP + HTTPS at `9f9ca02`; independently accepted |
 | AUTH-003 | [Expired-session recovery](AUTH-003.md) | Safe UI recovery | 8 | COMPLETE - 8/8 directly proven and independently accepted |
 | RBAC-001 | [Role and group permission matrix](RBAC-001.md) | Authorization coverage | 10 | 10/10 executed; 9 passed and 1 failed then fixed |
 | RBAC-002 | [Cross-group isolation](RBAC-002.md) | Object-level isolation | 9 | Executed; S1 found, fixed, and reverified |

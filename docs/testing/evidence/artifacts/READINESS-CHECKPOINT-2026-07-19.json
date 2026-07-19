@@ -1,0 +1,60 @@
+{
+  "executedAt": "2026-07-19",
+  "sourceCommit": "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916",
+  "sourceWorktreeCleanForBackendAcceptance": true,
+  "backendRegression": {
+    "command": "mvn -q test",
+    "suites": 70,
+    "tests": 291,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "skipReason": "SyntheticScenarioPackTest external scenario fixture",
+    "includes": "AuthControllerLifecycleIntegrationTest (2 passing MVC lifecycle cases)"
+  },
+  "focusedBackend": {
+    "suites": [
+      "AuthControllerLifecycleIntegrationTest",
+      "Auth003FrontendBehaviorTest",
+      "ConnectionFailureClassificationTest",
+      "DiscoveryScopeValidationTest",
+      "DiscoveryFrontendBehaviorTest"
+    ],
+    "tests": 19,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "frontend": {
+    "optimizedBuild": "PASS",
+    "typescript": "PASS",
+    "eslint": "PASS"
+  },
+  "auth001Browser": {
+    "engine": "Microsoft Edge via Playwright",
+    "tests": 2,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "lanes": ["HTTP", "HTTPS"],
+    "sourceTreeSha256": "7ebd65c9841c45f55d747e7e4694ecb896a046d36f05830639d844d4de4ea1af",
+    "sanitizedArtifact": "AUTH-001-BROWSER-TWO-LANE-7ebd65c9841c.json",
+    "screenshots": [
+      "AUTH-001-BROWSER-TWO-LANE-7ebd65c9841c-http.png",
+      "AUTH-001-BROWSER-TWO-LANE-7ebd65c9841c-https.png"
+    ]
+  },
+  "auth001BackendAcceptance": {
+    "cases": 9,
+    "failures": 0,
+    "lanes": ["HTTP", "HTTPS"],
+    "allCasesExecutedOnBothPhysicalLanes": true,
+    "worktreeDirty": false,
+    "forbiddenValuesChecked": 18,
+    "auditSecretMatches": 0,
+    "sanitizedArtifact": "AUTH-001-ACCEPTANCE-2026-07-19.json"
+  },
+  "diffCheck": "PASS",
+  "credentialsRetained": false,
+  "independentReview": "PASS - no functional or security blocker; deployment-only TLS infrastructure gates retained"
+}

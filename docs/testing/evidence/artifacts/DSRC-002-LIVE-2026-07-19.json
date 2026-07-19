@@ -1,0 +1,21 @@
+{
+  "story": "DSRC-002",
+  "executedAt": "2026-07-19",
+  "lane": "isolated H2 saved/transient source plus PostgreSQL fault injection",
+  "result": "COMPLETE WITH HARD-PASS EXCEPTIONS",
+  "liveCases": [
+    {"case": "DSRC-002-01", "result": "PASS", "detail": "Saved H2 source returned HTTP 200, product H2, elapsedMs 614."},
+    {"case": "DSRC-002-02", "result": "PASS", "detail": "Transient H2 test returned HTTP 200; source inventory remained 1 to 1; no transient source persisted."},
+    {"case": "DSRC-002-03", "result": "PASS", "detail": "Wrong H2 password returned HTTP 400 [AUTH]; no fixture secret or stack trace was exposed."},
+    {"case": "DSRC-002-04", "result": "PASS", "detail": "DNS returned HTTP 400 [DNS] in 313 ms; refused port returned HTTP 400 [NETWORK] in 22 ms."},
+    {"case": "DSRC-002-05", "result": "PASS", "detail": "Black-holed PostgreSQL endpoint returned HTTP 400 [TIMEOUT] in 8041 ms, within the configured 8 second budget."},
+    {"case": "DSRC-002-09", "result": "PASS", "detail": "Eight concurrent saved-source tests all returned HTTP 200 in 15492 ms; UI request sequencing prevents stale completion overwrite."},
+    {"case": "DSRC-002-10", "result": "PASS", "detail": "Saved H2 diagnostics returned HTTP 200, identified H2, and did not expose the fixture secret."}
+  ],
+  "hardPassExceptions": [
+    {"case": "DSRC-002-06", "reason": "No paired trusted and untrusted TLS JDBC endpoints are provisioned."},
+    {"case": "DSRC-002-07", "reason": "No endpoint has a certificate intentionally mismatched to its hostname."},
+    {"case": "DSRC-002-08", "reason": "No isolated valid low-privilege account is provisioned for metadata/table capability checks."}
+  ],
+  "cleanup": {"temporaryDataSources": 0, "temporaryH2Files": 0, "passed": true}
+}

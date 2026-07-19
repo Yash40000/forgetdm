@@ -1,0 +1,359 @@
+﻿{
+    "story":  "AUTH-001",
+    "executedAt":  "2026-07-19T19:44:31.5296241Z",
+    "scope":  "API, cookie, session, storage, audit, and bounded application logs across physical HTTP and HTTPS lanes for cases 02-10",
+    "case01":  "See independent Playwright browser artifact.",
+    "executionIdentity":  {
+                              "gitCommit":  "9f9ca023552ed2d0a807a1119ac7c2e8ba20c916",
+                              "worktreeDirty":  false,
+                              "runnerSha256":  "3BA91108FDC12A504DA41BD8E215B7C2BCD87683810CD883561DEAFED8EC88CA",
+                              "lanes":  [
+                                            {
+                                                "name":  "HTTP",
+                                                "baseOrigin":  "http://localhost:18442",
+                                                "physicalTransport":  true
+                                            },
+                                            {
+                                                "name":  "HTTPS",
+                                                "baseOrigin":  "https://localhost:18443",
+                                                "physicalTransport":  true
+                                            }
+                                        ]
+                          },
+    "cases":  {
+                  "case02":  {
+                                 "status":  "PASS",
+                                 "allPhysicalLanesPassed":  true,
+                                 "lanes":  {
+                                               "HTTP":  {
+                                                            "status":  "PASS",
+                                                            "loginHttpStatus":  200,
+                                                            "meHttpStatus":  200,
+                                                            "identityFieldsCompared":  [
+                                                                                           "username",
+                                                                                           "displayName",
+                                                                                           "roles",
+                                                                                           "groups",
+                                                                                           "permissions"
+                                                                                       ],
+                                                            "exactPrincipalMatch":  true,
+                                                            "expiryReturned":  true
+                                                        },
+                                               "HTTPS":  {
+                                                             "status":  "PASS",
+                                                             "loginHttpStatus":  200,
+                                                             "meHttpStatus":  200,
+                                                             "identityFieldsCompared":  [
+                                                                                            "username",
+                                                                                            "displayName",
+                                                                                            "roles",
+                                                                                            "groups",
+                                                                                            "permissions"
+                                                                                        ],
+                                                             "exactPrincipalMatch":  true,
+                                                             "expiryReturned":  true
+                                                         }
+                                           }
+                             },
+                  "case03":  {
+                                 "status":  "PASS",
+                                 "allPhysicalLanesPassed":  true,
+                                 "lanes":  {
+                                               "HTTP":  {
+                                                            "status":  "PASS",
+                                                            "contract":  {
+                                                                             "httpOnly":  true,
+                                                                             "pathRoot":  true,
+                                                                             "sameSiteLax":  true,
+                                                                             "secure":  false,
+                                                                             "secureAsRequired":  true,
+                                                                             "lifetimeSeconds":  43199,
+                                                                             "positiveFiniteLifetime":  true
+                                                                         },
+                                                            "transport":  "HTTP"
+                                                        },
+                                               "HTTPS":  {
+                                                             "status":  "PASS",
+                                                             "contract":  {
+                                                                              "httpOnly":  true,
+                                                                              "pathRoot":  true,
+                                                                              "sameSiteLax":  true,
+                                                                              "secure":  true,
+                                                                              "secureAsRequired":  true,
+                                                                              "lifetimeSeconds":  43199,
+                                                                              "positiveFiniteLifetime":  true
+                                                                          },
+                                                             "transport":  "HTTPS"
+                                                         }
+                                           },
+                                 "certificateBoundary":  "Disposable localhost certificate; production CA trust, ingress, rotation, and HSTS remain deployment gates."
+                             },
+                  "case04":  {
+                                 "status":  "PASS",
+                                 "allPhysicalLanesPassed":  true,
+                                 "lanes":  {
+                                               "HTTP":  {
+                                                            "status":  "PASS",
+                                                            "existingUserHttpStatus":  401,
+                                                            "unknownUserHttpStatus":  401,
+                                                            "sameResponseShape":  true,
+                                                            "sameSanitizedError":  true,
+                                                            "setCookieAbsent":  true,
+                                                            "sessionsCreated":  0,
+                                                            "existingMedianMs":  557,
+                                                            "unknownMedianMs":  539,
+                                                            "maxTimingRatio":  1.03
+                                                        },
+                                               "HTTPS":  {
+                                                             "status":  "PASS",
+                                                             "existingUserHttpStatus":  401,
+                                                             "unknownUserHttpStatus":  401,
+                                                             "sameResponseShape":  true,
+                                                             "sameSanitizedError":  true,
+                                                             "setCookieAbsent":  true,
+                                                             "sessionsCreated":  0,
+                                                             "existingMedianMs":  706,
+                                                             "unknownMedianMs":  696,
+                                                             "maxTimingRatio":  1.01
+                                                         }
+                                           }
+                             },
+                  "case05":  {
+                                 "status":  "PASS",
+                                 "allPhysicalLanesPassed":  true,
+                                 "lanes":  {
+                                               "HTTP":  {
+                                                            "status":  "PASS",
+                                                            "httpStatus":  401,
+                                                            "setCookieAbsent":  true,
+                                                            "sanitizedResponse":  true,
+                                                            "sessionsCreated":  0,
+                                                            "fixtureReactivated":  true
+                                                        },
+                                               "HTTPS":  {
+                                                             "status":  "PASS",
+                                                             "httpStatus":  401,
+                                                             "setCookieAbsent":  true,
+                                                             "sanitizedResponse":  true,
+                                                             "sessionsCreated":  0,
+                                                             "fixtureReactivated":  true
+                                                         }
+                                           }
+                             },
+                  "case06":  {
+                                 "status":  "PASS",
+                                 "allPhysicalLanesPassed":  true,
+                                 "lanes":  {
+                                               "HTTP":  {
+                                                            "status":  "PASS",
+                                                            "sessionPresentBeforeLogout":  true,
+                                                            "logoutHttpStatus":  200,
+                                                            "clearingCookieMaxAgeZero":  true,
+                                                            "clearingCookieHttpOnly":  true,
+                                                            "clearingCookiePathRoot":  true,
+                                                            "clearingCookieSameSiteLax":  true,
+                                                            "clearingCookieSecureAsRequired":  true,
+                                                            "deliberateOldCookieReplayHttpStatus":  401,
+                                                            "replayResponseSanitized":  true,
+                                                            "storedSessionRowsAfterLogout":  0
+                                                        },
+                                               "HTTPS":  {
+                                                             "status":  "PASS",
+                                                             "sessionPresentBeforeLogout":  true,
+                                                             "logoutHttpStatus":  200,
+                                                             "clearingCookieMaxAgeZero":  true,
+                                                             "clearingCookieHttpOnly":  true,
+                                                             "clearingCookiePathRoot":  true,
+                                                             "clearingCookieSameSiteLax":  true,
+                                                             "clearingCookieSecureAsRequired":  true,
+                                                             "deliberateOldCookieReplayHttpStatus":  401,
+                                                             "replayResponseSanitized":  true,
+                                                             "storedSessionRowsAfterLogout":  0
+                                                         }
+                                           }
+                             },
+                  "case07":  {
+                                 "status":  "PASS",
+                                 "allPhysicalLanesPassed":  true,
+                                 "lanes":  {
+                                               "HTTP":  {
+                                                            "status":  "PASS",
+                                                            "distinctSessionTokens":  true,
+                                                            "bothInitiallyValid":  true,
+                                                            "loggedOutSessionReplayHttpStatus":  401,
+                                                            "independentSessionHttpStatus":  200,
+                                                            "policy":  "Sessions are independently revoked."
+                                                        },
+                                               "HTTPS":  {
+                                                             "status":  "PASS",
+                                                             "distinctSessionTokens":  true,
+                                                             "bothInitiallyValid":  true,
+                                                             "loggedOutSessionReplayHttpStatus":  401,
+                                                             "independentSessionHttpStatus":  200,
+                                                             "policy":  "Sessions are independently revoked."
+                                                         }
+                                           }
+                             },
+                  "case08":  {
+                                 "status":  "PASS",
+                                 "allPhysicalLanesPassed":  true,
+                                 "lanes":  {
+                                               "HTTP":  {
+                                                            "status":  "PASS",
+                                                            "expiredFixtureRows":  1,
+                                                            "protectedReplayHttpStatus":  401,
+                                                            "sanitizedResponse":  true,
+                                                            "serverExceptionExposed":  false
+                                                        },
+                                               "HTTPS":  {
+                                                             "status":  "PASS",
+                                                             "expiredFixtureRows":  1,
+                                                             "protectedReplayHttpStatus":  401,
+                                                             "sanitizedResponse":  true,
+                                                             "serverExceptionExposed":  false
+                                                         }
+                                           }
+                             },
+                  "case09":  {
+                                 "status":  "PASS",
+                                 "sessionRowsInspected":  596,
+                                 "allSessionTokensStoredAsSha256":  true,
+                                 "userRowsInspected":  18,
+                                 "allPasswordHashesPresent":  true,
+                                 "allPasswordHashesUsePbkdf2":  true,
+                                 "clearSessionColumns":  0,
+                                 "clearPasswordColumns":  0,
+                                 "auditSecretMatches":  0,
+                                 "boundedApplicationLogsInspected":  true,
+                                 "generatedPasswordsAndAllTokensAbsentFromLogs":  true,
+                                 "forbiddenValuesChecked":  18,
+                                 "lanes":  {
+                                               "HTTP":  {
+                                                            "stdoutCreated":  true,
+                                                            "stderrCreated":  true,
+                                                            "nonEmpty":  true,
+                                                            "characterCount":  5945,
+                                                            "lineCount":  43,
+                                                            "forbiddenValuesChecked":  18,
+                                                            "forbiddenValuesFound":  0
+                                                        },
+                                               "HTTPS":  {
+                                                             "stdoutCreated":  true,
+                                                             "stderrCreated":  true,
+                                                             "nonEmpty":  true,
+                                                             "characterCount":  6569,
+                                                             "lineCount":  45,
+                                                             "forbiddenValuesChecked":  18,
+                                                             "forbiddenValuesFound":  0
+                                                         }
+                                           }
+                             },
+                  "case10":  {
+                                 "status":  "PASS",
+                                 "allPhysicalLanesPassed":  true,
+                                 "lanes":  {
+                                               "HTTP":  {
+                                                            "status":  "PASS",
+                                                            "lane":  "HTTP",
+                                                            "expectedCorrelationIds":  [
+                                                                                           "A001-20dc6536eeb0-HTTP-AS",
+                                                                                           "A001-20dc6536eeb0-HTTP-AF",
+                                                                                           "A001-20dc6536eeb0-HTTP-AO"
+                                                                                       ],
+                                                            "eventCount":  3,
+                                                            "events":  [
+                                                                           {
+                                                                               "id":  5810,
+                                                                               "actor":  "auth001_20dc6536eeb0",
+                                                                               "action":  "LOGIN_SUCCESS",
+                                                                               "outcome":  "SUCCESS",
+                                                                               "createdAt":  "2026-07-19T19:43:49.922",
+                                                                               "ipAddressPresent":  true,
+                                                                               "category":  "AUTH",
+                                                                               "correlationId":  "A001-20dc6536eeb0-HTTP-AS",
+                                                                               "containsForbiddenValue":  false
+                                                                           },
+                                                                           {
+                                                                               "id":  5811,
+                                                                               "actor":  "auth001_20dc6536eeb0",
+                                                                               "action":  "LOGIN_FAILED",
+                                                                               "outcome":  "FAILURE",
+                                                                               "createdAt":  "2026-07-19T19:43:50.525",
+                                                                               "ipAddressPresent":  true,
+                                                                               "category":  "AUTH",
+                                                                               "correlationId":  "A001-20dc6536eeb0-HTTP-AF",
+                                                                               "containsForbiddenValue":  false
+                                                                           },
+                                                                           {
+                                                                               "id":  5812,
+                                                                               "actor":  "auth001_20dc6536eeb0",
+                                                                               "action":  "LOGOUT",
+                                                                               "outcome":  "SUCCESS",
+                                                                               "createdAt":  "2026-07-19T19:43:50.551",
+                                                                               "ipAddressPresent":  true,
+                                                                               "category":  "AUTH",
+                                                                               "correlationId":  "A001-20dc6536eeb0-HTTP-AO",
+                                                                               "containsForbiddenValue":  false
+                                                                           }
+                                                                       ],
+                                                            "eachRequiredEventAttributed":  true,
+                                                            "allRequiredFieldsPresent":  true,
+                                                            "forbiddenValuesRetained":  0
+                                                        },
+                                               "HTTPS":  {
+                                                             "status":  "PASS",
+                                                             "lane":  "HTTPS",
+                                                             "expectedCorrelationIds":  [
+                                                                                            "A001-20dc6536eeb0-HTTPS-AS",
+                                                                                            "A001-20dc6536eeb0-HTTPS-AF",
+                                                                                            "A001-20dc6536eeb0-HTTPS-AO"
+                                                                                        ],
+                                                             "eventCount":  3,
+                                                             "events":  [
+                                                                            {
+                                                                                "id":  5837,
+                                                                                "actor":  "auth001_20dc6536eeb0",
+                                                                                "action":  "LOGIN_SUCCESS",
+                                                                                "outcome":  "SUCCESS",
+                                                                                "createdAt":  "2026-07-19T19:44:29.356",
+                                                                                "ipAddressPresent":  true,
+                                                                                "category":  "AUTH",
+                                                                                "correlationId":  "A001-20dc6536eeb0-HTTPS-AS",
+                                                                                "containsForbiddenValue":  false
+                                                                            },
+                                                                            {
+                                                                                "id":  5838,
+                                                                                "actor":  "auth001_20dc6536eeb0",
+                                                                                "action":  "LOGIN_FAILED",
+                                                                                "outcome":  "FAILURE",
+                                                                                "createdAt":  "2026-07-19T19:44:30.064",
+                                                                                "ipAddressPresent":  true,
+                                                                                "category":  "AUTH",
+                                                                                "correlationId":  "A001-20dc6536eeb0-HTTPS-AF",
+                                                                                "containsForbiddenValue":  false
+                                                                            },
+                                                                            {
+                                                                                "id":  5839,
+                                                                                "actor":  "auth001_20dc6536eeb0",
+                                                                                "action":  "LOGOUT",
+                                                                                "outcome":  "SUCCESS",
+                                                                                "createdAt":  "2026-07-19T19:44:30.281",
+                                                                                "ipAddressPresent":  true,
+                                                                                "category":  "AUTH",
+                                                                                "correlationId":  "A001-20dc6536eeb0-HTTPS-AO",
+                                                                                "containsForbiddenValue":  false
+                                                                            }
+                                                                        ],
+                                                             "eachRequiredEventAttributed":  true,
+                                                             "allRequiredFieldsPresent":  true,
+                                                             "forbiddenValuesRetained":  0
+                                                         }
+                                           }
+                             }
+              },
+    "passedCases":  9,
+    "totalCases":  9,
+    "allCasesExecutedOnBothPhysicalLanes":  true,
+    "secretsRetainedInEvidence":  false,
+    "passed":  true
+}
