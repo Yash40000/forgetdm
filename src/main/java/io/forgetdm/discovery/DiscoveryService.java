@@ -30,6 +30,24 @@ import java.util.regex.Pattern;
 @Service
 public class DiscoveryService {
 
+    /**
+     * A scope rejection is intentionally distinct from a connection or scan failure.  Callers can
+     * record a concise, credential-free audit event and must never turn an empty scope into a
+     * successful zero-table scan.
+     */
+    static final class ScanScopeException extends ApiException {
+        private final String reason;
+
+        private ScanScopeException(String reason, String message) {
+            super(org.springframework.http.HttpStatus.BAD_REQUEST, message);
+            this.reason = reason;
+        }
+
+        String reason() {
+            return reason;
+        }
+    }
+
     public interface ScanProgress {
         default void schemaResolved(String schemaName) {}
         default void tablesDiscovered(List<String> tableNames) {}
@@ -90,6 +108,7 @@ public class DiscoveryService {
         DataSourceEntity ds = dataSources.getSourceCapable(dataSourceId);
         List<ClassificationEntity> found = new ArrayList<>();
         ScanProgress scanProgress = progress == null ? new ScanProgress() {} : progress;
+        String resolvedSchema = null;
 
         // Effective patterns = built-in, overlaid with the current user's custom patterns (user > group > global),
         // then narrowed to the user's selected PII types if any were chosen on the Scan Source page.
@@ -109,6 +128,8 @@ public class DiscoveryService {
 
         try (Connection c = connections.openPooled(ds)) {
             String schema = DataSourceService.normalizeSchema(c, schemaName);
+            resolvedSchema = schema;
+            validateRequestedSchemaVisible(c, schemaName, schema);
             scanProgress.schemaResolved(schema);
             // Preserve human decisions across re-scans: keep APPROVED / REJECTED / manual classifications,
             // refresh only the machine SUGGESTED ones. (A re-scan must not wipe an analyst's review work.)
@@ -183,6 +204,9 @@ public class DiscoveryService {
             // Suggestions still present were in scope but were not rediscovered. Reviewed and
             // out-of-scope classifications were locked above and are never removed here.
             if (!refreshable.isEmpty()) classifications.deleteAll(refreshable.values());
+        } catch (ScanScopeException e) {
+            auditRejectedScope(dataSourceId, resolvedSchema == null ? schemaName : resolvedSchema, e);
+            throw e;
         } catch (ApiException e) { throw e; }
         catch (Exception e) { throw ApiException.bad("Discovery scan failed: " + e.getMessage()); }
 
@@ -195,6 +219,7 @@ public class DiscoveryService {
         DataSourceEntity ds = dataSources.getSourceCapable(dataSourceId);
         try (Connection c = connections.openPooled(ds)) {
             String schema = DataSourceService.normalizeSchema(c, schemaName);
+            validateRequestedSchemaVisible(c, schemaName, schema);
             return List.copyOf(selectScanTables(scannableTables(c, schema), normalizeNames(selectedTables), schema));
         } catch (ApiException e) {
             throw e;
@@ -214,6 +239,35 @@ public class DiscoveryService {
         return tables;
     }
 
+    /**
+     * An explicit schema name must not silently behave like an empty schema when metadata can see
+     * that it does not exist.  Drivers that cannot enumerate schemas are left to table metadata,
+     * where an empty result remains a genuine no-scannable-tables rejection.
+     */
+    private static void validateRequestedSchemaVisible(Connection c, String requestedSchema, String resolvedSchema) throws SQLException {
+        if (requestedSchema == null || requestedSchema.isBlank() || "__default__".equals(requestedSchema)) return;
+        boolean metadataReturnedRows = false;
+        boolean schemaVisible = false;
+        try (ResultSet rs = c.getMetaData().getSchemas()) {
+            while (rs.next()) {
+                metadataReturnedRows = true;
+                String physical = rs.getString("TABLE_SCHEM");
+                if (physical != null && physical.equalsIgnoreCase(resolvedSchema)) {
+                    schemaVisible = true;
+                    break;
+                }
+            }
+        } catch (SQLFeatureNotSupportedException ignored) {
+            return;
+        } catch (AbstractMethodError ignored) {
+            return;
+        }
+        if (metadataReturnedRows && !schemaVisible) {
+            throw scopeInvalid("SCHEMA_NOT_VISIBLE", "Schema " + auditSchema(resolvedSchema)
+                    + " does not exist or is not visible to this connection.");
+        }
+    }
+
     private static List<String> selectScanTables(List<String> available, Set<String> selectedTableKeys, String schema) {
         List<String> tables = new ArrayList<>(available);
         if (!selectedTableKeys.isEmpty()) {
@@ -221,14 +275,33 @@ public class DiscoveryService {
             for (String table : tables) discovered.add(normalizeName(table));
             List<String> missing = selectedTableKeys.stream().filter(name -> !discovered.contains(name)).sorted().toList();
             if (!missing.isEmpty()) {
-                throw ApiException.bad("Table focus contains table(s) not found in schema " + schema + ": " + String.join(", ", missing));
+                throw scopeInvalid("MISSING_FOCUSED_TABLES", "Table focus contains table(s) not found in schema "
+                        + auditSchema(schema) + ": " + String.join(", ", missing));
             }
             tables.removeIf(table -> !selectedTableKeys.contains(normalizeName(table)));
         }
         if (tables.isEmpty()) {
-            throw ApiException.bad("Schema " + schema + " contains no scannable tables. Add tables or select another schema before starting discovery.");
+            throw scopeInvalid("NO_SCANNABLE_TABLES", "Schema " + auditSchema(schema)
+                    + " contains no scannable tables. Add tables or select another schema before starting discovery.");
         }
         return tables;
+    }
+
+    private void auditRejectedScope(Long dataSourceId, String schema, ScanScopeException failure) {
+        String safeSchema = auditSchema(schema);
+        audit.record("system", "DISCOVERY_SCAN_REJECTED", "DISCOVERY", "DISCOVERY_SCOPE",
+                "datasource:" + dataSourceId, safeSchema, "FAILURE", "reason=" + failure.reason(),
+                "{\"schema\":\"" + safeSchema + "\",\"reason\":\"" + failure.reason() + "\"}");
+    }
+
+    private static ScanScopeException scopeInvalid(String reason, String message) {
+        return new ScanScopeException(reason, message);
+    }
+
+    private static String auditSchema(String schema) {
+        String value = schema == null || schema.isBlank() ? "default" : schema.trim();
+        value = value.replaceAll("[^A-Za-z0-9_.$-]", "_");
+        return value.length() <= 128 ? value : value.substring(0, 128);
     }
 
     @Transactional

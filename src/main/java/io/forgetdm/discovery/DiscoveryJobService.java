@@ -40,6 +40,9 @@ public class DiscoveryJobService {
     public synchronized JobSnapshot start(Long dataSourceId, String schemaName, Set<String> selectedTypes,
                                           Set<String> selectedTables) {
         if (dataSourceId == null) throw ApiException.bad("dataSourceId is required");
+        AccessPrincipal caller = AccessContext.current().orElse(null);
+        String token = AccessContext.currentToken().orElse(null);
+        String owner = caller == null ? "system" : caller.username();
         DiscoveryJob active = jobs.values().stream()
                 .filter(DiscoveryJob::active)
                 .filter(job -> job.matchesScope(dataSourceId, schemaName))
@@ -49,10 +52,16 @@ public class DiscoveryJobService {
             throw ApiException.bad("Discovery scan " + active.jobId
                     + " is already running for this data source and schema. Wait for it to finish before regenerating.");
         }
-        discovery.validateScanScope(dataSourceId, schemaName, selectedTables);
-        AccessPrincipal caller = AccessContext.current().orElse(null);
-        String token = AccessContext.currentToken().orElse(null);
-        String owner = caller == null ? "system" : caller.username();
+        try {
+            discovery.validateScanScope(dataSourceId, schemaName, selectedTables);
+        } catch (DiscoveryService.ScanScopeException e) {
+            String safeSchema = auditSchema(schemaName);
+            audit.record(owner, "DISCOVERY_JOB_REJECTED", "DISCOVERY", "DISCOVERY_SCOPE",
+                    "datasource:" + dataSourceId, safeSchema, "FAILURE", "reason=" + e.reason(),
+                    "{\"schema\":\"" + safeSchema + "\",\"reason\":\"" + e.reason()
+                            + "\",\"selectedTables\":" + (selectedTables == null ? 0 : selectedTables.size()) + "}");
+            throw e;
+        }
         DiscoveryJob job = new DiscoveryJob(
                 "disc-" + UUID.randomUUID().toString().substring(0, 8),
                 dataSourceId,
@@ -155,6 +164,12 @@ public class DiscoveryJobService {
 
     private static String blankNull(String s) {
         return s == null || s.isBlank() ? null : s.trim();
+    }
+
+    private static String auditSchema(String schema) {
+        String value = schema == null || schema.isBlank() ? "default" : schema.trim();
+        value = value.replaceAll("[^A-Za-z0-9_.$-]", "_");
+        return value.length() <= 128 ? value : value.substring(0, 128);
     }
 
     public record JobSnapshot(String jobId, Long dataSourceId, String requestedSchemaName, String schemaName,

@@ -79,6 +79,20 @@ export function MetricCard({
   );
 }
 
+export function liveScanPresentation(job: DiscoveryJob) {
+  const tables = job.tables || [];
+  const status = String(job.status || 'PENDING').toUpperCase();
+  const invalidZeroTableCompletion = status === 'COMPLETED' && Number(job.totalTables || tables.length || 0) === 0;
+  const displayStatus = invalidZeroTableCompletion ? 'FAILED' : status;
+  return {
+    tables,
+    invalidZeroTableCompletion,
+    displayStatus,
+    percent: invalidZeroTableCompletion ? 0 : clamp(job.percent || 0),
+    running: discoveryJobLive(displayStatus)
+  };
+}
+
 export function LiveScanPanel({ job, actions }: { job: DiscoveryJob | null; actions?: ReactNode }) {
   if (!job) {
     return (
@@ -97,21 +111,20 @@ export function LiveScanPanel({ job, actions }: { job: DiscoveryJob | null; acti
     );
   }
 
-  const tables = job.tables || [];
-  const status = String(job.status || 'PENDING').toUpperCase();
-  const percent = clamp(job.percent || 0);
-  const running = discoveryJobLive(status);
+  const { tables, invalidZeroTableCompletion, displayStatus, percent, running } = liveScanPresentation(job);
 
   return (
     <Paper className="pii-live-board" p="md">
         <div className="pii-live-board-head">
           <div>
             <Group gap="xs">
-              <StatusBadge status={status} />
-              <Text fw={780}>{running ? 'Scan in progress' : status === 'COMPLETED' ? 'Scan complete' : 'Scan status'}</Text>
+              <StatusBadge status={displayStatus} />
+              <Text fw={780}>{invalidZeroTableCompletion ? 'Scan rejected' : running ? 'Scan in progress' : displayStatus === 'COMPLETED' ? 'Scan complete' : 'Scan status'}</Text>
             </Group>
             <Text size="sm" c="dimmed" mt={4}>
-              {job.message || 'Discovery job is queued.'}
+              {invalidZeroTableCompletion
+                ? 'This scan had no scannable tables and cannot be treated as complete. Choose another schema and run again.'
+                : job.message || 'Discovery job is queued.'}
             </Text>
           </div>
           <div className="pii-live-board-controls">

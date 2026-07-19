@@ -167,7 +167,9 @@ class Auth003FrontendBehaviorTest {
                 const synthetic = fs.readFileSync('frontend/src/features/synthetic/components/synthetic-designer.tsx', 'utf8');
                 const tableMap = fs.readFileSync('frontend/src/features/datascope/components/table-map-workspace.tsx', 'utf8');
                 if (!dataScope.includes('useUnsavedGuard(workspaceDirty);')) throw new Error('DataScope dirty state is not guarded');
-                if (!synthetic.includes('useUnsavedGuard(fingerprint !== initialFingerprint.current);')) throw new Error('Synthetic dirty state is not guarded');
+                if (!/useUnsavedGuard\\(\\s*fingerprint\\s*!==\\s*(?:initialFingerprint\\.current|savedFingerprint)\\s*\\)/.test(synthetic)) {
+                  throw new Error('Synthetic dirty state is not guarded against a retained baseline');
+                }
                 if ((tableMap.match(/if \\(dirty\\) return;/g) || []).length < 2) throw new Error('DataScope background refetch lacks dirty-state guards');
                 console.log('AUTH003_UNSAVED_GUARD_PASS');
                 """);

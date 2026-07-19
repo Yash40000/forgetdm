@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forgetdm.local/schemas/auth-001-browser-evidence-1.0.json",
+  "title": "ForgeTDM AUTH-001-01 two-lane browser evidence",
+  "description": "Sanitized browser acceptance evidence. Credentials, cookie values, request/response headers, request/response bodies, and URL query strings are forbidden.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "caseId",
+    "executedAtUtc",
+    "result",
+    "browserChannel",
+    "serverMode",
+    "buildIdentity",
+    "lanes",
+    "productionTrustGate"
+  ],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "caseId": { "const": "AUTH-001-01" },
+    "executedAtUtc": { "type": "string", "format": "date-time" },
+    "result": { "const": "PASS" },
+    "browserChannel": { "const": "msedge" },
+    "serverMode": { "const": "next-start-optimized" },
+    "buildIdentity": { "$ref": "#/$defs/buildIdentity" },
+    "lanes": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": { "$ref": "#/$defs/lane" }
+    },
+    "productionTrustGate": { "type": "string", "minLength": 1 }
+  },
+  "$defs": {
+    "buildIdentity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "sourceTreeSha256", "nextBuildId"],
+      "properties": {
+        "commit": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "sourceTreeSha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "nextBuildId": { "type": "string", "minLength": 1, "maxLength": 200 }
+      }
+    },
+    "networkEvent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "path", "status", "lane", "buildIdentity"],
+      "properties": {
+        "method": { "type": "string", "pattern": "^[A-Z]+$" },
+        "path": { "type": "string", "pattern": "^/", "maxLength": 500 },
+        "status": { "type": "integer", "minimum": 100, "maximum": 599 },
+        "lane": { "enum": ["HTTP", "HTTPS"] },
+        "buildIdentity": { "type": "string", "minLength": 1, "maxLength": 300 }
+      }
+    },
+    "lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "caseId",
+        "lane",
+        "executedAtUtc",
+        "baseOrigin",
+        "browserChannel",
+        "serverMode",
+        "buildIdentity",
+        "protectedRouteRedirected",
+        "returnedToRequestedRoute",
+        "responseBodyInspection",
+        "browserExposure",
+        "sessionCookie",
+        "retainedEvidenceSecretScan",
+        "networkEvents",
+        "screenshot",
+        "productionTrustGate"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1.0" },
+        "caseId": { "const": "AUTH-001-01" },
+        "lane": { "enum": ["HTTP", "HTTPS"] },
+        "executedAtUtc": { "type": "string", "format": "date-time" },
+        "baseOrigin": { "type": "string", "pattern": "^https?://127\\.0\\.0\\.1:[0-9]+$" },
+        "browserChannel": { "const": "msedge" },
+        "serverMode": { "const": "next-start-optimized" },
+        "buildIdentity": { "$ref": "#/$defs/buildIdentity" },
+        "protectedRouteRedirected": { "const": true },
+        "returnedToRequestedRoute": { "const": true },
+        "responseBodyInspection": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "inspectedCount",
+            "unreadableCount",
+            "boundedCaptureExceeded",
+            "actualUsernameChecked",
+            "expectedPrincipalUsernameObserved",
+            "unexpectedUsernameExposureDetected",
+            "actualPasswordChecked",
+            "passwordExposureDetected",
+            "actualSessionCookieChecked",
+            "sessionCookieExposureDetected"
+          ],
+          "properties": {
+            "inspectedCount": { "type": "integer", "minimum": 1, "maximum": 100 },
+            "unreadableCount": { "type": "integer", "minimum": 0 },
+            "boundedCaptureExceeded": { "const": false },
+            "actualUsernameChecked": { "const": true },
+            "expectedPrincipalUsernameObserved": { "const": true },
+            "unexpectedUsernameExposureDetected": { "const": false },
+            "actualPasswordChecked": { "const": true },
+            "passwordExposureDetected": { "const": false },
+            "actualSessionCookieChecked": { "const": true },
+            "sessionCookieExposureDetected": { "const": false }
+          }
+        },
+        "browserExposure": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "inspectedUrlCount",
+            "inspectedConsoleMessageCount",
+            "inspectedStorageEntryCount",
+            "actualUsernameChecked",
+            "actualPasswordChecked",
+            "actualSessionCookieChecked",
+            "urlExposureDetected",
+            "storageSensitiveKeyDetected",
+            "storageValueExposureDetected",
+            "consoleExposureDetected"
+          ],
+          "properties": {
+            "inspectedUrlCount": { "type": "integer", "minimum": 1 },
+            "inspectedConsoleMessageCount": { "type": "integer", "minimum": 0 },
+            "inspectedStorageEntryCount": { "type": "integer", "minimum": 0 },
+            "actualUsernameChecked": { "const": true },
+            "actualPasswordChecked": { "const": true },
+            "actualSessionCookieChecked": { "const": true },
+            "urlExposureDetected": { "const": false },
+            "storageSensitiveKeyDetected": { "const": false },
+            "storageValueExposureDetected": { "const": false },
+            "consoleExposureDetected": { "const": false }
+          }
+        },
+        "sessionCookie": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["present", "httpOnly", "secureMatchesLane", "pathIsRoot", "sameSiteIsLax", "positiveFiniteLifetime"],
+          "properties": {
+            "present": { "const": true },
+            "httpOnly": { "const": true },
+            "secureMatchesLane": { "const": true },
+            "pathIsRoot": { "const": true },
+            "sameSiteIsLax": { "const": true },
+            "positiveFiniteLifetime": { "const": true }
+          }
+        },
+        "retainedEvidenceSecretScan": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["actualUsernameChecked", "actualPasswordChecked", "actualSessionCookieChecked", "exposureDetected"],
+          "properties": {
+            "actualUsernameChecked": { "const": true },
+            "actualPasswordChecked": { "const": true },
+            "actualSessionCookieChecked": { "const": true },
+            "exposureDetected": { "const": false }
+          }
+        },
+        "networkEvents": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 250,
+          "items": { "$ref": "#/$defs/networkEvent" }
+        },
+        "screenshot": { "type": "string", "pattern": "^AUTH-001-BROWSER-TWO-LANE-[0-9a-f]{12}-(http|https)\\.png$" },
+        "productionTrustGate": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

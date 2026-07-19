@@ -23,9 +23,9 @@
 [CmdletBinding()]
 param(
     [string]$BaseUrl       = "http://localhost:8088",
-    [string]$AdminUser     = "admin",
-    [string]$AdminPassword = "admin123",   # local bootstrap default (forgetdm.security.bootstrap-password)
-    [string]$TestPassword  = "RbacTest123!",
+    [string]$AdminUser     = $env:FORGETDM_TEST_ADMIN_USER,
+    [string]$AdminPassword = $env:FORGETDM_TEST_ADMIN_PASSWORD,
+    [string]$TestPassword  = $env:FORGETDM_TEST_USER_PASSWORD,
     [switch]$SkipBackend,
     [switch]$SkipFrontend,
     [switch]$SkipLive,
@@ -83,6 +83,12 @@ if (-not $SkipFrontend) {
 # ─────────────────────────── 3. Live API probes ───────────────────────────
 if (-not $SkipLive) {
     Section "3. Live security regression probes ($BaseUrl)"
+
+    if ([string]::IsNullOrWhiteSpace($AdminUser) -or
+        [string]::IsNullOrWhiteSpace($AdminPassword) -or
+        [string]::IsNullOrWhiteSpace($TestPassword)) {
+        throw "Live probes require FORGETDM_TEST_ADMIN_USER, FORGETDM_TEST_ADMIN_PASSWORD, and FORGETDM_TEST_USER_PASSWORD (or explicit parameters)."
+    }
 
     function Login($user, $pass) {
         try {

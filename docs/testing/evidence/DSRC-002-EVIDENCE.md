@@ -2,7 +2,47 @@
 
 **Story:** DSRC-002 (P0, per connector)
 **Spec:** `docs/testing/cases/ready/DSRC-002.md`
-**Execution status:** EXECUTED LIVE 2026-07-18 — **4 PASS / 3 PARTIAL (fix written) / 3 NOT EXECUTED**.
+**Execution status:** **COMPLETE WITH HARD-PASS EXCEPTIONS** - live retested 2026-07-19.
+
+## Final 2026-07-19 decision
+
+The available local connection-test lane is directly green after the DEF-0020 fixes. The retained
+machine-readable result is [DSRC-002-LIVE-2026-07-19.json](artifacts/DSRC-002-LIVE-2026-07-19.json).
+
+| Case | Final result | Direct retained evidence |
+|---|---|---|
+| 01 | **PASS** | Saved isolated H2 source: HTTP 200, product `H2`, `elapsedMs: 614`. |
+| 02 | **PASS** | Transient H2 test: HTTP 200; inventory stayed `1 -> 1`; no transient source was persisted. |
+| 03 | **PASS** | Wrong H2 password: HTTP 400 `[AUTH]`; fixture credential and stack details absent. |
+| 04 | **PASS** | Missing `.invalid` host: HTTP 400 `[DNS]` in 313 ms. Refused port: HTTP 400 `[NETWORK]` in 22 ms. |
+| 05 | **PASS** | Black-holed endpoint: HTTP 400 `[TIMEOUT]` in 8041 ms, within the configured 8-second budget. |
+| 06 | **HARD-PASS** | No trusted/untrusted TLS endpoint pair is provisioned. Not passed or certified. |
+| 07 | **HARD-PASS** | No hostname-mismatch certificate fixture is provisioned. Not passed or certified. |
+| 08 | **HARD-PASS** | No valid low-privilege metadata/table account is provisioned. Not passed or certified. |
+| 09 | **PASS** | Eight concurrent saved-source tests all returned HTTP 200 in 15492 ms. Saved and draft test state now reject stale completion updates. |
+| 10 | **PASS** | H2 diagnostics: HTTP 200, correct engine identity, no fixture secret in the response. |
+
+Focused automated checks:
+
+| Command | Result |
+|---|---|
+| `C:\Tools\apache-maven-3.9.16\bin\mvn.cmd -q -Dtest=ConnectionFailureClassificationTest test` | **PASS** - 11 tests, 0 failures/errors/skips; exit 0. |
+| `ConnectionFailureClassificationTest`, `ConnectorDiagnosticsServiceTest`, `DataSourceConcurrencyContractTest`, `SafeJdbcRedactionTest` reports | **PASS** - 21 tests, 0 failures/errors/skips. |
+| `npm.cmd run typecheck` in `frontend` | **PASS** - Next route type generation and TypeScript completed; exit 0. |
+
+### DEF-0020 live retest
+
+The rebuilt verification server exposed three pool-wrapper cases that did not retain their underlying
+SQLState or root exception: H2 wrong-password, PostgreSQL DNS failure, and PostgreSQL refused port.
+The classifier now uses narrow, credential-safe wrapper fallbacks: known authentication wording,
+post-failure hostname resolution only for a generic attempt failure, and known refused/network wording.
+Timeout still takes precedence at the configured budget. The focused test suite and the live matrix
+cover all three branches.
+
+The temporary source and H2 fixture were deleted after the run. Cleanup check: `0` DSRC-002 source rows
+and `0` H2 fixture files remain.
+
+## Historical 2026-07-18 run (superseded)
 
 ## Run metadata
 
@@ -55,7 +95,7 @@ connection tests transiently degrading the console is worth knowing; it is not a
 |---|---|---|
 | [DEF-0020](../defects/DEF-0020-connection-failures-not-classified.md) | MEDIUM | Failures not classified; DNS and timeout indistinguishable; success lacks elapsed time |
 
-## Exit checklist
+## Historical exit checklist (superseded)
 
 - [ ] Rebuild and re-verify DEF-0020 — expect `[DNS]` vs `[TIMEOUT]` to separate, and `elapsedMs` on success.
 - [ ] Provision TLS fixtures (trusted, untrusted, hostname-mismatch) to execute 06/07.

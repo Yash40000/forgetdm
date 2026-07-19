@@ -3,12 +3,13 @@
 **Priority:** P0
 
 **Lane:** Each connector
-**Execution status:** EXECUTED LIVE 2026-07-18 (**PostgreSQL lane only**) — 4 PASS / 3 PARTIAL / 3 NOT EXECUTED.
-Key finding: DNS failure and connect timeout return the **identical** message (183 ms vs 8179 ms) →
-DEF-0020 (fix written, awaiting rebuild). Timeouts themselves are correctly enforced at the documented
-8 s budget, and no secret or driver stack leaks. TLS (06/07) and privilege (08) **NOT EXECUTED** — no
-fixtures; recorded as uncertified, not passed.
-Evidence: `docs/testing/evidence/DSRC-002-EVIDENCE.md`
+**Execution status:** **COMPLETE WITH HARD-PASS EXCEPTIONS** - live retested 2026-07-19.
+The directly executable local lane is green: saved and transient success, authentication, DNS,
+refused-port network failure, timeout, concurrency, and diagnostics all have retained evidence.
+DEF-0020 is closed. TLS trust, TLS hostname identity, and a valid low-privilege account remain
+HARD-PASS exceptions because their required fixtures are not provisioned; they are not passed or certified.
+Evidence: `docs/testing/evidence/DSRC-002-EVIDENCE.md` and
+`docs/testing/evidence/artifacts/DSRC-002-LIVE-2026-07-19.json`.
 
 ## Objective
 

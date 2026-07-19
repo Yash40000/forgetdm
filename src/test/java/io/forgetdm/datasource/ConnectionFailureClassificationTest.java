@@ -67,11 +67,28 @@ class ConnectionFailureClassificationTest {
     }
 
     @Test
+    void classifiesPoolWrappedAuthenticationFailureWhenSqlStateIsNotExposed() throws Exception {
+        RuntimeException pooled = new RuntimeException(
+                "Cannot connect to 'DSRC-002': Wrong user name or password [28000-224]");
+        assertCategory("[AUTH]", pooled, 125);
+    }
+
+    @Test
     void distinguishesDnsTimeoutAndRefusedConnections() throws Exception {
         assertCategory("[DNS]", wrapped("connection attempt failed", new UnknownHostException("db.invalid")), 180);
         assertCategory("[TIMEOUT]", wrapped("connection attempt failed", new SocketTimeoutException("connect timed out")), 250);
         assertCategory("[TIMEOUT]", new SQLException("connection attempt failed", "08001"), 8_100);
         assertCategory("[NETWORK]", wrapped("connection refused", new ConnectException("Connection refused")), 250);
+    }
+
+    @Test
+    void classifiesPoolWrappedDnsAndRefusedPortFailures() throws Exception {
+        DataSourceEntity dns = source();
+        dns.setJdbcUrl("jdbc:postgresql://missing-dsrc002.invalid:5432/sales");
+        assertCategory("[DNS]", new RuntimeException("Cannot connect: The connection attempt failed"), dns, 180);
+
+        assertCategory("[NETWORK]", new RuntimeException(
+                "Cannot connect: Connection to 127.0.0.1:5999 refused"), 250);
     }
 
     @Test
@@ -103,6 +120,11 @@ class ConnectionFailureClassificationTest {
 
     private static void assertCategory(String expected, Exception error, long elapsedMs) throws Exception {
         String result = classify(error, elapsedMs);
+        assertTrue(result.startsWith(expected), "expected " + expected + " but got: " + result);
+    }
+
+    private static void assertCategory(String expected, Exception error, DataSourceEntity source, long elapsedMs) throws Exception {
+        String result = classify(error, source, elapsedMs);
         assertTrue(result.startsWith(expected), "expected " + expected + " but got: " + result);
     }
 

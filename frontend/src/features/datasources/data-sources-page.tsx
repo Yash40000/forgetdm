@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import {
   ActionIcon,
@@ -176,6 +176,8 @@ export function DataSourcesPage() {
   const [engineFilter, setEngineFilter] = useState<string | null>(null);
   const [testStates, setTestStates] = useState<Record<number, ProbeState>>({});
   const [draftTest, setDraftTest] = useState<ProbeState>({ status: 'idle' });
+  const savedTestRequestSequence = useRef<Record<number, number>>({});
+  const draftTestRequestSequence = useRef(0);
   const [schemaStates, setSchemaStates] = useState<Record<number, SchemaState>>({});
   const [deleteTarget, setDeleteTarget] = useState<DataSource | null>(null);
   const [diagnosticTarget, setDiagnosticTarget] = useState<DataSource | null>(null);
@@ -276,12 +278,14 @@ export function DataSourcesPage() {
   });
 
   const updateDraft = (patch: Partial<Draft>) => {
+    draftTestRequestSequence.current += 1;
     setDraftDirty(true);
     setDraft((current) => ({ ...current, ...patch }));
     setDraftTest({ status: 'idle' });
   };
 
   const resetDraft = () => {
+    draftTestRequestSequence.current += 1;
     setEditingId(null);
     setDraft(EMPTY_DRAFT);
     setDraftTest({ status: 'idle' });
@@ -321,16 +325,23 @@ export function DataSourcesPage() {
   };
 
   const testDraftConnection = async () => {
+    const sequence = ++draftTestRequestSequence.current;
     setDraftTest({ status: 'testing', message: 'Testing unsaved connection...' });
     try {
       const result = await apiPost<Record<string, unknown>>('/api/datasources/test-connection', payloadFromDraft(draft));
-      setDraftTest({ status: 'ok', message: probeSummary(result), detail: probeDetail(result) });
+      if (sequence === draftTestRequestSequence.current) {
+        setDraftTest({ status: 'ok', message: probeSummary(result), detail: probeDetail(result) });
+      }
     } catch (error) {
-      setDraftTest({ status: 'error', message: errorMessage(error) });
+      if (sequence === draftTestRequestSequence.current) {
+        setDraftTest({ status: 'error', message: errorMessage(error) });
+      }
     }
   };
 
   const testSavedConnection = async (source: DataSource) => {
+    const sequence = (savedTestRequestSequence.current[source.id] ?? 0) + 1;
+    savedTestRequestSequence.current[source.id] = sequence;
     setTestStates((current) => ({
       ...current,
       [source.id]: { status: 'testing', message: 'Testing live connection...' }
@@ -339,12 +350,16 @@ export function DataSourcesPage() {
       const result = await apiPost<Record<string, unknown>>(`/api/datasources/${source.id}/test`, {});
       setTestStates((current) => ({
         ...current,
-        [source.id]: { status: 'ok', message: probeSummary(result), detail: probeDetail(result) }
+        ...(sequence === savedTestRequestSequence.current[source.id]
+          ? { [source.id]: { status: 'ok', message: probeSummary(result), detail: probeDetail(result) } }
+          : {})
       }));
     } catch (error) {
       setTestStates((current) => ({
         ...current,
-        [source.id]: { status: 'error', message: errorMessage(error) }
+        ...(sequence === savedTestRequestSequence.current[source.id]
+          ? { [source.id]: { status: 'error', message: errorMessage(error) } }
+          : {})
       }));
     }
   };

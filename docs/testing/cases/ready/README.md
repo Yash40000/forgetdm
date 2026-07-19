@@ -16,15 +16,15 @@ This directory contains the executable specifications for the ten stories curren
 
 | Story | Specification | Primary gate | Cases | Status (2026-07-19) |
 |---|---|---:|---:|---|
-| AUTH-001 | [Valid login, logout, and session identity](AUTH-001.md) | Authentication contract | 10 | 8/10 executable - 4 live, 4 scripted, 2 blocked (TTL, DB) |
+| AUTH-001 | [Valid login, logout, and session identity](AUTH-001.md) | Authentication contract | 10 | 10/10 pass on physical HTTP + HTTPS; independent re-review pending |
 | AUTH-003 | [Expired-session recovery](AUTH-003.md) | Safe UI recovery | 8 | COMPLETE - 8/8 directly proven and independently accepted |
 | RBAC-001 | [Role and group permission matrix](RBAC-001.md) | Authorization coverage | 10 | 10/10 executed; 9 passed and 1 failed then fixed |
 | RBAC-002 | [Cross-group isolation](RBAC-002.md) | Object-level isolation | 9 | Executed; S1 found, fixed, and reverified |
 | AUD-001 | [Material action audit](AUD-001.md) | Traceability and integrity | 10 | 6 pass / 2 partial / 2 not executed |
 | DSRC-001 | [Data-source lifecycle](DSRC-001.md) | Connector configuration | 9 | COMPLETE WITH HARD-PASS EXCEPTIONS - PostgreSQL, Oracle, MySQL, and H2 live; DB2, SQL Server, and Teradata not live-certified |
-| DSRC-002 | [Connection diagnostics](DSRC-002.md) | Failure handling and TLS | 10 | PostgreSQL lane - 4 pass / 3 partial / 3 not executed |
+| DSRC-002 | [Connection diagnostics](DSRC-002.md) | Failure handling and TLS | 10 | COMPLETE WITH HARD-PASS EXCEPTIONS - 7 pass; TLS trust, TLS identity, and low-privilege fixtures not certified |
 | DSRC-003 | [Type-or-browse validation](DSRC-003.md) | Metadata correctness | 9 | NOT RUN |
-| DISC-006 | [Zero-table scan rejection](DISC-006.md) | Preflight safety | 8 | NOT RUN |
+| DISC-006 | [Zero-table scan rejection](DISC-006.md) | Preflight safety | 8 | COMPLETE WITH HARD-PASS EXCEPTION - 7 pass; metadata-restricted-account behavior not certified |
 | DISC-007 | [Idempotent discovery rescan](DISC-007.md) | Classification durability | 10 | NOT RUN |
 
 `CODE-VERIFIED` is not verified. A correct-looking implementation can still fail in transaction, browser, driver, or vendor behavior. Only direct retained execution evidence supports a pass claim.

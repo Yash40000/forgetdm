@@ -287,8 +287,10 @@ public class DataSourceService {
         String host = hostOf(ds.getJdbcUrl());
         String state = sqlState == null ? "" : sqlState;
 
-        // Authentication / authorisation - never echo the credential itself.
-        if (state.startsWith("28")) {
+        // Authentication / authorisation - never echo the credential itself. Connection pools
+        // occasionally wrap a vendor authentication exception without preserving SQLState, so
+        // retain a deliberately narrow message fallback for the common driver forms.
+        if (state.startsWith("28") || isAuthenticationFailure(e)) {
             return "[AUTH] Authentication failed for user '" + nz(ds.getUsername()) + "'. Check the username and password.";
         }
         if ("3D000".equals(state)) {
@@ -304,9 +306,6 @@ public class DataSourceService {
             return "[TLS] The TLS handshake failed against " + host + ": " + rootText(root)
                     + ". Trust the server certificate or correct the hostname - the connection was refused, not downgraded.";
         }
-        if (root instanceof java.net.UnknownHostException) {
-            return "[DNS] Host '" + host + "' could not be resolved. Check the hostname in the JDBC URL.";
-        }
         if (root instanceof java.net.SocketTimeoutException
                 || String.valueOf(root.getMessage()).toLowerCase(java.util.Locale.ROOT).contains("timed out")
                 || elapsedMs >= 7500) {   // at/over the configured login-timeout budget
@@ -314,11 +313,72 @@ public class DataSourceService {
                     + "The host is reachable-but-silent or blocked by a firewall; check routing, or raise "
                     + "FORGETDM_JDBC_LOGIN_TIMEOUT_SECONDS.";
         }
-        if (root instanceof java.net.ConnectException || state.startsWith("08")) {
+        if (isDnsFailure(e, host)) {
+            return "[DNS] Host '" + host + "' could not be resolved. Check the hostname in the JDBC URL.";
+        }
+        if (root instanceof java.net.ConnectException || state.startsWith("08") || isNetworkFailure(e)) {
             return "[NETWORK] Cannot reach " + host + ": " + rootText(root)
                     + ". Check the host and port, and that the database is accepting TCP connections.";
         }
         return "[UNKNOWN] Connection test failed against " + host + ": " + rootText(root);
+    }
+
+    private static boolean isDnsFailure(Throwable error, String host) {
+        for (Throwable current = error; current != null && current.getCause() != current;
+             current = current.getCause()) {
+            if (current instanceof java.net.UnknownHostException) return true;
+        }
+        String message = messages(error);
+        if (!message.contains("connection attempt failed")) return false;
+        String name = hostName(host);
+        if (name == null) return false;
+        try {
+            java.net.InetAddress.getByName(name);
+            return false;
+        } catch (java.net.UnknownHostException ignored) {
+            return true;
+        }
+    }
+
+    private static boolean isNetworkFailure(Throwable error) {
+        String message = messages(error);
+        return message.contains("connection refused")
+                || (message.contains("connection to ") && message.contains(" refused"))
+                || message.contains(" no route to host")
+                || message.contains("network is unreachable");
+    }
+
+    private static String messages(Throwable error) {
+        StringBuilder all = new StringBuilder();
+        for (Throwable current = error; current != null && current.getCause() != current;
+             current = current.getCause()) {
+            all.append(' ').append(String.valueOf(current.getMessage()));
+        }
+        return all.toString().toLowerCase(java.util.Locale.ROOT);
+    }
+
+    private static String hostName(String host) {
+        if (host == null || host.isBlank() || "the server".equals(host)) return null;
+        if (host.startsWith("[")) {
+            int closing = host.indexOf(']');
+            return closing > 1 ? host.substring(1, closing) : null;
+        }
+        int colon = host.lastIndexOf(':');
+        return colon > 0 ? host.substring(0, colon) : host;
+    }
+
+    private static boolean isAuthenticationFailure(Throwable error) {
+        for (Throwable current = error; current != null && current.getCause() != current;
+             current = current.getCause()) {
+            String message = String.valueOf(current.getMessage()).toLowerCase(java.util.Locale.ROOT);
+            if (message.contains("password authentication failed")
+                    || message.contains("wrong user name or password")
+                    || message.contains("access denied for user")
+                    || message.contains("login failed for user")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** Root message without the exception class name or any stack detail. */

@@ -3,19 +3,13 @@
 **Priority:** P0
 
 **Lane:** All
-**Execution status:** **8/10 EXECUTABLE — 2 genuinely blocked** (2026-07-18).
+**Execution status:** READY FOR INDEPENDENT RE-REVIEW - all 10 cases passed on required physical HTTP and HTTPS lanes.
 
-- **Executed live (4):** 01 (no credential leak), 02 (identity parity — DEF-0002 closed), 04 (**FAILED
-  → DEF-0016**, timing oracle), 10 (failed-login audited — DEF-0008 closed).
-- **Automated in `docs/testing/run-all-tests.ps1` (4):** 03 (cookie flags), 05 (inactive denied),
-  06 (logout invalidation), 07 (two concurrent sessions). These moved to PowerShell because browser
-  JS cannot read `Set-Cookie` (HttpOnly) nor hold two independent cookie jars.
-- **Blocked (2):** 08 session-TTL expiry — `session-hours` is floored at 1, so it needs a dedicated
-  short-TTL run or a 1-hour wait; 09 at-rest inspection — needs direct DB access (sandbox VM down).
-
-**Correction:** case 10 was previously marked CODE-VERIFIED in error — the code called
-`audit.log(…LOGIN_FAILED…)` but the event never persisted (rolled back by `@Transactional`). Found by
-executing AUD-001-05 live; raised as DEF-0008 (HIGH), fixed and re-verified.
+- The strengthened Edge/Playwright login creates a unique disposable user, proves protected-route return navigation, scans actual username/password/session-token values, and retains sanitized network metadata plus settled screenshots for both browser transports.
+- The comprehensive disposable runner now executes every assertion in cases 02-10 against separate physical HTTP and HTTPS Spring servers, including exact identity parity, deliberate cookie replay, nonempty bounded logs, complete token canaries, and lane-correlated audit events.
+- DEF-0030 fixed the stale unauthenticated client cache that the browser acceptance test exposed after an otherwise successful login.
+- Production CA-chain, ingress, rotation, and HSTS checks remain an explicit deployment gate; application behavior under physical TLS is proven.
+- Story status remains review-pending until an independent reviewer accepts every claim against the retained artifacts and implementation.
 Evidence: `docs/testing/evidence/AUTH-001-EVIDENCE.md`
 
 ## Objective

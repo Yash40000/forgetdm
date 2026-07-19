@@ -5,8 +5,11 @@ import type { FormEvent } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Alert, Button, Center, Paper, PasswordInput, Stack, Text, TextInput, Title } from '@mantine/core';
 import { IconLock } from '@tabler/icons-react';
+import { useQueryClient } from '@tanstack/react-query';
 
 import { apiPost } from '@/lib/api';
+import { keys } from '@/lib/keys';
+import type { AuthMe } from '@/lib/use-permissions';
 
 export default function LoginPage() {
   return (
@@ -19,6 +22,7 @@ export default function LoginPage() {
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +36,10 @@ function LoginForm() {
     setBusy(true);
     setError(null);
     try {
-      await apiPost('/api/auth/login', { username: username.trim(), password });
+      const identity = await apiPost<AuthMe>('/api/auth/login', { username: username.trim(), password });
+      // The protected shell may still hold the pre-login `authenticated: false` result.
+      // Replace it atomically so the return route cannot bounce back to /login during staleTime.
+      queryClient.setQueryData(keys.auth.me, identity);
       router.replace(nextPath);
     } catch (loginError) {
       setError(loginError instanceof Error ? loginError.message : 'Login failed');

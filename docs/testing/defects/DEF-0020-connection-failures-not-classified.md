@@ -3,7 +3,7 @@
 | Field | Value |
 |---|---|
 | Severity | MEDIUM |
-| Status | **FIX WRITTEN** — awaiting rebuild + re-verification |
+| Status | **CLOSED** - rebuilt and live reverified 2026-07-19 |
 | Found by story | DSRC-002 — cases 01, 03, 04, 05 |
 | Component | `io.forgetdm.datasource.DataSourceService.probe()` |
 | Found on | Live stack 2026-07-18 (PostgreSQL lane) |
@@ -73,8 +73,30 @@ is unchanged and the existing UI error handling keeps working while becoming gre
 `//alice:s3cret@dbhost:5432/db` yields `dbhost:5432`, never the userinfo (consistent with
 [DEF-0013](DEF-0013-audit-records-raw-jdbc-urls.md)). Covered by `ConnectionFailureClassificationTest`.
 
+## Live retest and closure
+
+The rebuilt isolated server was tested against disposable H2 and PostgreSQL fault-injection inputs:
+
+| Scenario | Final live result |
+|---|---|
+| Saved valid H2 source | HTTP 200 with `product: H2` and `elapsedMs: 614` |
+| Wrong H2 password through the connection pool | HTTP 400 `[AUTH]`; no secret or stack trace |
+| Missing PostgreSQL `.invalid` hostname | HTTP 400 `[DNS]` in 313 ms |
+| Refused PostgreSQL port | HTTP 400 `[NETWORK]` in 22 ms |
+| Black-holed PostgreSQL endpoint | HTTP 400 `[TIMEOUT]` in 8041 ms |
+
+During the live retest, pool wrappers were found to hide SQLState/root causes in three paths. The final
+fix adds narrowly scoped fallbacks for known authentication and network wording, and verifies the
+hostname only after a generic connection-attempt failure. Timeout classification remains first at the
+configured budget so a slow unresolved local hostname cannot override a real timeout.
+
+`ConnectionFailureClassificationTest` now has 11 passing cases, including the pool-wrapped authentication,
+DNS, and refused-port forms. The live evidence is retained in
+`docs/testing/evidence/artifacts/DSRC-002-LIVE-2026-07-19.json`.
+
 ## Residual
 
-TLS and privilege categories are implemented but **unverified** — DSRC-002-06/07/08 need trusted and
-untrusted certificate endpoints and a low-privilege database account, none of which exist in this
-environment. They are recorded as NOT EXECUTED, not as passing.
+TLS and privilege categories are implemented but remain **HARD-PASS exceptions**: DSRC-002-06/07 need
+trusted, untrusted, and hostname-mismatch certificate endpoints, while DSRC-002-08 needs a valid
+low-privilege database account. None are provisioned in this environment, so they are not passed or
+certified.

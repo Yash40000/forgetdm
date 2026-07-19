@@ -3,7 +3,7 @@
 **Priority:** P0
 
 **Lane:** Each connector
-**Execution status:** NOT RUN
+**Execution status:** COMPLETE WITH HARD-PASS EXCEPTION - 7/8 acceptance cases proven on isolated H2; DISC-006-06 requires a safely provisioned metadata-restricted vendor account and is not live-certified.
 
 ## Objective
 
@@ -31,3 +31,18 @@ Prove that discovery rejects an empty or inaccessible schema before creating a m
 
 - Add service/controller tests for sync and async paths plus UI coverage for the `0/0` regression.
 - Pass requires no success state for a scope containing zero scannable tables on any certified connector.
+
+## 2026-07-19 Execution Result
+
+| Case | Result | Evidence |
+|---|---|---|
+| DISC-006-01 | PASS | Isolated H2 sync scan rejects an empty schema before classifications are read or written. |
+| DISC-006-02 | PASS | Async preflight rejects before a job is queued; history remains empty. |
+| DISC-006-03 | PASS | Frontend presentation converts any legacy `COMPLETED 0/0 100%` payload to rejected/failed at 0%. |
+| DISC-006-04 | PASS | Explicit missing schema reports `does not exist or is not visible` without a JDBC URL. |
+| DISC-006-05 | PASS | A Flyway-only schema is treated as having no scannable tables. |
+| DISC-006-06 | HARD-PASS | No safely creatable metadata-restricted vendor account is available in this pass. This remains unproven, not certified. |
+| DISC-006-07 | PASS | Missing focused table names are listed and no worker starts. |
+| DISC-006-08 | PASS | Sync/async rejections write sanitized rejection audit events and create no false successful history job. |
+
+Focused result: `DiscoveryScopeValidationTest` (2), `DiscoveryFrontendBehaviorTest` (1), and existing `DiscoveryJobServiceTest` (1): 4 tests, 0 failures, 0 errors, 0 skipped.

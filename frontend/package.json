@@ -8,6 +8,7 @@
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint .",
+    "test:auth001": "playwright test --config=playwright.auth001.config.ts",
     "test:auth003": "playwright test --config=playwright.auth003.config.ts",
     "test:auth003:headed": "playwright test --config=playwright.auth003.config.ts --headed"
   },
