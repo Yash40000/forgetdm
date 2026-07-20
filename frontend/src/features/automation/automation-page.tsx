@@ -39,6 +39,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { apiFetch, apiPost, apiPut } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 
 type ApiToken = {
   id: string;
@@ -72,8 +73,6 @@ type IntegrationDelivery = {
   createdAt: string;
   updatedAt: string;
 };
-type AuthMe = { authenticated?: boolean; user?: { roles?: string[] } };
-
 const EMPTY_INTEGRATION = {
   name: '',
   kind: 'GENERIC',
@@ -86,19 +85,19 @@ const EMPTY_INTEGRATION = {
 export function AutomationPage() {
   const client = useQueryClient();
   const [activeTab, setActiveTab] = useState<string | null>('overview');
-  const meQuery = useQuery({ queryKey: keys.auth.me, queryFn: () => apiFetch<AuthMe>('/api/auth/me') });
-  const roles = meQuery.data?.user?.roles || [];
-  const canManageIntegrations = roles.some((role) => role === 'ADMIN' || role === 'TDM_ARCHITECT');
+  const { can } = usePermissions();
+  const canReadIntegrations = can('integration.read');
+  const canManageIntegrations = can('integration.manage');
   const tokensQuery = useQuery({ queryKey: keys.automation.tokens, queryFn: () => apiFetch<ApiToken[]>('/api/auth/tokens') });
   const integrationsQuery = useQuery({
     queryKey: keys.automation.integrations,
     queryFn: () => apiFetch<Integration[]>('/api/integrations'),
-    enabled: canManageIntegrations
+    enabled: canReadIntegrations
   });
   const deliveriesQuery = useQuery({
     queryKey: keys.automation.deliveries,
     queryFn: () => apiFetch<IntegrationDelivery[]>('/api/integrations/deliveries?limit=100'),
-    enabled: canManageIntegrations,
+    enabled: canReadIntegrations,
     refetchInterval: activeTab === 'activity' ? 5000 : false
   });
   const tokens = useMemo(() => tokensQuery.data || [], [tokensQuery.data]);
@@ -122,10 +121,20 @@ export function AutomationPage() {
 
   const refresh = () => {
     void tokensQuery.refetch();
-    if (canManageIntegrations) {
+    if (canReadIntegrations) {
       void integrationsQuery.refetch();
       void deliveriesQuery.refetch();
     }
+  };
+
+  const requireIntegrationManager = () => {
+    if (canManageIntegrations) return true;
+    notifications.show({
+      color: 'yellow',
+      title: 'Read-only integration access',
+      message: 'The integration.manage permission is required for this action.'
+    });
+    return false;
   };
 
   const createToken = async () => {
@@ -162,6 +171,7 @@ export function AutomationPage() {
   };
 
   const editIntegration = (item?: Integration) => {
+    if (!requireIntegrationManager()) return;
     setEditingIntegrationId(item?.id || null);
     setIntegration(
       item
@@ -179,6 +189,7 @@ export function AutomationPage() {
   };
 
   const saveIntegration = async () => {
+    if (!requireIntegrationManager()) return;
     setBusy('save-integration');
     try {
       const body = {
@@ -199,6 +210,7 @@ export function AutomationPage() {
   };
 
   const testIntegration = async (item: Integration) => {
+    if (!requireIntegrationManager()) return;
     setBusy(`test:${item.id}`);
     try {
       await apiPost(`/api/integrations/${encodeURIComponent(item.id)}/test`, {});
@@ -217,6 +229,7 @@ export function AutomationPage() {
   };
 
   const retryDelivery = async (delivery: IntegrationDelivery) => {
+    if (!requireIntegrationManager()) return;
     setBusy(`retry:${delivery.id}`);
     try {
       await apiPost(`/api/integrations/deliveries/${encodeURIComponent(delivery.id)}/retry`, {});
@@ -230,6 +243,7 @@ export function AutomationPage() {
   };
 
   const deleteIntegration = async (item: Integration) => {
+    if (!requireIntegrationManager()) return;
     if (!window.confirm(`Delete integration "${item.name}" and its delivery history?`)) return;
     setBusy(`delete:${item.id}`);
     try {
@@ -266,17 +280,17 @@ export function AutomationPage() {
 
         <Group gap="xs">
           <Badge variant="light" color={activeTokens ? 'green' : 'gray'}>{activeTokens} active tokens</Badge>
-          {canManageIntegrations ? <Badge variant="light" color={activeEndpoints ? 'green' : 'gray'}>{activeEndpoints} active endpoints</Badge> : null}
-          {canManageIntegrations ? <Badge variant="light" color="blue">{deliveredCount} recent delivered</Badge> : null}
-          {canManageIntegrations && attentionCount ? <Badge variant="light" color="red">{attentionCount} need attention</Badge> : null}
+          {canReadIntegrations ? <Badge variant="light" color={activeEndpoints ? 'green' : 'gray'}>{activeEndpoints} active endpoints</Badge> : null}
+          {canReadIntegrations ? <Badge variant="light" color="blue">{deliveredCount} recent delivered</Badge> : null}
+          {canReadIntegrations && attentionCount ? <Badge variant="light" color="red">{attentionCount} need attention</Badge> : null}
         </Group>
 
         <QueryErrorBanner
           errors={[tokensQuery.error, integrationsQuery.error, deliveriesQuery.error]}
           onRetry={() => Promise.all([
             tokensQuery.refetch(),
-            canManageIntegrations ? integrationsQuery.refetch() : Promise.resolve(),
-            canManageIntegrations ? deliveriesQuery.refetch() : Promise.resolve()
+            canReadIntegrations ? integrationsQuery.refetch() : Promise.resolve(),
+            canReadIntegrations ? deliveriesQuery.refetch() : Promise.resolve()
           ])}
           title="Automation settings could not be loaded"
         />
@@ -285,8 +299,8 @@ export function AutomationPage() {
           <Tabs.List>
             <Tabs.Tab value="overview" leftSection={<IconShieldCheck size={14} />}>How it works</Tabs.Tab>
             <Tabs.Tab value="tokens" leftSection={<IconKey size={14} />}>API tokens</Tabs.Tab>
-            {canManageIntegrations ? <Tabs.Tab value="integrations" leftSection={<IconPlugConnected size={14} />}>Integrations</Tabs.Tab> : null}
-            {canManageIntegrations ? <Tabs.Tab value="activity" leftSection={<IconActivity size={14} />}>Delivery activity</Tabs.Tab> : null}
+            {canReadIntegrations ? <Tabs.Tab value="integrations" leftSection={<IconPlugConnected size={14} />}>Integrations</Tabs.Tab> : null}
+            {canReadIntegrations ? <Tabs.Tab value="activity" leftSection={<IconActivity size={14} />}>Delivery activity</Tabs.Tab> : null}
           </Tabs.List>
 
           <Tabs.Panel value="overview" pt="md">
@@ -321,8 +335,8 @@ export function AutomationPage() {
                   icon={<IconPlugConnected size={18} />}
                   title="Signal downstream tools"
                   body="Send signed events to an approved integration gateway for ServiceNow, Jira, Azure DevOps, or a generic listener. ForgeTDM retries delivery and retains operational evidence."
-                  action={canManageIntegrations ? 'Manage integrations' : undefined}
-                  onClick={canManageIntegrations ? () => setActiveTab('integrations') : undefined}
+                  action={canReadIntegrations ? (canManageIntegrations ? 'Manage integrations' : 'View integrations') : undefined}
+                  onClick={canReadIntegrations ? () => setActiveTab('integrations') : undefined}
                 />
               </SimpleGrid>
 
@@ -389,14 +403,18 @@ export function AutomationPage() {
             {!tokens.length ? <Alert color="blue">No API tokens yet. Create one when a pipeline or scheduler is ready to call ForgeTDM.</Alert> : null}
           </Tabs.Panel>
 
-          {canManageIntegrations ? (
+          {canReadIntegrations ? (
             <Tabs.Panel value="integrations" pt="md">
               <Group justify="space-between" mb="md">
                 <div>
                   <Text fw={750}>Outbound event delivery</Text>
                   <Text size="sm" c="dimmed">HTTPS endpoints, optional HMAC signing, durable retries, and delivery IDs.</Text>
                 </div>
-                <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => editIntegration()}>Add endpoint</Button>
+                {canManageIntegrations ? (
+                  <Button size="xs" leftSection={<IconPlus size={14} />} onClick={() => editIntegration()}>Add endpoint</Button>
+                ) : (
+                  <Badge variant="light" color="gray">Read only</Badge>
+                )}
               </Group>
               <SimpleGrid cols={{ base: 1, md: 2 }}>
                 {integrations.map((item) => {
@@ -418,14 +436,20 @@ export function AutomationPage() {
                         <Text size="xs" c="dimmed">Events: {item.eventTypes || '*'}</Text>
                         {latest ? <Text size="xs" c="dimmed">Latest delivery {formatDate(latest.updatedAt)} - {latest.attempts} attempt{latest.attempts === 1 ? '' : 's'}</Text> : null}
                         <Group gap="xs">
-                          <Tooltip label={item.enabled ? 'Queue a signed test event' : 'Enable this endpoint before testing'}>
-                            <span>
-                              <Button size="xs" variant="light" disabled={!item.enabled} loading={busy === `test:${item.id}`} onClick={() => void testIntegration(item)}>Test</Button>
-                            </span>
-                          </Tooltip>
-                          <Button size="xs" variant="default" onClick={() => editIntegration(item)}>Edit</Button>
+                          {canManageIntegrations ? (
+                            <>
+                              <Tooltip label={item.enabled ? 'Queue a signed test event' : 'Enable this endpoint before testing'}>
+                                <span>
+                                  <Button size="xs" variant="light" disabled={!item.enabled} loading={busy === `test:${item.id}`} onClick={() => void testIntegration(item)}>Test</Button>
+                                </span>
+                              </Tooltip>
+                              <Button size="xs" variant="default" onClick={() => editIntegration(item)}>Edit</Button>
+                            </>
+                          ) : null}
                           {latest ? <Button size="xs" variant="subtle" onClick={() => setActiveTab('activity')}>Activity</Button> : null}
-                          <Button size="xs" color="red" variant="subtle" loading={busy === `delete:${item.id}`} onClick={() => void deleteIntegration(item)}>Delete</Button>
+                          {canManageIntegrations ? (
+                            <Button size="xs" color="red" variant="subtle" loading={busy === `delete:${item.id}`} onClick={() => void deleteIntegration(item)}>Delete</Button>
+                          ) : null}
                         </Group>
                       </Stack>
                     </Paper>
@@ -436,7 +460,7 @@ export function AutomationPage() {
             </Tabs.Panel>
           ) : null}
 
-          {canManageIntegrations ? (
+          {canReadIntegrations ? (
             <Tabs.Panel value="activity" pt="md">
               <Group justify="space-between" mb="md">
                 <div>
@@ -462,7 +486,7 @@ export function AutomationPage() {
                         </Text>
                         {delivery.lastError ? <Text size="xs" c="red" mt={4}>{delivery.lastError}</Text> : null}
                       </div>
-                      {['RETRY', 'DEAD'].includes(delivery.status) ? (
+                      {canManageIntegrations && ['RETRY', 'DEAD'].includes(delivery.status) ? (
                         <Button size="xs" variant="light" leftSection={<IconRotateClockwise size={13} />} loading={busy === `retry:${delivery.id}`} onClick={() => void retryDelivery(delivery)}>Retry now</Button>
                       ) : null}
                     </Group>
@@ -499,7 +523,7 @@ export function AutomationPage() {
         </Stack>
       </Modal>
 
-      <Modal opened={integrationModal} onClose={() => setIntegrationModal(false)} title={editingIntegrationId ? 'Edit integration' : 'Add integration'} size="lg">
+      <Modal opened={canManageIntegrations && integrationModal} onClose={() => setIntegrationModal(false)} title={editingIntegrationId ? 'Edit integration' : 'Add integration'} size="lg">
         <Stack gap="sm">
           <Group grow>
             <TextInput label="Name" value={integration.name} onChange={(event) => setIntegration({ ...integration, name: event.currentTarget.value })} />

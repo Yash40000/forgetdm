@@ -10,6 +10,7 @@ import { useConfirm } from '@/components/confirm';
 import { apiFetch, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { DataScopeVersion, DataSetDefinition } from '@/lib/types';
+import { usePermissions } from '@/lib/use-permissions';
 import { useVersions } from '../hooks';
 
 /**
@@ -20,6 +21,8 @@ import { useVersions } from '../hooks';
 export function VersionsPanel({ blueprint }: { blueprint: DataSetDefinition }) {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const versionsQuery = useVersions(blueprint.id);
   const [note, setNote] = useState('');
   const [diff, setDiff] = useState<Record<string, unknown> | null>(null);
@@ -35,7 +38,10 @@ export function VersionsPanel({ blueprint }: { blueprint: DataSetDefinition }) {
   };
 
   const createVersion = useMutation({
-    mutationFn: () => apiPost<DataScopeVersion>(`/api/datasets/${blueprint.id}/versions`, { note: note.trim() || null }),
+    mutationFn: () => {
+      if (!canManage) throw new Error('DataScope management permission is required.');
+      return apiPost<DataScopeVersion>(`/api/datasets/${blueprint.id}/versions`, { note: note.trim() || null });
+    },
     onSuccess: async () => {
       notifications.show({ color: 'green', title: 'Version created', message: note.trim() || 'Blueprint state frozen.' });
       setNote('');
@@ -55,6 +61,7 @@ export function VersionsPanel({ blueprint }: { blueprint: DataSetDefinition }) {
   };
 
   const restore = async (version: DataScopeVersion) => {
+    if (!canManage) return;
     const label = version.versionNo ? `v${version.versionNo}` : `version #${version.id}`;
     const ok = await confirm({
       title: 'Restore blueprint version',
@@ -87,11 +94,18 @@ export function VersionsPanel({ blueprint }: { blueprint: DataSetDefinition }) {
             <Text size="sm" c="dimmed" mb={6}>
               Snapshot the whole blueprint (tables, mappings, relationships, frozen policy rules) before risky edits or a release.
             </Text>
-            <TextInput placeholder="Why this version matters, e.g. 'pre-UAT release'" value={note} onChange={(e) => setNote(e.currentTarget.value)} />
+            <TextInput
+              placeholder="Why this version matters, e.g. 'pre-UAT release'"
+              value={note}
+              disabled={!canManage}
+              onChange={(e) => setNote(e.currentTarget.value)}
+            />
           </div>
-          <Button leftSection={<IconCamera size={16} />} loading={createVersion.isPending} onClick={() => createVersion.mutate()}>
-            Create version
-          </Button>
+          {canManage ? (
+            <Button leftSection={<IconCamera size={16} />} loading={createVersion.isPending} onClick={() => createVersion.mutate()}>
+              Create version
+            </Button>
+          ) : null}
         </Group>
       </Paper>
 
@@ -130,9 +144,11 @@ export function VersionsPanel({ blueprint }: { blueprint: DataSetDefinition }) {
                       <Button size="xs" variant="light" leftSection={<IconGitCompare size={13} />} onClick={() => void showDiff(version)}>
                         Diff vs current
                       </Button>
-                      <Button size="xs" variant="light" color="orange" leftSection={<IconRestore size={13} />} onClick={() => void restore(version)}>
-                        Restore
-                      </Button>
+                       {canManage ? (
+                         <Button size="xs" variant="light" color="orange" leftSection={<IconRestore size={13} />} onClick={() => void restore(version)}>
+                           Restore
+                         </Button>
+                       ) : null}
                     </Group>
                   </td>
                 </tr>

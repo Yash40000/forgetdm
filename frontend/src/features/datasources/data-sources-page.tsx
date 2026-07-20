@@ -231,6 +231,7 @@ export function DataSourcesPage() {
 
   const saveMutation = useMutation({
     mutationFn: async () => {
+      if (!canManage) throw new Error('Data source management permission is required.');
       const payload = payloadFromDraft(draft);
       if (!payload.name || !payload.jdbcUrl) {
         throw new Error('Name and JDBC URL are required.');
@@ -262,10 +263,12 @@ export function DataSourcesPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) =>
-      apiFetch<void>(`/api/datasources/${id}`, {
+    mutationFn: (id: number) => {
+      if (!canManage) throw new Error('Data source management permission is required.');
+      return apiFetch<void>(`/api/datasources/${id}`, {
         method: 'DELETE'
-      }),
+      });
+    },
     onSuccess: (_, deletedId) => {
       notifications.show({ color: 'green', title: 'Connection deleted', message: 'The data source was removed.' });
       if (editingId === deletedId) resetDraft();
@@ -278,6 +281,7 @@ export function DataSourcesPage() {
   });
 
   const updateDraft = (patch: Partial<Draft>) => {
+    if (!canManage) return;
     draftTestRequestSequence.current += 1;
     setDraftDirty(true);
     setDraft((current) => ({ ...current, ...patch }));
@@ -303,6 +307,7 @@ export function DataSourcesPage() {
   };
 
   const startEdit = async (source: DataSource) => {
+    if (!canManage) return;
     if (source.id === editingId && connectionDrawerOpened) return;
     if (!(await confirmDraftDiscard())) return;
     setEditingId(source.id);
@@ -313,6 +318,7 @@ export function DataSourcesPage() {
   };
 
   const startNew = async () => {
+    if (!canManage) return;
     if (!(await confirmDraftDiscard())) return;
     resetDraft();
     setConnectionDrawerOpened(true);
@@ -325,6 +331,7 @@ export function DataSourcesPage() {
   };
 
   const testDraftConnection = async () => {
+    if (!canManage) return;
     const sequence = ++draftTestRequestSequence.current;
     setDraftTest({ status: 'testing', message: 'Testing unsaved connection...' });
     try {
@@ -340,6 +347,7 @@ export function DataSourcesPage() {
   };
 
   const testSavedConnection = async (source: DataSource) => {
+    if (!canManage) return;
     const sequence = (savedTestRequestSequence.current[source.id] ?? 0) + 1;
     savedTestRequestSequence.current[source.id] = sequence;
     setTestStates((current) => ({
@@ -541,11 +549,13 @@ export function DataSourcesPage() {
                               </Table.Td>
                               <Table.Td>
                                 <Group gap={4} wrap="nowrap" justify="flex-end" className="dsx-row-tools">
-                                  <Tooltip label="Test connection">
-                                    <ActionIcon size="lg" variant="light" loading={test.status === 'testing'} aria-label={`Test ${source.name}`} onClick={() => void testSavedConnection(source)}>
-                                      <IconPlugConnected size={16} />
-                                    </ActionIcon>
-                                  </Tooltip>
+                                  {canManage ? (
+                                    <Tooltip label="Test connection">
+                                      <ActionIcon size="lg" variant="light" loading={test.status === 'testing'} aria-label={`Test ${source.name}`} onClick={() => void testSavedConnection(source)}>
+                                        <IconPlugConnected size={16} />
+                                      </ActionIcon>
+                                    </Tooltip>
+                                  ) : null}
                                   <Tooltip label="Browse schemas">
                                     <ActionIcon size="lg" variant="subtle" loading={schemaState?.status === 'loading'} aria-label={`Browse schemas for ${source.name}`} onClick={() => void browseSchemas(source)}>
                                       <IconFolderOpen size={16} />
@@ -578,7 +588,9 @@ export function DataSourcesPage() {
                                           variant="subtle"
                                           color="red"
                                           aria-label={`Delete ${source.name}`}
-                                          onClick={() => setDeleteTarget(source)}
+                                          onClick={() => {
+                                            if (canManage) setDeleteTarget(source);
+                                          }}
                                         >
                                           <IconTrash size={15} />
                                         </ActionIcon>
@@ -621,7 +633,7 @@ export function DataSourcesPage() {
             </Paper>
 
             <Drawer
-              opened={connectionDrawerOpened}
+              opened={canManage && connectionDrawerOpened}
               onClose={() => void closeConnectionEditor()}
               position="right"
               size={560}
@@ -644,6 +656,7 @@ export function DataSourcesPage() {
                   label="Name"
                   placeholder="sourceDB, targetDB, customer360-prod"
                   value={draft.name}
+                  disabled={!canManage}
                   onChange={(value) => updateDraft({ name: value })}
                 />
                 <Group grow align="flex-start">
@@ -659,19 +672,26 @@ export function DataSourcesPage() {
                         <ActionIcon
                           variant="subtle"
                           aria-label="Browse database engines"
-                          onClick={() => setEnginePickerOpened(true)}
+                          disabled={!canManage}
+                          onClick={() => {
+                            if (canManage) setEnginePickerOpened(true);
+                          }}
                         >
                           <IconFolderOpen size={17} />
                         </ActionIcon>
                       </Tooltip>
                     }
                     styles={{ section: { pointerEvents: 'auto' } }}
-                    onClick={() => setEnginePickerOpened(true)}
+                    disabled={!canManage}
+                    onClick={() => {
+                      if (canManage) setEnginePickerOpened(true);
+                    }}
                   />
                   <Select
                     label="Role"
                     data={ROLE_OPTIONS}
                     value={draft.role}
+                    disabled={!canManage}
                     onChange={(value) => updateDraft({ role: value || 'BOTH' })}
                   />
                 </Group>
@@ -680,6 +700,7 @@ export function DataSourcesPage() {
                     label="Environment"
                     placeholder="DEV, QA, UAT, PROD"
                     value={draft.environment}
+                    disabled={!canManage}
                     onChange={(event) => updateDraft({ environment: event.currentTarget?.value || '' })}
                     spellCheck={false}
                   />
@@ -687,6 +708,7 @@ export function DataSourcesPage() {
                     label="Tags"
                     placeholder="pii, cards, claims"
                     value={draft.tags}
+                    disabled={!canManage}
                     onChange={(event) => updateDraft({ tags: event.currentTarget?.value || '' })}
                     spellCheck={false}
                   />
@@ -696,6 +718,7 @@ export function DataSourcesPage() {
                   autosize
                   minRows={3}
                   value={draft.jdbcUrl}
+                  disabled={!canManage}
                   onChange={(event) => updateDraft({ jdbcUrl: event.currentTarget?.value || '' })}
                   spellCheck={false}
                   classNames={{ input: 'dsx-jdbc-input' }}
@@ -704,6 +727,7 @@ export function DataSourcesPage() {
                   <Button
                     size="xs"
                     variant="default"
+                    disabled={!canManage}
                     onClick={() => updateDraft({ jdbcUrl: ENGINE_TEMPLATES[draft.kind] || ENGINE_TEMPLATES.GENERIC })}
                   >
                     Use {draft.kind} template
@@ -716,6 +740,7 @@ export function DataSourcesPage() {
                   <TextInput
                     label="Username"
                     value={draft.username}
+                    disabled={!canManage}
                     onChange={(event) => updateDraft({ username: event.currentTarget?.value || '' })}
                     spellCheck={false}
                     autoComplete="off"
@@ -723,6 +748,7 @@ export function DataSourcesPage() {
                   <PasswordInput
                     label="Password"
                     value={draft.password}
+                    disabled={!canManage}
                     onChange={(event) => updateDraft({ password: event.currentTarget?.value || '' })}
                     autoComplete="new-password"
                     description={editingId ? 'Leave blank to keep saved password.' : undefined}
@@ -732,16 +758,18 @@ export function DataSourcesPage() {
                 <ConnectionProbeCard state={draftTest} />
 
                 <Group justify="space-between" mt="xs" className="dsx-drawer-actions">
-                  <Button variant="default" leftSection={<IconPlugConnected size={16} />} loading={draftTest.status === 'testing'} onClick={testDraftConnection}>
+                  <Button variant="default" leftSection={<IconPlugConnected size={16} />} loading={draftTest.status === 'testing'} disabled={!canManage} onClick={() => void testDraftConnection()}>
                     Test draft
                   </Button>
                   <Group gap="xs">
                     {editingId ? (
-                      <Button variant="subtle" color="gray" onClick={() => void startNew()}>
+                      <Button variant="subtle" color="gray" disabled={!canManage} onClick={() => void startNew()}>
                         New
                       </Button>
                     ) : null}
-                    <Button loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>
+                    <Button loading={saveMutation.isPending} disabled={!canManage} onClick={() => {
+                      if (canManage) saveMutation.mutate();
+                    }}>
                       {editingId ? 'Save changes' : 'Save connection'}
                     </Button>
                   </Group>
@@ -805,7 +833,7 @@ export function DataSourcesPage() {
         </Modal>
 
         <Modal
-          opened={enginePickerOpened}
+          opened={canManage && enginePickerOpened}
           onClose={() => setEnginePickerOpened(false)}
           title="Choose a database engine"
           size="xl"
@@ -827,7 +855,9 @@ export function DataSourcesPage() {
                   <UnstyledButton
                     key={engine.value}
                     className={`dsx-engine-option ${draft.kind === engine.value ? 'is-selected' : ''}`}
+                    disabled={!canManage}
                     onClick={() => {
+                      if (!canManage) return;
                       const previousTemplate = ENGINE_TEMPLATES[draft.kind];
                       const nextUrl = !draft.jdbcUrl.trim() || draft.jdbcUrl === previousTemplate
                         ? ENGINE_TEMPLATES[engine.value]
@@ -897,7 +927,7 @@ export function DataSourcesPage() {
         </Modal>
 
         <Modal
-          opened={!!deleteTarget}
+          opened={canManage && !!deleteTarget}
           onClose={() => setDeleteTarget(null)}
           title="Delete data source"
           centered
@@ -913,8 +943,9 @@ export function DataSourcesPage() {
               <Button
                 color="red"
                 loading={deleteMutation.isPending}
+                disabled={!canManage}
                 onClick={() => {
-                  if (deleteTarget) deleteMutation.mutate(deleteTarget.id);
+                  if (canManage && deleteTarget) deleteMutation.mutate(deleteTarget.id);
                 }}
               >
                 Delete

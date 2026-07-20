@@ -10,6 +10,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useConfirm } from '@/components/confirm';
 import { apiFetch, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import type { LooseMap } from '../hooks';
 import type { BusinessEntityDetail } from '../types';
 import { formatDate, num, statusDot, str, technicalInputProps } from '../utils';
@@ -29,6 +30,8 @@ type MemberDraft = {
  */
 export function FreshnessPanel({ detail, policies }: { detail: BusinessEntityDetail; policies: LooseMap[] }) {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const { confirm, confirmElement } = useConfirm();
   const entityId = detail.entity.id!;
   const members = detail.members || [];
@@ -51,8 +54,9 @@ export function FreshnessPanel({ detail, policies }: { detail: BusinessEntityDet
   const invalidate = () => queryClient.invalidateQueries({ queryKey: keys.businessEntity.syncPolicies(entityId) });
 
   const savePolicy = useMutation({
-    mutationFn: () =>
-      apiPost<LooseMap>(`/api/business-entities/${entityId}/sync-policies`, {
+    mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
+      return apiPost<LooseMap>(`/api/business-entities/${entityId}/sync-policies`, {
         name: form.name.trim() || `${detail.entity.name} freshness`,
         syncMode: form.syncMode,
         status: 'ACTIVE',
@@ -73,7 +77,8 @@ export function FreshnessPanel({ detail, policies }: { detail: BusinessEntityDet
             schemaName: members.find((member) => member.id === draft.memberId)?.schemaName || null,
             keyColumns: members.find((member) => member.id === draft.memberId)?.keyColumns || null
           }))
-      }),
+      });
+    },
     onSuccess: async () => {
       notifications.show({ color: 'green', title: 'Freshness policy saved', message: form.name.trim() || 'Policy stored.' });
       await invalidate();
@@ -82,6 +87,7 @@ export function FreshnessPanel({ detail, policies }: { detail: BusinessEntityDet
   });
 
   const checkNow = async (policy: LooseMap) => {
+    if (!canManage) return;
     try {
       const result = await apiPost<LooseMap>(`/api/business-entities/sync-policies/${policy.id}/check`, {});
       setLastCheck(result);
@@ -93,6 +99,7 @@ export function FreshnessPanel({ detail, policies }: { detail: BusinessEntityDet
   };
 
   const removePolicy = async (policy: LooseMap) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Delete freshness policy',
       danger: true,
@@ -131,7 +138,7 @@ export function FreshnessPanel({ detail, policies }: { detail: BusinessEntityDet
     <Stack gap="md">
       {confirmElement}
 
-      <div>
+      {canManage ? <div>
         <Group justify="space-between" align="flex-start" mb="xs" wrap="wrap">
           <div>
             <Text fw={650} size="sm">New freshness policy</Text>
@@ -207,7 +214,7 @@ export function FreshnessPanel({ detail, policies }: { detail: BusinessEntityDet
             Add member tables on the Model tab first.
           </Text>
         )}
-      </div>
+      </div> : null}
 
       <div>
         <Text fw={650} size="sm" mb={6}>
@@ -231,14 +238,14 @@ export function FreshnessPanel({ detail, policies }: { detail: BusinessEntityDet
                   {(Array.isArray(policy.members) ? policy.members.length : 0)} member(s)
                 </Text>
               </div>
-              <Group gap={4} wrap="nowrap">
+              {canManage ? <Group gap={4} wrap="nowrap">
                 <Button size="compact-xs" variant="subtle" onClick={() => void checkNow(policy)}>
                   Check now
                 </Button>
                 <Button size="compact-xs" variant="subtle" color="red" onClick={() => void removePolicy(policy)}>
                   Delete
                 </Button>
-              </Group>
+              </Group> : null}
             </div>
           ))
         ) : (

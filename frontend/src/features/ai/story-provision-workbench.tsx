@@ -14,6 +14,7 @@ import { useQueryClient } from '@tanstack/react-query';
 
 import { apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import { useAgentEvents, useAgentRuns, useAiStatus, useDataStoreStatus } from './hooks';
 import type { AgentRun, AgentStep } from './types';
 
@@ -25,21 +26,26 @@ const STORY_TEMPLATES = [
 
 export function StoryProvisionWorkbench() {
   const queryClient = useQueryClient();
-  const runsQuery = useAgentRuns();
-  const aiQuery = useAiStatus();
-  const storeQuery = useDataStoreStatus();
+  const { can, ready } = usePermissions();
+  const canUseAssistant = can('assistant.use');
+  const canManageDataStore = can('assistant.manage');
+  const canApprovePlan = can('provision.approve');
+  const runsQuery = useAgentRuns(canUseAssistant);
+  const aiQuery = useAiStatus(canUseAssistant);
+  const storeQuery = useDataStoreStatus(canUseAssistant);
   const [story, setStory] = useState('');
   const [run, setRun] = useState<AgentRun | null>(null);
   const [provider, setProvider] = useState<string | null>(null);
   const [clarification, setClarification] = useState('');
   const [busy, setBusy] = useState('');
-  const eventsQuery = useAgentEvents(run?.id || null);
+  const eventsQuery = useAgentEvents(run?.id || null, canUseAssistant);
   const providers = aiQuery.data?.providers || [];
   const selectedProvider = provider || aiQuery.data?.default || providers[0]?.id || null;
   const selectedRuntime = providers.find((item) => item.id === selectedProvider);
 
   const mutate = async (label: string, path: string, body: unknown = {}) => {
     if (!run) return;
+    if (path.endsWith('/approve-plan') ? !canApprovePlan : !canUseAssistant) return;
     setBusy(label);
     try {
       const updated = await apiPost<AgentRun>(path, body);
@@ -55,7 +61,7 @@ export function StoryProvisionWorkbench() {
   };
 
   const buildPlan = async (refreshDataStore = false) => {
-    if (!story.trim()) return;
+    if (!canUseAssistant || (refreshDataStore && !canManageDataStore) || !story.trim()) return;
     setBusy(refreshDataStore ? 'refresh' : 'compile');
     try {
       const created = await apiPost<AgentRun>('/api/agent/plan', {
@@ -73,6 +79,9 @@ export function StoryProvisionWorkbench() {
       setBusy('');
     }
   };
+
+  if (!ready) return <Paper p="lg"><Text c="dimmed">Checking Story to Data access...</Text></Paper>;
+  if (!canUseAssistant) return <Alert color="yellow" title="Story to Data is not available">Your role does not include access to the private planning assistant.</Alert>;
 
   return (
     <div className="agent-workbench">
@@ -93,6 +102,7 @@ export function StoryProvisionWorkbench() {
               autosize
               maxRows={18}
               value={story}
+              disabled={!canUseAssistant}
               onChange={(event) => setStory(event.currentTarget?.value || '')}
               placeholder="As a card-service tester, I need 200 masked customers with..."
               spellCheck
@@ -100,7 +110,7 @@ export function StoryProvisionWorkbench() {
             <Text size="xs" fw={750} c="dimmed" mt="md" mb={6}>Scenario starters</Text>
             <Stack gap={6}>
               {STORY_TEMPLATES.map((template, index) => (
-                <button className="agent-story-template" type="button" key={template} onClick={() => setStory(template)}>
+                <button className="agent-story-template" type="button" key={template} disabled={!canUseAssistant} onClick={() => setStory(template)}>
                   <IconSparkles size={14} />
                   <span>{index === 0 ? 'Cross-system functional test' : index === 1 ? 'Synthetic performance test' : 'Complex subset test'}</span>
                 </button>
@@ -116,16 +126,16 @@ export function StoryProvisionWorkbench() {
                 label: `${item.label} · ${item.model}${item.reachable === false ? ' · offline' : item.autoSelected ? ' · auto-selected' : ''}`
               }))}
               placeholder={aiQuery.isLoading ? 'Checking private runtime…' : 'Deterministic fallback only'}
-              disabled={!providers.length}
+              disabled={!canUseAssistant || !providers.length}
             />
             {selectedRuntime ? <Text size="xs" c={selectedRuntime.reachable === false ? 'red' : selectedRuntime.autoSelected ? 'yellow' : 'dimmed'} mt={5}>
               {selectedRuntime.detail}{selectedRuntime.autoSelected && selectedRuntime.configuredModel ? ` (configured: ${selectedRuntime.configuredModel})` : ''}
             </Text> : null}
             <Group grow mt="md">
-              <Button leftSection={<IconBrain size={17} />} loading={busy === 'compile'} disabled={!story.trim()} onClick={() => void buildPlan(false)}>
+              <Button leftSection={<IconBrain size={17} />} loading={busy === 'compile'} disabled={!canUseAssistant || !story.trim()} onClick={() => void buildPlan(false)}>
                 Compile grounded plan
               </Button>
-              {storeQuery.data?.canManage ? <Button variant="default" leftSection={<IconRefresh size={16} />} loading={busy === 'refresh'} disabled={!story.trim()} onClick={() => void buildPlan(true)}>
+              {canManageDataStore ? <Button variant="default" leftSection={<IconRefresh size={16} />} loading={busy === 'refresh'} disabled={!canUseAssistant || !story.trim()} onClick={() => void buildPlan(true)}>
                 Refresh & compile
               </Button> : null}
             </Group>
@@ -171,14 +181,14 @@ export function StoryProvisionWorkbench() {
                 </Tabs.List>
                 <Tabs.Panel value="plan" pt="md">
                   <Guardrails run={run} />
-                  <PlanSteps run={run} busy={busy} mutate={mutate} />
-                  <PlanFeedback run={run} />
+                  <PlanSteps run={run} busy={busy} canUseAssistant={canUseAssistant} canApprovePlan={canApprovePlan} mutate={mutate} />
+                   {canUseAssistant ? <PlanFeedback run={run} canUseAssistant={canUseAssistant} /> : null}
                   {run.status === 'BLOCKED' ? (
                     <Paper className="agent-clarify" p="md" mt="md">
                       <Text fw={800}>Resolve the plan questions</Text>
                       <Text size="sm" c="dimmed">Answers create a new immutable plan; the blocked version remains in history.</Text>
-                      <Textarea mt="sm" minRows={4} value={clarification} onChange={(event) => setClarification(event.currentTarget?.value || '')} placeholder="Source is Core Banking PROD; target is QA_DB; use Customer360 DataScope and Retail PII policy…" />
-                      <Button mt="sm" loading={busy === 'revise'} disabled={!clarification.trim()} onClick={() => void mutate('revise', `/api/agent/runs/${run.id}/revise`, { answers: { response: clarification }, provider: selectedProvider })}>Compile revised plan</Button>
+                      <Textarea mt="sm" minRows={4} disabled={!canUseAssistant} value={clarification} onChange={(event) => setClarification(event.currentTarget?.value || '')} placeholder="Source is Core Banking PROD; target is QA_DB; use Customer360 DataScope and Retail PII policy…" />
+                      <Button mt="sm" loading={busy === 'revise'} disabled={!canUseAssistant || !clarification.trim()} onClick={() => void mutate('revise', `/api/agent/runs/${run.id}/revise`, { answers: { response: clarification }, provider: selectedProvider })}>Compile revised plan</Button>
                     </Paper>
                   ) : null}
                 </Tabs.Panel>
@@ -209,18 +219,19 @@ function Guardrails({ run }: { run: AgentRun }) {
   return <Stack gap="xs" mb="md">{run.validation.map((issue) => <Alert key={`${issue.code}-${issue.message}`} color={issue.severity === 'BLOCKER' ? 'red' : 'yellow'} icon={issue.severity === 'BLOCKER' ? <IconX size={18} /> : <IconAlertTriangle size={18} />} title={`${human(issue.severity)} · ${human(issue.code)}`}><Text size="sm">{issue.message}</Text><Text size="xs" mt={4}>{issue.remediation}</Text></Alert>)}</Stack>;
 }
 
-function PlanSteps({ run, busy, mutate }: { run: AgentRun; busy: string; mutate: (label: string, path: string, body?: unknown) => Promise<void> }) {
+function PlanSteps({ run, busy, canUseAssistant, canApprovePlan, mutate }: { run: AgentRun; busy: string; canUseAssistant: boolean; canApprovePlan: boolean; mutate: (label: string, path: string, body?: unknown) => Promise<void> }) {
   const awaitingAction = run.steps.find((step) => step.status === 'AWAITING_APPROVAL');
-  return <>{run.status === 'AWAITING_PLAN_APPROVAL' && !run.canApprovePlan ? <Alert mb="md" color="blue" icon={<IconShieldCheck size={17} />} title="Independent approval required">{run.approvalMessage}</Alert> : null}<Timeline bulletSize={30} lineWidth={2}>{run.steps.map((step) => <Timeline.Item key={step.id} color={stepColor(step)} bullet={stepIcon(step)} title={<Group gap="xs"><Text fw={800}>{step.title}</Text><Badge size="xs" variant="light" color={stepColor(step)}>{human(step.status)}</Badge>{step.changesData ? <Badge size="xs" color="yellow" variant="outline">changes data</Badge> : null}</Group>}><Text size="sm" c="dimmed">{step.detail}</Text>{step.evidence?.length ? <Group gap={5} mt={6}>{step.evidence.map((citation) => <Badge key={citation} size="xs" variant="dot">{citation}</Badge>)}</Group> : null}{step.result ? <Code block mt="xs">{pretty(step.result)}</Code> : null}{step.status === 'AWAITING_APPROVAL' ? <Paper p="sm" mt="sm" withBorder className="agent-action-gate"><Text fw={800}>Explicit action approval</Text><Text size="sm">{step.actionSummary || step.detail}</Text><Code block mt="xs">{pretty(step.actionArgs)}</Code><Group mt="sm"><Button color="green" loading={busy === 'approve action'} onClick={() => void mutate('approve action', `/api/agent/runs/${run.id}/approve`)}>Approve this action</Button><Button variant="default" onClick={() => void mutate('reject action', `/api/agent/runs/${run.id}/reject`)}>Skip action</Button></Group></Paper> : null}</Timeline.Item>)}</Timeline><Group mt="lg" justify="space-between"><Group>{run.canApprovePlan ? <Button leftSection={<IconShieldCheck size={17} />} loading={busy === 'approve plan'} onClick={() => void mutate('approve plan', `/api/agent/runs/${run.id}/approve-plan`)}>Approve frozen plan</Button> : null}{run.canExecute ? <Button leftSection={<IconPlayerPlay size={17} />} loading={busy === 'run plan'} onClick={() => void mutate('run plan', `/api/agent/runs/${run.id}/run`)}>Run until next approval</Button> : null}</Group>{!['DONE', 'FAILED', 'CANCELED', 'BLOCKED', 'SUPERSEDED'].includes(run.status) && !awaitingAction ? <Button color="red" variant="subtle" leftSection={<IconSquare size={15} />} onClick={() => void mutate('cancel', `/api/agent/runs/${run.id}/cancel`)}>Cancel</Button> : null}</Group></>;
+  return <>{run.status === 'AWAITING_PLAN_APPROVAL' && !(run.canApprovePlan && canApprovePlan) ? <Alert mb="md" color="blue" icon={<IconShieldCheck size={17} />} title="Independent approval required">{run.approvalMessage}</Alert> : null}<Timeline bulletSize={30} lineWidth={2}>{run.steps.map((step) => <Timeline.Item key={step.id} color={stepColor(step)} bullet={stepIcon(step)} title={<Group gap="xs"><Text fw={800}>{step.title}</Text><Badge size="xs" variant="light" color={stepColor(step)}>{human(step.status)}</Badge>{step.changesData ? <Badge size="xs" color="yellow" variant="outline">changes data</Badge> : null}</Group>}><Text size="sm" c="dimmed">{step.detail}</Text>{step.evidence?.length ? <Group gap={5} mt={6}>{step.evidence.map((citation) => <Badge key={citation} size="xs" variant="dot">{citation}</Badge>)}</Group> : null}{step.result ? <Code block mt="xs">{pretty(step.result)}</Code> : null}{canUseAssistant && step.status === 'AWAITING_APPROVAL' ? <Paper p="sm" mt="sm" withBorder className="agent-action-gate"><Text fw={800}>Explicit action approval</Text><Text size="sm">{step.actionSummary || step.detail}</Text><Code block mt="xs">{pretty(step.actionArgs)}</Code><Group mt="sm"><Button color="green" loading={busy === 'approve action'} onClick={() => void mutate('approve action', `/api/agent/runs/${run.id}/approve`)}>Approve this action</Button><Button variant="default" onClick={() => void mutate('reject action', `/api/agent/runs/${run.id}/reject`)}>Skip action</Button></Group></Paper> : null}</Timeline.Item>)}</Timeline><Group mt="lg" justify="space-between"><Group>{canApprovePlan && run.canApprovePlan ? <Button leftSection={<IconShieldCheck size={17} />} loading={busy === 'approve plan'} onClick={() => void mutate('approve plan', `/api/agent/runs/${run.id}/approve-plan`)}>Approve frozen plan</Button> : null}{canUseAssistant && run.canExecute ? <Button leftSection={<IconPlayerPlay size={17} />} loading={busy === 'run plan'} onClick={() => void mutate('run plan', `/api/agent/runs/${run.id}/run`)}>Run until next approval</Button> : null}</Group>{canUseAssistant && !['DONE', 'FAILED', 'CANCELED', 'BLOCKED', 'SUPERSEDED'].includes(run.status) && !awaitingAction ? <Button color="red" variant="subtle" leftSection={<IconSquare size={15} />} onClick={() => void mutate('cancel', `/api/agent/runs/${run.id}/cancel`)}>Cancel</Button> : null}</Group></>;
 }
 
-function PlanFeedback({ run }: { run: AgentRun }) {
+function PlanFeedback({ run, canUseAssistant }: { run: AgentRun; canUseAssistant: boolean }) {
   const [correction, setCorrection] = useState('');
   const [editing, setEditing] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const send = async (accepted: boolean) => {
+    if (!canUseAssistant) return;
     setSaving(true);
     try {
       await apiPost(`/api/agent/runs/${run.id}/feedback`, {

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { DataSource } from '@/lib/types';
+import { usePermissions } from '@/lib/use-permissions';
 import type {
   VirtDocker,
   VirtEngineTest,
@@ -69,6 +70,11 @@ export function useVirtSchemas(dataSourceId: number | null) {
 
 export function useVirtualizationMutations() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('virtualization.manage');
+  const requireManage = () => {
+    if (!canManage) throw new Error('Virtualization management permission is required.');
+  };
   const invalidateAll = () => {
     for (const key of [
       keys.virtualization.snapshots,
@@ -82,46 +88,73 @@ export function useVirtualizationMutations() {
   };
 
   const captureSnapshot = useMutation({
-    mutationFn: (body: { dataSourceId: number; schemaName?: string; name?: string; note?: string; provider?: string }) =>
-      apiPost(`${BASE}/snapshots`, body),
+    mutationFn: (body: { dataSourceId: number; schemaName?: string; name?: string; note?: string; provider?: string }) => {
+      requireManage();
+      return apiPost(`${BASE}/snapshots`, body);
+    },
     onSuccess: invalidateAll
   });
   const deleteSnapshot = useMutation({
-    mutationFn: (id: number) => apiFetch(`${BASE}/snapshots/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: number) => {
+      requireManage();
+      return apiFetch(`${BASE}/snapshots/${id}`, { method: 'DELETE' });
+    },
     onSuccess: invalidateAll
   });
   const provision = useMutation({
-    mutationFn: (body: { snapshotId: number; name?: string; targetDataSourceId?: number | null; pointInTime?: string | null; environmentId?: number | null }) =>
-      apiPost(`${BASE}/vdbs`, body),
+    mutationFn: (body: { snapshotId: number; name?: string; targetDataSourceId?: number | null; pointInTime?: string | null; environmentId?: number | null }) => {
+      requireManage();
+      return apiPost(`${BASE}/vdbs`, body);
+    },
     onSuccess: invalidateAll
   });
   const deleteVdb = useMutation({
-    mutationFn: (id: number) => apiFetch(`${BASE}/vdbs/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: number) => {
+      requireManage();
+      return apiFetch(`${BASE}/vdbs/${id}`, { method: 'DELETE' });
+    },
     onSuccess: invalidateAll
   });
   const refresh = useMutation({
-    mutationFn: ({ id, snapshotId }: { id: number; snapshotId: number }) => apiPost(`${BASE}/vdbs/${id}/refresh`, { snapshotId }),
+    mutationFn: ({ id, snapshotId }: { id: number; snapshotId: number }) => {
+      requireManage();
+      return apiPost(`${BASE}/vdbs/${id}/refresh`, { snapshotId });
+    },
     onSuccess: invalidateAll
   });
   const rewind = useMutation({
-    mutationFn: ({ id, snapshotId }: { id: number; snapshotId: number }) => apiPost(`${BASE}/vdbs/${id}/rewind`, { snapshotId }),
+    mutationFn: ({ id, snapshotId }: { id: number; snapshotId: number }) => {
+      requireManage();
+      return apiPost(`${BASE}/vdbs/${id}/rewind`, { snapshotId });
+    },
     onSuccess: invalidateAll
   });
   const snapshotVdb = useMutation({
-    mutationFn: ({ id, name, bookmark }: { id: number; name?: string; bookmark?: boolean }) =>
-      apiPost(`${BASE}/vdbs/${id}/snapshots`, { name, bookmark }),
+    mutationFn: ({ id, name, bookmark }: { id: number; name?: string; bookmark?: boolean }) => {
+      requireManage();
+      return apiPost(`${BASE}/vdbs/${id}/snapshots`, { name, bookmark });
+    },
     onSuccess: invalidateAll
   });
   const cancelOperation = useMutation({
-    mutationFn: (id: string) => apiPost(`${BASE}/operations/${id}/cancel`, {}),
+    mutationFn: (id: string) => {
+      requireManage();
+      return apiPost(`${BASE}/operations/${id}/cancel`, {});
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.virtualization.operations })
   });
   const createEnvironment = useMutation({
-    mutationFn: (body: Partial<VirtEnvironment>) => apiPost(`${BASE}/environments`, body),
+    mutationFn: (body: Partial<VirtEnvironment>) => {
+      requireManage();
+      return apiPost(`${BASE}/environments`, body);
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.virtualization.environments })
   });
   const deleteEnvironment = useMutation({
-    mutationFn: (id: number) => apiFetch(`${BASE}/environments/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: number) => {
+      requireManage();
+      return apiFetch(`${BASE}/environments/${id}`, { method: 'DELETE' });
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: keys.virtualization.environments })
   });
   const engineTest = useMutation({

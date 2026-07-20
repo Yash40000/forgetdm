@@ -91,13 +91,15 @@ export function MaskingPoliciesPage() {
   }));
 
   const createPolicy = useMutation({
-    mutationFn: () =>
-      apiPost<MaskingPolicy>('/api/policies', {
+    mutationFn: () => {
+      if (!canManage) throw new Error('Policy management permission is required.');
+      return apiPost<MaskingPolicy>('/api/policies', {
         name: policyDraft.name.trim(),
         description: policyDraft.description.trim() || null,
         dataSourceId: numberOrNull(policyDraft.dataSourceId),
         schemaName: policyDraft.schemaName.trim() || null
-      }),
+      });
+    },
     onSuccess: (created) => {
       notifications.show({ color: 'green', title: 'Policy created', message: created.name });
       setPolicyDraft(emptyPolicyDraft);
@@ -112,7 +114,10 @@ export function MaskingPoliciesPage() {
   });
 
   const deletePolicy = useMutation({
-    mutationFn: (id: number) => apiFetch(`/api/policies/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: number) => {
+      if (!canManage) throw new Error('Policy management permission is required.');
+      return apiFetch(`/api/policies/${id}`, { method: 'DELETE' });
+    },
     onSuccess: () => {
       notifications.show({ color: 'green', title: 'Policy deleted', message: 'Rules were removed with the policy.' });
       setSelectedPolicyId(null);
@@ -123,15 +128,17 @@ export function MaskingPoliciesPage() {
   });
 
   const addRule = useMutation({
-    mutationFn: () =>
-      apiPost<MaskingRule>(`/api/policies/${effectivePolicyId}/rules`, {
+    mutationFn: () => {
+      if (!canManage) throw new Error('Policy management permission is required.');
+      return apiPost<MaskingRule>(`/api/policies/${effectivePolicyId}/rules`, {
         schemaName: effectiveRuleSchema.trim() || null,
         tableName: ruleDraft.tableName.trim(),
         columnName: ruleDraft.columnName.trim(),
         function: effectiveRuleFunction,
         param1: ruleDraft.param1 || null,
         param2: ruleDraft.param2 || null
-      }),
+      });
+    },
     onSuccess: () => {
       notifications.show({ color: 'green', title: 'Rule added', message: `${ruleDraft.tableName}.${ruleDraft.columnName}` });
       setRuleDraft((current) => ({ ...emptyRuleDraft, schemaName: current.schemaName, functionName: current.functionName }));
@@ -141,6 +148,7 @@ export function MaskingPoliciesPage() {
   });
 
   const patchRule = async (rule: MaskingRule, patch: Record<string, string | null>) => {
+    if (!canManage) return;
     try {
       await apiPatch<MaskingRule>(`/api/policies/rules/${rule.id}`, patch);
       queryClient.invalidateQueries({ queryKey: keys.policies.rules(effectivePolicyId) });
@@ -150,6 +158,7 @@ export function MaskingPoliciesPage() {
   };
 
   const removeRule = async (rule: MaskingRule) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Delete masking rule',
       message: `Delete ${ruleSignature(rule)} from this policy?`,
@@ -168,6 +177,7 @@ export function MaskingPoliciesPage() {
 
   const addMappedRules = useMutation({
     mutationFn: async () => {
+      if (!canManage) throw new Error('Policy management permission is required.');
       if (!effectivePolicyId) throw new Error('Open a policy first.');
       const selected = findings.filter((finding) => selectedFindingIds.includes(finding.id));
       for (const finding of selected) {
@@ -212,10 +222,12 @@ export function MaskingPoliciesPage() {
   const selectedFindingSet = new Set(selectedFindingIds);
 
   const toggleFinding = (id: number, checked: boolean) => {
+    if (!canManage) return;
     setSelectedFindingIds((ids) => (checked ? Array.from(new Set([...ids, id])) : ids.filter((item) => item !== id)));
   };
 
   const toggleTable = (rows: DiscoveryFinding[], checked: boolean) => {
+    if (!canManage) return;
     const ids = rows.map((row) => row.id);
     setSelectedFindingIds((current) => (checked ? Array.from(new Set([...current, ...ids])) : current.filter((id) => !ids.includes(id))));
   };
@@ -229,6 +241,7 @@ export function MaskingPoliciesPage() {
   };
 
   const removePolicy = async (policy: MaskingPolicy) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Delete masking policy',
       message: `Delete "${policy.name}" and all of its rules? DataScope and saved jobs that reference it may no longer be runnable.`,
@@ -253,7 +266,9 @@ export function MaskingPoliciesPage() {
               </ActionIcon>
             </Tooltip>
             {canManage ? (
-              <Button leftSection={<IconPlus size={16} />} onClick={() => setCreateOpened(true)}>
+              <Button leftSection={<IconPlus size={16} />} onClick={() => {
+                if (canManage) setCreateOpened(true);
+              }}>
                 New policy
               </Button>
             ) : null}
@@ -334,7 +349,7 @@ export function MaskingPoliciesPage() {
         )}
       </Paper>
 
-      <Drawer opened={createOpened} onClose={() => setCreateOpened(false)} position="right" size="lg" title="New masking policy">
+      <Drawer opened={canManage && createOpened} onClose={() => setCreateOpened(false)} position="right" size="lg" title="New masking policy">
         <Stack gap="md">
           <Text size="sm" c="dimmed">
             Bind to a data source and schema when the policy is application-specific, or leave both blank to keep it reusable.
@@ -352,7 +367,9 @@ export function MaskingPoliciesPage() {
           <TextInput label="Description" value={policyDraft.description} onChange={(event) => setPolicyDraft({ ...policyDraft, description: safeInputValue(event) })} />
           <Group justify="flex-end" mt="sm">
             <Button variant="default" onClick={() => setCreateOpened(false)}>Cancel</Button>
-            <Button leftSection={<IconPlus size={16} />} loading={createPolicy.isPending} disabled={policyDraft.name.trim().length < 8} onClick={() => createPolicy.mutate()}>
+            <Button leftSection={<IconPlus size={16} />} loading={createPolicy.isPending} disabled={!canManage || policyDraft.name.trim().length < 8} onClick={() => {
+              if (canManage) createPolicy.mutate();
+            }}>
               Create policy
             </Button>
           </Group>
@@ -397,7 +414,9 @@ export function MaskingPoliciesPage() {
                     <ParamControl functionName={effectiveRuleFunction} index={2} value={ruleDraft.param2} scripts={scripts} valueLists={valueLists} lookupReferences={lookupReferences} onChange={(value) => setRuleDraft({ ...ruleDraft, param2: value })} />
                   </SimpleGrid>
                   <Group justify="flex-end" mt="sm">
-                    <Button leftSection={<IconPlus size={16} />} loading={addRule.isPending} disabled={!selectedRuleReady} onClick={() => addRule.mutate()}>
+                    <Button leftSection={<IconPlus size={16} />} loading={addRule.isPending} disabled={!canManage || !selectedRuleReady} onClick={() => {
+                      if (canManage) addRule.mutate();
+                    }}>
                       Add rule
                     </Button>
                   </Group>
@@ -425,13 +444,23 @@ export function MaskingPoliciesPage() {
                               </Text>
                             </td>
                             <td>
-                              <Select size="xs" data={functions} searchable value={rule.function} disabled={!canManage} onChange={(value) => value && patchRule(rule, { function: value })} />
+                              <Select size="xs" data={functions} searchable value={rule.function} disabled={!canManage} onChange={(value) => {
+                                if (canManage && value) void patchRule(rule, { function: value });
+                              }} />
                             </td>
                             <td>
-                              <ParamControl functionName={rule.function} index={1} value={rule.param1 || ''} scripts={scripts} valueLists={valueLists} lookupReferences={lookupReferences} onChange={(value) => patchRule(rule, { param1: value || null })} />
+                              {canManage ? (
+                                <ParamControl functionName={rule.function} index={1} value={rule.param1 || ''} scripts={scripts} valueLists={valueLists} lookupReferences={lookupReferences} onChange={(value) => void patchRule(rule, { param1: value || null })} />
+                              ) : (
+                                <TextInput size="xs" label="Param 1" value={rule.param1 || ''} readOnly {...technicalInputProps} />
+                              )}
                             </td>
                             <td>
-                              <ParamControl functionName={rule.function} index={2} value={rule.param2 || ''} scripts={scripts} valueLists={valueLists} lookupReferences={lookupReferences} onChange={(value) => patchRule(rule, { param2: value || null })} />
+                              {canManage ? (
+                                <ParamControl functionName={rule.function} index={2} value={rule.param2 || ''} scripts={scripts} valueLists={valueLists} lookupReferences={lookupReferences} onChange={(value) => void patchRule(rule, { param2: value || null })} />
+                              ) : (
+                                <TextInput size="xs" label="Param 2" value={rule.param2 || ''} readOnly {...technicalInputProps} />
+                              )}
                             </td>
                             <td>
                               {canManage ? (
@@ -471,7 +500,9 @@ export function MaskingPoliciesPage() {
                     <Select label="Discovery data source" data={dataSourceOptions} value={effectiveMapDataSourceId || null} searchable clearable onChange={(value) => { setMapContextDirty(true); setMapDataSourceId(value || ''); }} />
                     <TextInput label="Schema" value={effectiveMapSchema} onChange={(event) => { setMapContextDirty(true); setMapSchema(safeInputValue(event)); }} {...technicalInputProps} />
                     {canManage ? (
-                      <Button mt={22} leftSection={<IconLink size={16} />} loading={addMappedRules.isPending} disabled={!selectedFindingIds.length} onClick={() => addMappedRules.mutate()}>
+                      <Button mt={22} leftSection={<IconLink size={16} />} loading={addMappedRules.isPending} disabled={!canManage || !selectedFindingIds.length} onClick={() => {
+                        if (canManage) addMappedRules.mutate();
+                      }}>
                         Add selected ({selectedFindingIds.length})
                       </Button>
                     ) : null}
@@ -482,7 +513,7 @@ export function MaskingPoliciesPage() {
                       return (
                         <Paper key={table} className="masking-finding-table" p="sm">
                           <Group justify="space-between">
-                            <Checkbox label={<Text fw={780}>{table}</Text>} checked={allSelected} onChange={(event) => toggleTable(rows, event.currentTarget.checked)} />
+                            <Checkbox label={<Text fw={780}>{table}</Text>} checked={allSelected} disabled={!canManage} onChange={(event) => toggleTable(rows, event.currentTarget.checked)} />
                             <Badge variant="light">{rows.length} finding{rows.length === 1 ? '' : 's'}</Badge>
                           </Group>
                           <div className="masking-finding-list">
@@ -490,6 +521,7 @@ export function MaskingPoliciesPage() {
                               <Checkbox
                                 key={finding.id}
                                 checked={selectedFindingSet.has(finding.id)}
+                                disabled={!canManage}
                                 onChange={(event) => toggleFinding(finding.id, event.currentTarget.checked)}
                                 label={
                                   <span>

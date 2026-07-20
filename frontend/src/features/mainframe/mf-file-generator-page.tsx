@@ -23,6 +23,7 @@ import { apiFetch, apiPost } from '@/lib/api';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { NameInput } from '@/components/name-input';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import {
   EmptyState,
   MainframeHeader,
@@ -56,6 +57,8 @@ const emptyCopybookDraft: CopybookDraft = {
 
 export function MfFileGeneratorPage() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('mainframe.manage');
   const copybooksQuery = useMainframeCopybooks();
   const connectionsQuery = useMainframeConnections();
   const generatorsQuery = useQuery({
@@ -95,10 +98,13 @@ export function MfFileGeneratorPage() {
     () => Object.fromEntries(fields.map((field) => [field.path, generatorDrafts[field.path] || suggestGenerator(field)])),
     [fields, generatorDrafts]
   );
-  const canGenerate = Boolean(effectiveCopybookId && fields.length && (output !== 'TARGET' || targetConnectionId));
+  const canGenerate = canManage && Boolean(effectiveCopybookId && fields.length && (output !== 'TARGET' || targetConnectionId));
 
   const saveCopybookMutation = useMutation({
-    mutationFn: () => apiPost<CopybookDef>('/api/mainframe/copybooks', copybookDraft),
+    mutationFn: () => {
+      if (!canManage) throw new Error('Mainframe management permission is required');
+      return apiPost<CopybookDef>('/api/mainframe/copybooks', copybookDraft);
+    },
     onSuccess: (saved) => {
       notifications.show({ color: 'green', title: 'Copybook saved', message: `${saved.name} is ready for file generation.` });
       setCopybookId(saved.id);
@@ -110,6 +116,7 @@ export function MfFileGeneratorPage() {
 
   const generateMutation = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('Mainframe management permission is required');
       const parsedRows = numberOrNull(rowCount);
       if (parsedRows == null || parsedRows < 1 || parsedRows > 200_000) {
         throw new Error('Rows must be between 1 and 200,000 for an interactive mainframe file generation run.');
@@ -244,7 +251,7 @@ export function MfFileGeneratorPage() {
             <Button variant="default" onClick={() => setCopybookDraft(emptyCopybookDraft)}>
               Load sample
             </Button>
-            <Button loading={saveCopybookMutation.isPending} onClick={() => saveCopybookMutation.mutate()}>
+            <Button loading={saveCopybookMutation.isPending} disabled={!canManage} onClick={() => saveCopybookMutation.mutate()}>
               Save copybook
             </Button>
           </Group>

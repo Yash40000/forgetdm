@@ -25,6 +25,7 @@ import { useConfirm } from '@/components/confirm';
 import { NameInput } from '@/components/name-input';
 import { apiFetch, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import type {
   DataSetDefinition,
   DataSource,
@@ -96,6 +97,10 @@ export function RunPanel({
 }) {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
+  const canProvisionRun = can('provision.run');
+  const canConfigure = canManage || canProvisionRun;
   const [form, setForm] = useState<ProvisionForm>(() => emptyProvisionForm(blueprint));
   const [previewRows, setPreviewRows] = useState('');
   const [plan, setPlan] = useState<SubsetPlan | null>(null);
@@ -106,10 +111,12 @@ export function RunPanel({
   const [activeSection, setActiveSection] = useState<RunPanelSection>(initialSection);
 
   const previewPlan = useMutation({
-    mutationFn: () =>
-      apiPost<SubsetPlan>(`/api/datasets/${blueprint.id}/preview`, {
+    mutationFn: () => {
+      if (!canManage) throw new Error('DataScope management permission is required to preview a subset plan.');
+      return apiPost<SubsetPlan>(`/api/datasets/${blueprint.id}/preview`, {
         maxDriverRows: numberOrNull(previewRows) || 0
-      }),
+      });
+    },
     onSuccess: (result) => setPlan(result),
     onError: (error) => {
       setPlan(null);
@@ -283,7 +290,7 @@ export function RunPanel({
   };
 
   const launch = async () => {
-    if (busyAction) return;
+    if (!canProvisionRun || busyAction) return;
     setBusyAction('launch');
     try {
       const payload = await buildPayload();
@@ -306,13 +313,14 @@ export function RunPanel({
   };
 
   const openSaveModal = () => {
+    if (!canManage) return;
     setSaveName(form.name.trim() || `${blueprint.name || 'datascope'}-provision`);
     setSaveDescription('');
     setSaveOpened(true);
   };
 
   const saveAsJob = async () => {
-    if (busyAction) return;
+    if (!canManage || busyAction) return;
     setBusyAction('save');
     try {
       const payload = await buildPayload();
@@ -385,11 +393,12 @@ export function RunPanel({
                 label="Cap driver rows"
                 placeholder="optional"
                 min={1}
-                w={140}
-                value={previewRows === '' ? '' : Number(previewRows)}
+                 w={140}
+                 value={previewRows === '' ? '' : Number(previewRows)}
+                 disabled={!canManage}
                 onChange={(value) => setPreviewRows(value === '' || value === null ? '' : String(value))}
               />
-              <Button leftSection={<IconTestPipe size={16} />} loading={previewPlan.isPending} onClick={() => previewPlan.mutate()}>
+              <Button leftSection={<IconTestPipe size={16} />} loading={previewPlan.isPending} disabled={!canManage} onClick={() => previewPlan.mutate()}>
                 Preview plan
               </Button>
             </Group>
@@ -449,12 +458,13 @@ export function RunPanel({
             </div>
           </Group>
           <SimpleGrid cols={{ base: 1, sm: 2, lg: 4 }}>
-            <NameInput label="Run name" value={form.name} onChange={(value) => setForm({ ...form, name: value })} />
+            <NameInput label="Run name" value={form.name} disabled={!canConfigure} onChange={(value) => setForm({ ...form, name: value })} />
             <Select
               label="Default masking policy"
               data={[{ value: '', label: 'No default policy' }].concat(policies.map((p) => ({ value: String(p.id), label: p.name })))}
               value={form.policyId}
               searchable
+              disabled={!canConfigure}
               onChange={(value) => setForm({ ...form, policyId: value || '' })}
             />
             <Select
@@ -468,6 +478,7 @@ export function RunPanel({
                 { value: 'IN_PLACE', label: 'In-place mask (source itself!)' }
               ]}
               value={form.loadAction}
+              disabled={!canConfigure}
               onChange={(value) => setForm({ ...form, loadAction: value || 'REPLACE' })}
             />
             <Select
@@ -479,6 +490,7 @@ export function RunPanel({
                 { value: 'NONE', label: 'None' }
               ]}
               value={form.targetPrep}
+              disabled={!canConfigure}
               onChange={(value) => setForm({ ...form, targetPrep: value || 'NONE' })}
             />
             <TextInput
@@ -486,6 +498,7 @@ export function RunPanel({
               label="Masking seed"
               placeholder="optional deterministic seed"
               value={form.maskingSeed}
+              disabled={!canConfigure}
               onChange={(e) => setForm({ ...form, maskingSeed: e.currentTarget.value })}
             />
             <NumberInput
@@ -493,6 +506,7 @@ export function RunPanel({
               placeholder="optional cap"
               min={1}
               value={form.maxRows === '' ? '' : Number(form.maxRows)}
+              disabled={!canConfigure}
               onChange={(value) => setForm({ ...form, maxRows: value === '' || value === null ? '' : String(value) })}
             />
             <NumberInput
@@ -500,6 +514,7 @@ export function RunPanel({
               placeholder="engine default"
               min={1}
               value={form.batchSize === '' ? '' : Number(form.batchSize)}
+              disabled={!canConfigure}
               onChange={(value) => setForm({ ...form, batchSize: value === '' || value === null ? '' : String(value) })}
             />
             <TextInput
@@ -507,6 +522,7 @@ export function RunPanel({
               label="Merge key columns"
               placeholder="for insert/update, e.g. id"
               value={form.keyColumns}
+              disabled={!canConfigure}
               onChange={(e) => setForm({ ...form, keyColumns: e.currentTarget.value })}
             />
           </SimpleGrid>
@@ -520,8 +536,9 @@ export function RunPanel({
                 <TextInput
                   {...technicalInputProps}
                   label="Chunk key (large tables)"
-                  placeholder="optional, e.g. id"
-                  value={form.inPlaceChunkKey}
+                   placeholder="optional, e.g. id"
+                   value={form.inPlaceChunkKey}
+                   disabled={!canConfigure}
                   onChange={(e) => setForm({ ...form, inPlaceChunkKey: e.currentTarget.value })}
                 />
               </Group>
@@ -530,6 +547,7 @@ export function RunPanel({
           <Checkbox
             label="Oracle partition exchange (load+mask into a staging table, then swap it into the target partition)"
             checked={form.exchange}
+            disabled={!canConfigure}
             onChange={(e) => setForm({ ...form, exchange: e.currentTarget.checked })}
           />
           {form.exchange ? (
@@ -537,33 +555,36 @@ export function RunPanel({
               <TextInput
                 {...technicalInputProps}
                 label="Partition name"
-                placeholder="P_2026_07"
-                value={form.exchangePartition}
+                 placeholder="P_2026_07"
+                 value={form.exchangePartition}
+                 disabled={!canConfigure}
                 onChange={(e) => setForm({ ...form, exchangePartition: e.currentTarget.value })}
               />
               <TextInput
                 {...technicalInputProps}
                 label="Staging table override"
-                placeholder="optional"
-                value={form.exchangeTable}
+                 placeholder="optional"
+                 value={form.exchangeTable}
+                 disabled={!canConfigure}
                 onChange={(e) => setForm({ ...form, exchangeTable: e.currentTarget.value })}
               />
               <Checkbox
                 mt={28}
-                label="WITH VALIDATION"
-                checked={form.exchangeValidate}
+                 label="WITH VALIDATION"
+                 checked={form.exchangeValidate}
+                 disabled={!canConfigure}
                 onChange={(e) => setForm({ ...form, exchangeValidate: e.currentTarget.checked })}
               />
             </SimpleGrid>
           ) : null}
           <Group className="ds-provision-run-actions" justify="flex-end" gap="xs">
-            <Button variant="light" disabled={!!busyAction} onClick={openSaveModal}>
+            <Button variant="light" disabled={!canManage || !!busyAction} onClick={openSaveModal}>
               Save as job
             </Button>
             <Button
               leftSection={<IconPlayerPlay size={16} />}
               loading={busyAction === 'launch'}
-              disabled={busyAction === 'save'}
+              disabled={!canProvisionRun || busyAction === 'save'}
               onClick={() => void launch()}
             >
               Launch provision
@@ -600,13 +621,13 @@ export function RunPanel({
 
       <Modal opened={saveOpened} onClose={() => setSaveOpened(false)} title="Save DataScope job">
         <Stack gap="sm">
-          <NameInput label="Saved job name" value={saveName} onChange={(value) => setSaveName(value)} />
-          <TextInput label="Description" placeholder="optional" value={saveDescription} onChange={(e) => setSaveDescription(e.currentTarget.value)} />
+          <NameInput label="Saved job name" value={saveName} disabled={!canManage} onChange={(value) => setSaveName(value)} />
+          <TextInput label="Description" placeholder="optional" value={saveDescription} disabled={!canManage} onChange={(e) => setSaveDescription(e.currentTarget.value)} />
           <Group justify="flex-end">
             <Button variant="light" onClick={() => setSaveOpened(false)}>
               Cancel
             </Button>
-            <Button loading={busyAction === 'save'} disabled={!saveName.trim() || busyAction === 'launch'} onClick={() => void saveAsJob()}>
+            <Button loading={busyAction === 'save'} disabled={!canManage || !saveName.trim() || busyAction === 'launch'} onClick={() => void saveAsJob()}>
               Save
             </Button>
           </Group>

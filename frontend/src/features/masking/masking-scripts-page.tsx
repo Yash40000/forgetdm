@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActionIcon, Badge, Button, Group, Modal, Paper, Select, SimpleGrid, Stack, Text, TextInput, Textarea, Tooltip } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
-import { IconCode, IconEdit, IconPlayerPlay, IconRefresh, IconTrash } from '@tabler/icons-react';
+import { IconCode, IconEdit, IconEye, IconPlayerPlay, IconRefresh, IconTrash } from '@tabler/icons-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch, apiPost } from '@/lib/api';
@@ -30,6 +30,7 @@ export function MaskingScriptsPage() {
   const { confirm, confirmElement } = useConfirm();
   const { can } = usePermissions();
   const canManage = can('policy.manage');
+  const canPreview = can('policy.read');
   const scriptsQuery = useMaskingScripts();
   const scripts = useMemo(() => scriptsQuery.data || [], [scriptsQuery.data]);
   const [draft, setDraft] = useState<ScriptDraft>(emptyDraft);
@@ -48,6 +49,7 @@ export function MaskingScriptsPage() {
   }, [dirty]);
 
   const updateDraft = (patch: Partial<ScriptDraft>) => {
+    if (!canManage) return;
     setDirty(true);
     setDraft((current) => ({ ...current, ...patch }));
     setTestResult(null);
@@ -59,6 +61,7 @@ export function MaskingScriptsPage() {
   };
 
   const loadSample = async (name: string | null) => {
+    if (!canManage) return;
     if (!(await confirmDiscard('Loading a sample will replace the Lua source currently in the editor.'))) return;
     setSampleName(name);
     const sample = scriptSamples.find((item) => item.name === name);
@@ -75,7 +78,10 @@ export function MaskingScriptsPage() {
   };
 
   const saveMutation = useMutation({
-    mutationFn: () => apiPost<MaskingScript>('/api/policies/scripts', draft),
+    mutationFn: () => {
+      if (!canManage) throw new Error('Policy management permission is required.');
+      return apiPost<MaskingScript>('/api/policies/scripts', draft);
+    },
     onSuccess: (saved) => {
       notifications.show({ color: 'green', title: 'Script saved', message: `Use function SCRIPT with param1 = ${saved.name}` });
       queryClient.invalidateQueries({ queryKey: keys.policies.scripts });
@@ -86,7 +92,10 @@ export function MaskingScriptsPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => apiFetch(`/api/policies/scripts/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: number) => {
+      if (!canManage) throw new Error('Policy management permission is required.');
+      return apiFetch(`/api/policies/scripts/${id}`, { method: 'DELETE' });
+    },
     onSuccess: () => {
       notifications.show({ color: 'green', title: 'Script deleted', message: 'Rules referencing it must be repointed before running.' });
       queryClient.invalidateQueries({ queryKey: keys.policies.scripts });
@@ -95,12 +104,14 @@ export function MaskingScriptsPage() {
   });
 
   const testMutation = useMutation({
-    mutationFn: () =>
-      apiPost<MaskPreview>('/api/policies/preview', {
+    mutationFn: () => {
+      if (!canPreview) throw new Error('Policy read permission is required.');
+      return apiPost<MaskPreview>('/api/policies/preview', {
         function: 'SCRIPT',
         param1: draft.name,
         value: testValue
-      }),
+      });
+    },
     onSuccess: setTestResult,
     onError: (error) => notifications.show({ color: 'red', title: 'Script test failed', message: (error as Error).message })
   });
@@ -125,6 +136,7 @@ export function MaskingScriptsPage() {
   };
 
   const removeScript = async (script: MaskingScript) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Delete masking script',
       message: `Delete "${script.name}"? Policy rules that reference this script must be repointed before they can run.`,
@@ -134,7 +146,7 @@ export function MaskingScriptsPage() {
     if (ok) deleteMutation.mutate(script.id);
   };
 
-  const saveDisabled = !draft.name.trim() || !draft.luaSource.trim();
+  const saveDisabled = !canManage || !draft.name.trim() || !draft.luaSource.trim();
 
   return (
     <main className="forge-page masking-page">
@@ -178,7 +190,7 @@ export function MaskingScriptsPage() {
           </Group>
 
           <SimpleGrid cols={{ base: 1, md: 2 }} spacing="sm" mt="md">
-            <NameInput label="Name" placeholder="bank-a.custom-ref" value={draft.name} onChange={(value) => updateDraft({ name: value })} />
+            <NameInput label="Name" placeholder="bank-a.custom-ref" value={draft.name} readOnly={!canManage} onChange={(value) => updateDraft({ name: value })} />
             <Select
               label="Visibility"
               data={[
@@ -186,45 +198,55 @@ export function MaskingScriptsPage() {
                 { value: 'PRIVATE', label: 'PRIVATE - draft' }
               ]}
               value={draft.visibility}
+              disabled={!canManage}
               onChange={(value) => updateDraft({ visibility: value === 'PRIVATE' ? 'PRIVATE' : 'GLOBAL' })}
             />
           </SimpleGrid>
-          <TextInput mt="sm" label="Description" value={draft.description} onChange={(event) => updateDraft({ description: safeInputValue(event) })} />
-          <Select
-            mt="sm"
-            label="Load sample"
-            placeholder="Pick an example"
-            clearable
-            data={scriptSamples.map((sample) => ({ value: sample.name, label: `${sample.flavour}: ${sample.name}` }))}
-            value={sampleName}
-            onChange={(value) => void loadSample(value)}
-          />
+          <TextInput mt="sm" label="Description" value={draft.description} readOnly={!canManage} onChange={(event) => updateDraft({ description: safeInputValue(event) })} />
+          {canManage ? (
+            <Select
+              mt="sm"
+              label="Load sample"
+              placeholder="Pick an example"
+              clearable
+              data={scriptSamples.map((sample) => ({ value: sample.name, label: `${sample.flavour}: ${sample.name}` }))}
+              value={sampleName}
+              onChange={(value) => void loadSample(value)}
+            />
+          ) : null}
           <Textarea
             mt="sm"
             className="masking-script-editor"
             minRows={24}
             label="Lua source"
             value={draft.luaSource}
+            readOnly={!canManage}
             onChange={(event) => updateDraft({ luaSource: safeInputValue(event) })}
             placeholder={'-- inputs: value, param, rowIndex, row["col"]\nreturn forge.mask("FIRST_NAME", value)'}
             {...technicalInputProps}
           />
-          <Group gap="xs" mt="sm">
-            {scriptHints.map((hint) => (
-              <button key={hint} type="button" className="masking-hint-chip" onClick={() => updateDraft({ luaSource: `${draft.luaSource}${draft.luaSource.endsWith('\n') || !draft.luaSource ? '' : '\n'}${hint}` })}>
-                {hint}
-              </button>
-            ))}
-          </Group>
+          {canManage ? (
+            <Group gap="xs" mt="sm">
+              {scriptHints.map((hint) => (
+                <button key={hint} type="button" className="masking-hint-chip" onClick={() => updateDraft({ luaSource: `${draft.luaSource}${draft.luaSource.endsWith('\n') || !draft.luaSource ? '' : '\n'}${hint}` })}>
+                  {hint}
+                </button>
+              ))}
+            </Group>
+          ) : null}
           <Group mt="md" justify="space-between" align="end">
             {canManage ? (
-              <Button leftSection={<IconCode size={16} />} loading={saveMutation.isPending} disabled={saveDisabled} onClick={() => saveMutation.mutate()}>
+              <Button leftSection={<IconCode size={16} />} loading={saveMutation.isPending} disabled={saveDisabled} onClick={() => {
+                if (canManage) saveMutation.mutate();
+              }}>
                 Save script
               </Button>
             ) : <div />}
             <Group align="end">
-              <TextInput label="Test value" value={testValue} onChange={(event) => setTestValue(safeInputValue(event))} {...technicalInputProps} />
-              <Button variant="default" leftSection={<IconPlayerPlay size={16} />} loading={testMutation.isPending} disabled={!draft.name.trim()} onClick={() => testMutation.mutate()}>
+              <TextInput label="Test value" value={testValue} disabled={!canPreview} onChange={(event) => setTestValue(safeInputValue(event))} {...technicalInputProps} />
+              <Button variant="default" leftSection={<IconPlayerPlay size={16} />} loading={testMutation.isPending} disabled={!canPreview || !draft.name.trim()} onClick={() => {
+                if (canPreview) testMutation.mutate();
+              }}>
                 Test saved
               </Button>
             </Group>
@@ -259,9 +281,9 @@ export function MaskingScriptsPage() {
                   </Text>
                 </div>
                 <Group gap={4}>
-                  <Tooltip label="Edit">
-                    <ActionIcon variant="subtle" aria-label={`Edit ${script.name}`} onClick={() => void edit(script)}>
-                      <IconEdit size={16} />
+                  <Tooltip label={canManage ? 'Edit' : 'View'}>
+                    <ActionIcon variant="subtle" aria-label={`${canManage ? 'Edit' : 'View'} ${script.name}`} onClick={() => void edit(script)}>
+                      {canManage ? <IconEdit size={16} /> : <IconEye size={16} />}
                     </ActionIcon>
                   </Tooltip>
                   {canManage ? (

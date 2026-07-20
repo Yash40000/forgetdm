@@ -9,6 +9,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import type { DataSetDefinition, DataSource } from '@/lib/types';
 import type { BusinessEntityDetail, BusinessEntitySummary } from '../types';
 import { statusDot } from '../utils';
@@ -33,6 +34,8 @@ export function EntityList({
   onSelect: (id: number) => void;
 }) {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const [search, setSearch] = useState('');
   const [createOpened, setCreateOpened] = useState(false);
   const [blueprintBrowserOpened, setBlueprintBrowserOpened] = useState(false);
@@ -49,6 +52,7 @@ export function EntityList({
 
   const createEntity = useMutation({
     mutationFn: async () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
       if (!form.name.trim() && !form.datasetId) throw new Error('Give the entity a name, or pick a DataScope blueprint.');
       if (form.datasetId) {
         return apiPost<BusinessEntityDetail>(`/api/business-entities/from-dataset/${form.datasetId}`, {
@@ -99,11 +103,11 @@ export function EntityList({
               onChange={(event) => setSearch(event.currentTarget.value)}
               style={{ flex: 1 }}
             />
-            <Tooltip label="New business entity" position="bottom">
+            {canManage ? <Tooltip label="New business entity" position="bottom">
               <ActionIcon variant="light" size="sm" aria-label="New business entity" onClick={() => setCreateOpened(true)}>
                 <IconPlus size={15} />
               </ActionIcon>
-            </Tooltip>
+            </Tooltip> : null}
             <Tooltip label="Collapse entity list" position="right">
               <ActionIcon variant="subtle" size="sm" aria-label="Collapse entity list" onClick={collapseRail}>
                 <IconChevronLeft size={16} />
@@ -150,7 +154,7 @@ export function EntityList({
         )}
       </div>
 
-      <Modal opened={createOpened} onClose={() => setCreateOpened(false)} title="New business entity">
+      <Modal opened={canManage && createOpened} onClose={() => setCreateOpened(false)} title="New business entity">
         <Stack gap="sm">
           <div>
             <Text size="sm" fw={500} mb={4}>Start from DataScope blueprint</Text>

@@ -28,6 +28,7 @@ import { QueryErrorBanner } from '@/components/query-error-banner';
 import { apiFetch, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { DataSource } from '@/lib/types';
+import { usePermissions } from '@/lib/use-permissions';
 import { fetchColumns, schemaOptions, sourceOptions, tableOptions, useSchemas, useTables } from '../hooks';
 import type { SyntheticValueList } from '../types';
 import { technicalInputProps } from '../utils';
@@ -51,6 +52,8 @@ const EMPTY_EDITOR: EditorDraft = {
 export function ValueListsPanel({ lists, dataSources }: { lists: SyntheticValueList[]; dataSources: DataSource[] }) {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canManage = can('synthetic.manage');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [draft, setDraft] = useState<EditorDraft>(EMPTY_EDITOR);
   const [editorOpened, setEditorOpened] = useState(false);
@@ -80,6 +83,7 @@ export function ValueListsPanel({ lists, dataSources }: { lists: SyntheticValueL
 
   const saveMutation = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('You do not have permission to manage synthetic reference lists.');
       if (!draft.name.trim()) throw new Error('Enter a stable lower-case reference name.');
       if (!draft.listValues.trim()) throw new Error('Enter at least one value. Use | between values.');
       return apiPost<SyntheticValueList>('/api/synthetic/value-lists', {
@@ -102,6 +106,7 @@ export function ValueListsPanel({ lists, dataSources }: { lists: SyntheticValueL
 
   const importMutation = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('You do not have permission to import synthetic reference lists.');
       if (!importSourceId) throw new Error('Choose the source database.');
       if (!importDraft.table.trim() || !importDraft.column.trim()) throw new Error('Table and column are required.');
       return apiPost<SyntheticValueList>('/api/synthetic/value-lists/import', {
@@ -126,6 +131,7 @@ export function ValueListsPanel({ lists, dataSources }: { lists: SyntheticValueL
   });
 
   const editList = (list: SyntheticValueList) => {
+    if (!canManage) return;
     setEditingId(list.id);
     setDraft({
       name: list.name,
@@ -138,12 +144,14 @@ export function ValueListsPanel({ lists, dataSources }: { lists: SyntheticValueL
   };
 
   const createList = () => {
+    if (!canManage) return;
     setEditingId(null);
     setDraft(EMPTY_EDITOR);
     setEditorOpened(true);
   };
 
   const deleteList = async (list: SyntheticValueList) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Delete reference list',
       message: `Delete @${list.name}? Saved generation plans that reference it will fail until it is recreated.`,
@@ -183,10 +191,12 @@ export function ValueListsPanel({ lists, dataSources }: { lists: SyntheticValueL
             Reusable values, weighted domains, and lookup mappings referenced as @name.
           </Text>
         </div>
-        <Group gap="xs">
-          <Button variant="light" leftSection={<IconPlus size={15} />} onClick={createList}>Create list</Button>
-          <Button leftSection={<IconDatabaseImport size={15} />} onClick={() => setImportOpened(true)}>Import live column</Button>
-        </Group>
+        {canManage ? (
+          <Group gap="xs">
+            <Button variant="light" leftSection={<IconPlus size={15} />} onClick={createList}>Create list</Button>
+            <Button leftSection={<IconDatabaseImport size={15} />} onClick={() => setImportOpened(true)}>Import live column</Button>
+          </Group>
+        ) : null}
       </Group>
 
       <Modal
@@ -250,7 +260,7 @@ export function ValueListsPanel({ lists, dataSources }: { lists: SyntheticValueL
             >
               Cancel
             </Button>
-            <Button loading={saveMutation.isPending} onClick={() => saveMutation.mutate()}>Save list</Button>
+            <Button loading={saveMutation.isPending} disabled={!canManage} onClick={() => saveMutation.mutate()}>Save list</Button>
           </Group>
         </Stack>
       </Modal>
@@ -319,7 +329,7 @@ export function ValueListsPanel({ lists, dataSources }: { lists: SyntheticValueL
           </Group>
           <Group justify="flex-end">
             <Button variant="subtle" disabled={importMutation.isPending} onClick={() => setImportOpened(false)}>Cancel</Button>
-            <Button leftSection={<IconDatabaseImport size={15} />} loading={importMutation.isPending} onClick={() => importMutation.mutate()}>Import values</Button>
+            <Button leftSection={<IconDatabaseImport size={15} />} loading={importMutation.isPending} disabled={!canManage} onClick={() => importMutation.mutate()}>Import values</Button>
           </Group>
         </Stack>
       </Modal>
@@ -354,8 +364,8 @@ export function ValueListsPanel({ lists, dataSources }: { lists: SyntheticValueL
                   <Table.Td>
                     <Group gap={4} justify="flex-end" wrap="nowrap">
                       <Tooltip label="Copy @reference"><ActionIcon variant="subtle" aria-label={`Copy @${list.name}`} onClick={() => void copyReference(list.name)}><IconCopy size={15} /></ActionIcon></Tooltip>
-                      <Tooltip label="Edit"><ActionIcon variant="subtle" aria-label={`Edit @${list.name}`} onClick={() => editList(list)}><IconEdit size={15} /></ActionIcon></Tooltip>
-                      <Tooltip label="Delete"><ActionIcon color="red" variant="subtle" aria-label={`Delete @${list.name}`} onClick={() => void deleteList(list)}><IconTrash size={15} /></ActionIcon></Tooltip>
+                      {canManage ? <Tooltip label="Edit"><ActionIcon variant="subtle" aria-label={`Edit @${list.name}`} onClick={() => editList(list)}><IconEdit size={15} /></ActionIcon></Tooltip> : null}
+                      {canManage ? <Tooltip label="Delete"><ActionIcon color="red" variant="subtle" aria-label={`Delete @${list.name}`} onClick={() => void deleteList(list)}><IconTrash size={15} /></ActionIcon></Tooltip> : null}
                     </Group>
                   </Table.Td>
                 </Table.Tr>

@@ -9,6 +9,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch, apiPost, apiPut } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import type { DataSetDefinition, DataSource } from '@/lib/types';
 import type { BusinessEntityDetail, BusinessEntityMember, DatasetImportResult } from '../types';
 import { technicalInputProps } from '../utils';
@@ -30,6 +31,8 @@ export function ModelPanel({
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const entity = detail.entity;
   const [form, setForm] = useState(() => entityForm(detail));
   const [members, setMembers] = useState<BusinessEntityMember[]>(detail.members || []);
@@ -57,14 +60,17 @@ export function ModelPanel({
   }, [dirty, onDirtyChange]);
 
   const patchForm = (patch: Partial<ReturnType<typeof entityForm>>) => {
+    if (!canManage) return;
     setDirty(true);
     setForm((current) => ({ ...current, ...patch }));
   };
   const patchMember = (index: number, patch: Partial<BusinessEntityMember>) => {
+    if (!canManage) return;
     setDirty(true);
     setMembers((current) => current.map((member, i) => (i === index ? { ...member, ...patch } : member)));
   };
   const addMember = () => {
+    if (!canManage) return;
     const index = members.length;
     setDirty(true);
     setMembers((current) => current.concat({ includeInSubset: true, includeInSynthetic: true }));
@@ -72,6 +78,7 @@ export function ModelPanel({
     setEditingMemberIndex(index);
   };
   const removeMember = (index: number) => {
+    if (!canManage) return;
     setDirty(true);
     setMembers((current) => current.filter((_, i) => i !== index));
     setEditingMemberIndex((current) => {
@@ -83,6 +90,7 @@ export function ModelPanel({
 
   const save = useMutation({
     mutationFn: async () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
       if (!form.name.trim()) throw new Error('The entity needs a name.');
       await apiPut(`/api/business-entities/${entity.id}`, {
         ...entity,
@@ -146,6 +154,7 @@ export function ModelPanel({
 
   const importBlueprints = useMutation({
     mutationFn: async ({ ids, primaryId }: { ids: number[]; primaryId?: number | null }) => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
       let latest: DatasetImportResult | null = null;
       let added = 0;
       let skipped = 0;
@@ -178,6 +187,7 @@ export function ModelPanel({
   });
 
   const attachSelected = () => {
+    if (!canManage) return;
     if (dirty) {
       notifications.show({ color: 'yellow', title: 'Save the model first', message: 'Attaching a blueprint imports server metadata and cannot safely merge with unsaved table edits.' });
       return;
@@ -187,6 +197,7 @@ export function ModelPanel({
   };
 
   const makePrimary = (datasetId: number) => {
+    if (!canManage) return;
     if (dirty) {
       notifications.show({ color: 'yellow', title: 'Save the model first', message: 'Save pending member edits before changing the canonical blueprint.' });
       return;
@@ -195,6 +206,7 @@ export function ModelPanel({
   };
 
   const detachBlueprint = (datasetId: number) => {
+    if (!canManage) return;
     if (form.primaryDatasetId === datasetId) {
       notifications.show({ color: 'yellow', title: 'Primary blueprint cannot be detached', message: 'Make another application primary first.' });
       return;
@@ -218,26 +230,28 @@ export function ModelPanel({
                 unsaved
               </Badge>
             ) : null}
-            <Button size="xs" loading={save.isPending} onClick={() => save.mutate()}>
+            {canManage ? <Button size="xs" loading={save.isPending} onClick={() => save.mutate()}>
               Save model
-            </Button>
+            </Button> : null}
           </Group>
         </Group>
         <div className="be-definition-grid">
-          <NameInput size="sm" label="Name" value={form.name} onChange={(value) => patchForm({ name: value })} />
-          <TextInput size="sm" label="Domain" placeholder="Retail banking" value={form.domain} onChange={(e) => patchForm({ domain: e.currentTarget.value })} />
+          <NameInput size="sm" label="Name" disabled={!canManage} value={form.name} onChange={(value) => patchForm({ name: value })} />
+          <TextInput size="sm" label="Domain" disabled={!canManage} placeholder="Retail banking" value={form.domain} onChange={(e) => patchForm({ domain: e.currentTarget.value })} />
           <Select
             size="sm"
             label="Status"
+            disabled={!canManage}
             data={['ACTIVE', 'DRAFT', 'RETIRED']}
             value={form.status}
             onChange={(value) => patchForm({ status: value || 'ACTIVE' })}
           />
-          <TextInput size="sm" label="Owner" placeholder="current user" value={form.ownerUsername} onChange={(e) => patchForm({ ownerUsername: e.currentTarget.value })} />
+          <TextInput size="sm" label="Owner" disabled={!canManage} placeholder="current user" value={form.ownerUsername} onChange={(e) => patchForm({ ownerUsername: e.currentTarget.value })} />
           <TextInput
             {...technicalInputProps}
             size="sm"
             label="Root table"
+            disabled={!canManage}
             placeholder="customers"
             value={form.rootTable}
             onChange={(e) => patchForm({ rootTable: e.currentTarget.value })}
@@ -254,6 +268,7 @@ export function ModelPanel({
               </span>
             }
             placeholder="customer_id"
+            disabled={!canManage}
             value={form.businessKeyColumns}
             onChange={(e) => patchForm({ businessKeyColumns: e.currentTarget.value })}
           />
@@ -261,6 +276,7 @@ export function ModelPanel({
             size="sm"
             className="be-definition-description"
             label="Description"
+            disabled={!canManage}
             placeholder="What this entity represents"
             value={form.description}
             onChange={(e) => patchForm({ description: e.currentTarget.value })}
@@ -282,7 +298,7 @@ export function ModelPanel({
             ) : null}
           </div>
           <Group gap={5} wrap="nowrap">
-            <Tooltip label={dirty ? 'Save pending model edits before importing metadata.' : 'Import tables and relationships from one or more DataScope blueprints.'}>
+            {canManage ? <Tooltip label={dirty ? 'Save pending model edits before importing metadata.' : 'Import tables and relationships from one or more DataScope blueprints.'}>
               <Button
                 size="xs"
                 variant="light"
@@ -292,7 +308,7 @@ export function ModelPanel({
               >
                 Attach blueprints
               </Button>
-            </Tooltip>
+            </Tooltip> : null}
             <Tooltip label={blueprintsCollapsed ? 'Expand application blueprints' : 'Minimize application blueprints'}>
               <ActionIcon
                 size="lg"
@@ -318,7 +334,7 @@ export function ModelPanel({
                   <Text size="xs" c="dimmed">{blueprint.source} / {blueprint.schema}</Text>
                 </div>
                 <Text size="xs" c="dimmed" className="be-blueprint-count">{blueprint.tableCount} tables</Text>
-                {!blueprint.primary ? (
+                {canManage && !blueprint.primary ? (
                   <Group gap={4} wrap="nowrap">
                     <Button size="compact-xs" variant="subtle" leftSection={<IconStar size={13} />} onClick={() => makePrimary(blueprint.id)}>
                       Make primary
@@ -360,9 +376,9 @@ export function ModelPanel({
               value={memberBlueprintFilter}
               onChange={(value) => setMemberBlueprintFilter(value || 'ALL')}
             />
-            <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addMember}>
+            {canManage ? <Button size="xs" variant="light" leftSection={<IconPlus size={14} />} onClick={addMember}>
               Add member
-            </Button>
+            </Button> : null}
           </Group>
         </Group>
         {members.length ? (
@@ -403,7 +419,7 @@ export function ModelPanel({
                     {member.includeInSynthetic !== false ? <Badge size="xs" variant="light" color="teal">Synthetic</Badge> : null}
                     {!useCount ? <Text size="xs" c="dimmed">Disabled</Text> : null}
                   </Group>
-                  <Group className="be-member-actions" gap={2} justify="flex-end" wrap="nowrap">
+                  {canManage ? <Group className="be-member-actions" gap={2} justify="flex-end" wrap="nowrap">
                     <Button
                       size="compact-xs"
                       variant="subtle"
@@ -423,7 +439,7 @@ export function ModelPanel({
                         <IconTrash size={14} />
                       </ActionIcon>
                     </Tooltip>
-                  </Group>
+                  </Group> : <span />}
                 </div>
               );
             })}
@@ -436,7 +452,7 @@ export function ModelPanel({
       </div>
 
       <Modal
-        opened={editingMemberIndex !== null && !!editingMember}
+        opened={canManage && editingMemberIndex !== null && !!editingMember}
         onClose={() => setEditingMemberIndex(null)}
         title={editingMember?.logicalRole || editingMember?.tableName || 'Configure member table'}
         size="lg"
@@ -541,7 +557,7 @@ export function ModelPanel({
       </Modal>
 
       <BlueprintBrowser
-        opened={attachOpened}
+        opened={canManage && attachOpened}
         onClose={() => setAttachOpened(false)}
         blueprints={blueprints}
         dataSources={dataSources}

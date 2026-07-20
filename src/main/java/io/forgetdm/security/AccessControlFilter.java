@@ -76,7 +76,7 @@ public class AccessControlFilter extends OncePerRequestFilter {
         return path.equals("/api/auth/login") || path.equals("/api/auth/logout") || path.equals("/api/auth/me");
     }
 
-    private String requiredPermission(String method, String path) {
+    String requiredPermission(String method, String path) {
         String m = method.toUpperCase(Locale.ROOT);
         boolean read = "GET".equals(m);
         if (path.startsWith("/api/security")) return "security.admin";
@@ -84,9 +84,13 @@ public class AccessControlFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/integrations")) return read ? "integration.read" : "integration.manage";
         if (path.startsWith("/api/self-service")) {
             if (path.contains("/decision/")) return "provision.approve";
+            if (path.startsWith("/api/self-service/v2/products") || path.startsWith("/api/self-service/v2/candidates")) {
+                return "datascope.manage";
+            }
             if (path.contains("/templates/")) return "datascope.manage";
             return read ? "provision.read" : "provision.run";
         }
+        if ("POST".equals(m) && path.equals("/api/audit/reanchor")) return "admin.all";
         if (path.startsWith("/api/audit")) return "audit.read";
         if (path.startsWith("/api/dashboard")) return "dashboard.read";
         if (path.startsWith("/api/datasources")) return read ? "datasource.read" : "datasource.manage";
@@ -125,7 +129,8 @@ public class AccessControlFilter extends OncePerRequestFilter {
         if (path.contains("/value-lists")) return read ? "synthetic.read" : "synthetic.manage";
         if (read || path.endsWith("/preview") || path.endsWith("/generators") || path.endsWith("/plan-summary")) return "synthetic.read";
         if (path.endsWith("/profile")) return "synthetic.profile";
-        if (path.matches(".*/jobs/[^/]+/cancel$")) return "synthetic.cancel";
+        if (path.matches(".*/jobs/[^/]+/cancel$")
+                || path.matches(".*/jobs/[^/]+/partitions/[^/]+/cancel$")) return "synthetic.cancel";
         if (path.endsWith("/approval/request")) return "synthetic.manage";
         if (path.contains("/approval/")) return "synthetic.approve";
         if (path.endsWith("/export")) return "synthetic.export";
@@ -138,7 +143,11 @@ public class AccessControlFilter extends OncePerRequestFilter {
     private String mappingPermission(String method, String path) {
         boolean read = "GET".equals(method);
         if (read) return "mapping.read";
-        if (path.matches(".*/runs(/[^/]+/cancel)?$") || path.matches(".*/[^/]+/runs$")) return "mapping.run";
+        if (path.matches(".*/runs/[^/]+/(cancel|retry)$")
+                || path.matches(".*/[^/]+/runs$")
+                || path.matches(".*/workflows/[^/]+/run$")
+                || path.endsWith("/load")
+                || path.endsWith("/load-multi")) return "mapping.run";
         if (path.endsWith("/preview") || path.endsWith("/preview-spec") || path.endsWith("/federated") || path.endsWith("/validate")) return "mapping.read";
         return "mapping.manage";
     }

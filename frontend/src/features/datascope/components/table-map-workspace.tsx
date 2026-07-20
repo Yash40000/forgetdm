@@ -46,6 +46,7 @@ import { DataTable } from '@/components/data-table';
 import { apiPut } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { ColumnOverride, DataSetDefinition, DataSource, MaskingPolicy, TableProfile } from '@/lib/types';
+import { usePermissions } from '@/lib/use-permissions';
 import { useSchemas, useTables } from '../hooks';
 import {
   catalogHasName,
@@ -95,6 +96,8 @@ export function TableMapWorkspace({
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const blueprintDefaults = useMemo(() => defaultsFromBlueprint(blueprint, dataSources), [blueprint, dataSources]);
   const [defaults, setDefaults] = useState<TableMapDefaults>(blueprintDefaults);
   const [draftRows, setDraftRows] = useState<TableProfile[]>(rows);
@@ -142,15 +145,18 @@ export function TableMapWorkspace({
   }, [dirty, onDirtyChange]);
 
   const patchRow = (index: number, patch: Partial<TableProfile>) => {
+    if (!canManage) return;
     setDirty(true);
     setDraftRows((current) => current.map((row, idx) => (idx === index ? { ...row, ...patch } : row)));
   };
   const dropRow = (index: number) => {
+    if (!canManage) return;
     setDirty(true);
     setDraftRows((current) => current.filter((_, idx) => idx !== index));
     setSourceReferenceDrafts((current) => shiftIndexedRecord(current, index));
   };
   const updateDefault = (patch: Partial<TableMapDefaults>) => {
+    if (!canManage) return;
     setDirty(true);
     setDefaults((current) => ({ ...current, ...patch }));
     setSelectedCatalogTables([]);
@@ -181,6 +187,7 @@ export function TableMapWorkspace({
     };
   });
   const commitSourceReference = (index: number) => {
+    if (!canManage) return;
     const parsed = sourceReferenceResults[index];
     if (!parsed || parsed.error) return;
     patchRow(index, {
@@ -240,6 +247,7 @@ export function TableMapWorkspace({
 
   const saveWorkspace = useMutation({
     mutationFn: async () => {
+      if (!canManage) throw new Error('DataScope management permission is required.');
       if (defaults.sourceDataSourceId.trim() && !commonSourceId) throw new Error('Source DB does not match a known data source.');
       if (defaults.targetDataSourceId.trim() && !commonTargetId) throw new Error('Target DB does not match a known data source.');
       if (sourceSchemaDefaultError) throw new Error(sourceSchemaDefaultError);
@@ -298,7 +306,7 @@ export function TableMapWorkspace({
           <Checkbox
             aria-label={`Add ${row.original.table}`}
             checked={selectedCatalogTables.some((item) => equalsIgnoreCase(item, row.original.table))}
-            disabled={row.original.alreadyProfiled}
+            disabled={!canManage || row.original.alreadyProfiled}
             onChange={(event) => {
               const checked = event.currentTarget.checked;
               setSelectedCatalogTables((current) =>
@@ -329,10 +337,11 @@ export function TableMapWorkspace({
           )
       }
     ],
-    [selectedCatalogTables]
+    [canManage, selectedCatalogTables]
   );
 
   const addSelectedTables = () => {
+    if (!canManage) return;
     if (!commonSourceId) {
       notifications.show({ color: 'red', title: 'Choose source first', message: 'Select a source DB before adding tables.' });
       return;
@@ -371,6 +380,7 @@ export function TableMapWorkspace({
   };
 
   const addManualTable = () => {
+    if (!canManage) return;
     setDirty(true);
     setDraftRows((current) => current.concat({
       datasetId: blueprint.id,
@@ -388,11 +398,11 @@ export function TableMapWorkspace({
     mapDrawer.open();
   };
 
-  const renderSaveButton = () => (
-    <Button loading={saveWorkspace.isPending} disabled={!!duplicates.size} onClick={() => saveWorkspace.mutate()}>
+  const renderSaveButton = () => canManage ? (
+    <Button loading={saveWorkspace.isPending} disabled={!canManage || !!duplicates.size} onClick={() => saveWorkspace.mutate()}>
       Save table map
     </Button>
-  );
+  ) : null;
 
   const browseButton = (label: string, action: () => void, disabled = false, loadingState = false) => (
     <Tooltip label={label} withArrow>
@@ -401,7 +411,7 @@ export function TableMapWorkspace({
         title={label}
         variant="light"
         size={36}
-        disabled={disabled}
+        disabled={!canManage || disabled}
         loading={loadingState}
         onClick={action}
       >
@@ -427,6 +437,7 @@ export function TableMapWorkspace({
               placeholder="name or id"
               value={defaults.sourceDataSourceId}
               error={sourceDefaultError}
+              disabled={!canManage}
               onChange={(event) => updateDefault({ sourceDataSourceId: event.currentTarget.value, sourceSchemaName: '' })}
               style={{ flex: 1 }}
             />
@@ -439,6 +450,7 @@ export function TableMapWorkspace({
               placeholder="schema"
               value={defaults.sourceSchemaName}
               error={sourceSchemaDefaultError}
+              disabled={!canManage}
               onChange={(event) => updateDefault({ sourceSchemaName: event.currentTarget.value })}
               style={{ flex: 1 }}
             />
@@ -464,6 +476,7 @@ export function TableMapWorkspace({
               placeholder="name or id"
               value={defaults.targetDataSourceId}
               error={targetDefaultError}
+              disabled={!canManage}
               onChange={(event) => updateDefault({ targetDataSourceId: event.currentTarget.value, targetSchemaName: '' })}
               style={{ flex: 1 }}
             />
@@ -476,6 +489,7 @@ export function TableMapWorkspace({
               placeholder="schema"
               value={defaults.targetSchemaName}
               error={targetSchemaDefaultError}
+              disabled={!canManage}
               onChange={(event) => updateDefault({ targetSchemaName: event.currentTarget.value })}
               style={{ flex: 1 }}
             />
@@ -523,6 +537,7 @@ export function TableMapWorkspace({
             data={driverOptions}
             value={defaults.driverTable}
             searchable
+            disabled={!canManage}
             error={driverMissing ? 'Driver is not in this profile anymore. Pick another table.' : null}
             onChange={(value) => updateDefault({ driverTable: value || '' })}
           />
@@ -532,7 +547,7 @@ export function TableMapWorkspace({
             description="Optional SQL WHERE condition."
             placeholder="status = 'ACTIVE'"
             value={defaults.driverFilter}
-            disabled={!defaults.driverTable.trim()}
+            disabled={!canManage || !defaults.driverTable.trim()}
             onChange={(event) => updateDefault({ driverFilter: event.currentTarget.value })}
           />
           <NumberInput
@@ -540,7 +555,7 @@ export function TableMapWorkspace({
             description="Optional limit on starting rows."
             min={1}
             value={defaults.maxDriverRows === '' ? '' : Number(defaults.maxDriverRows)}
-            disabled={!defaults.driverTable.trim()}
+            disabled={!canManage || !defaults.driverTable.trim()}
             onChange={(value) => updateDefault({ maxDriverRows: value === '' || value === null ? '' : String(value) })}
           />
           <Select
@@ -551,6 +566,7 @@ export function TableMapWorkspace({
               { value: 'no', label: 'No - parents already exist' }
             ]}
             value={defaults.globalQ1 ? 'yes' : 'no'}
+            disabled={!canManage}
             onChange={(value) => updateDefault({ globalQ1: value !== 'no' })}
           />
           <Select
@@ -561,6 +577,7 @@ export function TableMapWorkspace({
               { value: 'no', label: 'No - keep subset smaller' }
             ]}
             value={defaults.globalQ2 ? 'yes' : 'no'}
+            disabled={!canManage}
             onChange={(value) => updateDefault({ globalQ2: value !== 'no' })}
           />
         </SimpleGrid>
@@ -636,18 +653,18 @@ export function TableMapWorkspace({
                 </Badge>
                 <Button
                   variant="light"
-                  disabled={!catalogRows.some((row) => !row.alreadyProfiled)}
+                  disabled={!canManage || !catalogRows.some((row) => !row.alreadyProfiled)}
                   onClick={() => setSelectedCatalogTables(catalogRows.filter((row) => !row.alreadyProfiled).map((row) => row.table))}
                 >
                   Select all
                 </Button>
-                <Button variant="light" disabled={!selectedCatalogTables.length} onClick={() => setSelectedCatalogTables([])}>
+                <Button variant="light" disabled={!canManage || !selectedCatalogTables.length} onClick={() => setSelectedCatalogTables([])}>
                   Clear
                 </Button>
-                <Button variant="light" leftSection={<IconPlus size={16} />} onClick={addManualTable}>
+                <Button variant="light" leftSection={<IconPlus size={16} />} disabled={!canManage} onClick={addManualTable}>
                   Add manually
                 </Button>
-                <Button leftSection={<IconPlus size={16} />} disabled={!selectedCatalogTables.length} onClick={addSelectedTables}>
+                <Button leftSection={<IconPlus size={16} />} disabled={!canManage || !selectedCatalogTables.length} onClick={addSelectedTables}>
                   Add selected
                 </Button>
               </Group>
@@ -761,16 +778,18 @@ export function TableMapWorkspace({
                         <tr key={`${profile.tableName}-${idx}`}>
                           <td>
                             <Checkbox
-                              aria-label={`Include ${profile.tableName}`}
-                              checked={isProfileIncluded(profile)}
+                               aria-label={`Include ${profile.tableName}`}
+                               checked={isProfileIncluded(profile)}
+                               disabled={!canManage}
                               onChange={(event) => patchRow(idx, { included: event.currentTarget.checked })}
                             />
                           </td>
                           <td>
                             <Radio
                               aria-label={`Use ${profile.tableName} as driver`}
-                              name="ds-driver-table-map"
-                              checked={equalsIgnoreCase(defaults.driverTable, profile.tableName)}
+                               name="ds-driver-table-map"
+                               checked={equalsIgnoreCase(defaults.driverTable, profile.tableName)}
+                               disabled={!canManage}
                               onChange={() => updateDefault({ driverTable: profile.tableName })}
                             />
                           </td>
@@ -779,8 +798,9 @@ export function TableMapWorkspace({
                               {...technicalInputProps}
                               className="ds-source-reference-input"
                               placeholder="table or DB_ALIAS,SCHEMA.TABLE"
-                              value={sourceReference}
-                              error={sourceResult?.error || null}
+                               value={sourceReference}
+                               error={sourceResult?.error || null}
+                               disabled={!canManage}
                               onChange={(event) => {
                                 setDirty(true);
                                 setSourceReferenceDrafts((current) => ({ ...current, [idx]: event.currentTarget.value }));
@@ -791,8 +811,9 @@ export function TableMapWorkspace({
                           <td>
                             <TextInput
                               {...technicalInputProps}
-                              error={duplicate ? 'Already used' : null}
-                              value={target}
+                               error={duplicate ? 'Already used' : null}
+                               value={target}
+                               disabled={!canManage}
                               onChange={(event) => {
                                 const value = event.currentTarget.value;
                                 patchRow(idx, { targetTableName: value && !equalsIgnoreCase(value, profile.tableName) ? value : null });
@@ -802,15 +823,17 @@ export function TableMapWorkspace({
                           <td>
                             <Select
                               data={policyOptions}
-                              value={String(profile.policyId || '')}
-                              searchable
+                               value={String(profile.policyId || '')}
+                               searchable
+                               disabled={!canManage}
                               onChange={(value) => patchRow(idx, { policyId: numberOrNull(value) })}
                             />
                           </td>
                           <td>
                             <NumberInput
-                              min={0}
-                              value={profile.rowLimit ?? ''}
+                               min={0}
+                               value={profile.rowLimit ?? ''}
+                               disabled={!canManage}
                               onChange={(value) => patchRow(idx, { rowLimit: numberOrNull(value) })}
                             />
                           </td>
@@ -821,8 +844,9 @@ export function TableMapWorkspace({
                               placeholder="status = 'ACTIVE'"
                               autosize
                               minRows={1}
-                              maxRows={3}
-                              value={profile.filterExpr || profile.filterSql || ''}
+                               maxRows={3}
+                               value={profile.filterExpr || profile.filterSql || ''}
+                               disabled={!canManage}
                               onChange={(event) => patchRow(idx, { filterExpr: emptyToNull(event.currentTarget.value) })}
                             />
                           </td>
@@ -832,8 +856,9 @@ export function TableMapWorkspace({
                                 { value: 'INHERIT', label: 'Inherit Q1/Q2' },
                                 { value: 'FOLLOW_PARENT', label: 'Follow parent' },
                                 { value: 'INDEPENDENT', label: 'Independent start' }
-                              ]}
-                              value={referentialStrategy}
+                               ]}
+                               value={referentialStrategy}
+                               disabled={!canManage}
                               onChange={(value) => {
                                 const nextStrategy = value || 'INHERIT';
                                 patchRow(
@@ -854,7 +879,7 @@ export function TableMapWorkspace({
                               label="Q1 parents"
                               value={qModeValue(profile.q1Mode, profile.q1Override)}
                               onChange={(value) => patchRow(idx, qModePatch('q1', value))}
-                              disabled={isIndependent}
+                              disabled={!canManage || isIndependent}
                             />
                           </td>
                           <td>
@@ -862,7 +887,7 @@ export function TableMapWorkspace({
                               label="Q2 children"
                               value={qModeValue(profile.q2Mode, profile.q2Override)}
                               onChange={(value) => patchRow(idx, qModePatch('q2', value))}
-                              disabled={isIndependent}
+                              disabled={!canManage || isIndependent}
                             />
                           </td>
                           <td className="ds-map-actions">
@@ -883,9 +908,7 @@ export function TableMapWorkspace({
                             </Group>
                           </td>
                           <td>
-                            <Button size="xs" variant="subtle" color="red" onClick={() => dropRow(idx)}>
-                              Remove
-                            </Button>
+                            {canManage ? <Button size="xs" variant="subtle" color="red" onClick={() => dropRow(idx)}>Remove</Button> : null}
                           </td>
                         </tr>
                       );
@@ -903,34 +926,34 @@ export function TableMapWorkspace({
       </Modal>
 
       <DataSourceBrowseModal
-        opened={sourceBrowseOpened}
+        opened={sourceBrowseOpened && canManage}
         onClose={sourceBrowse.close}
         title="Browse Source DB"
         candidates={sourceCandidates}
-        onPick={(source) => updateDefault({ sourceDataSourceId: source.name, sourceSchemaName: '' })}
+        onPick={(source) => canManage && updateDefault({ sourceDataSourceId: source.name, sourceSchemaName: '' })}
       />
       <DataSourceBrowseModal
-        opened={targetBrowseOpened}
+        opened={targetBrowseOpened && canManage}
         onClose={targetBrowse.close}
         title="Browse Target DB"
         candidates={targetCandidates}
-        onPick={(target) => updateDefault({ targetDataSourceId: target.name, targetSchemaName: '' })}
+        onPick={(target) => canManage && updateDefault({ targetDataSourceId: target.name, targetSchemaName: '' })}
       />
       <SchemaBrowseModal
-        opened={sourceSchemaBrowseOpened}
+        opened={sourceSchemaBrowseOpened && canManage}
         onClose={sourceSchemaBrowse.close}
         title="Browse Source Schema"
         schemas={sourceSchemaNames}
         loading={sourceSchemasQuery.isFetching}
-        onPick={(schema) => updateDefault({ sourceSchemaName: schema })}
+        onPick={(schema) => canManage && updateDefault({ sourceSchemaName: schema })}
       />
       <SchemaBrowseModal
-        opened={targetSchemaBrowseOpened}
+        opened={targetSchemaBrowseOpened && canManage}
         onClose={targetSchemaBrowse.close}
         title="Browse Target Schema"
         schemas={targetSchemaNames}
         loading={targetSchemasQuery.isFetching}
-        onPick={(schema) => updateDefault({ targetSchemaName: schema })}
+        onPick={(schema) => canManage && updateDefault({ targetSchemaName: schema })}
       />
 
       <ColumnMapDrawer

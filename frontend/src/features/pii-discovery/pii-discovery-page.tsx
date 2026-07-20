@@ -82,6 +82,7 @@ import {
 
 type DiscoveryWorkspace = 'findings' | 'columns' | 'impact' | 'history';
 type PolicyDrawer = 'browse' | 'create' | null;
+const DISCOVERY_MANAGE_REQUIRED = 'Discovery management permission is required.';
 
 export function PiiDiscoveryPage() {
   const queryClient = useQueryClient();
@@ -279,6 +280,7 @@ export function PiiDiscoveryPage() {
 
   const startScanMutation = useMutation({
     mutationFn: async ({ sourceId, schemaName, piiTypes, tableNames }: { sourceId: number; schemaName: string; piiTypes: string[]; tableNames: string[] }) => {
+      if (!canManage) throw new Error(DISCOVERY_MANAGE_REQUIRED);
       const job = await apiPost<DiscoveryJob>(`/api/discovery/scan-jobs/${sourceId}?schema=${encodeURIComponent(schemaName)}`, {
         piiTypes,
         tableNames
@@ -297,14 +299,17 @@ export function PiiDiscoveryPage() {
   });
 
   const updateFindingMutation = useMutation({
-    mutationFn: ({ id, body }: { id: number; body: Record<string, string | null> }) =>
-      apiPatch<DiscoveryFinding>(`/api/discovery/classifications/${id}`, body),
+    mutationFn: ({ id, body }: { id: number; body: Record<string, string | null> }) => {
+      if (!canManage) throw new Error(DISCOVERY_MANAGE_REQUIRED);
+      return apiPatch<DiscoveryFinding>(`/api/discovery/classifications/${id}`, body);
+    },
     onSuccess: () => refreshDiscoveryData(),
     onError: (error) => notifyError('Finding update failed', error)
   });
 
   const bulkMutation = useMutation({
     mutationFn: async (status: 'APPROVED' | 'REJECTED') => {
+      if (!canManage) throw new Error(DISCOVERY_MANAGE_REQUIRED);
       if (!visibleFindings.length) return { count: 0 };
       return apiPost<{ count: number }>('/api/discovery/classifications/bulk', {
         status,
@@ -324,6 +329,7 @@ export function PiiDiscoveryPage() {
 
   const manualMutation = useMutation({
     mutationFn: async ({ row, draft }: { row: DiscoveryColumnReviewRow; draft: ManualDraft }) => {
+      if (!canManage) throw new Error(DISCOVERY_MANAGE_REQUIRED);
       if (!dataSourceId || !schema) throw new Error('Select a data source and schema first.');
       return apiPost<DiscoveryFinding>(`/api/discovery/manual/${dataSourceId}`, {
         schemaName: schema,
@@ -349,6 +355,7 @@ export function PiiDiscoveryPage() {
 
   const generatePolicyMutation = useMutation({
     mutationFn: async () => {
+      if (!canManage) throw new Error(DISCOVERY_MANAGE_REQUIRED);
       if (!dataSourceId || !schema) throw new Error('Select a data source and schema first.');
       const nameError = validatePolicyName(policyName);
       if (nameError) throw new Error(nameError);
@@ -375,10 +382,12 @@ export function PiiDiscoveryPage() {
     : 'all PII types';
 
   const handleStartScan = () => {
+    if (!canManage) return;
     startScanWithTypes(applyTypedTypes(), applyTypedTables());
   };
 
   const startScanWithTypes = (types: string[], tableNames: string[]) => {
+    if (!canManage) return;
     const source = resolveTypedDataSource(true);
     if (!source) return;
     const schemaName = (schema || '').trim();
@@ -455,6 +464,7 @@ export function PiiDiscoveryPage() {
   };
 
   const openCreatePolicy = () => {
+    if (!canManage) return;
     if (!currentScanComplete) {
       notifyError('Complete a scan first', new Error('A masking policy can only be generated from a completed scan with at least one scanned table.'));
       return;
@@ -465,6 +475,26 @@ export function PiiDiscoveryPage() {
     }
     if (!policyName.trim()) setPolicyName(suggestedPolicyName(dataSourceInput, schema));
     setPolicyDrawer('create');
+  };
+
+  const handleBulkUpdate = (status: 'APPROVED' | 'REJECTED') => {
+    if (!canManage) return;
+    bulkMutation.mutate(status);
+  };
+
+  const handleFindingUpdate = (id: number, body: Record<string, string | null>) => {
+    if (!canManage) return;
+    updateFindingMutation.mutate({ id, body });
+  };
+
+  const handleManualClassification = (row: DiscoveryColumnReviewRow, draft: ManualDraft) => {
+    if (!canManage) return;
+    manualMutation.mutate({ row, draft });
+  };
+
+  const handleCreatePolicy = () => {
+    if (!canManage) return;
+    generatePolicyMutation.mutate();
   };
 
   const filteredSources = dataSources
@@ -646,9 +676,11 @@ export function PiiDiscoveryPage() {
                 <Button size="xs" variant="default" leftSection={<IconDatabase size={14} />} onClick={() => setWorkspace('columns')}>
                   Column review
                 </Button>
-                <Button size="xs" variant="default" leftSection={<IconFileCertificate size={14} />} disabled={!currentScanComplete || approved === 0} onClick={openCreatePolicy}>
-                  Create policy
-                </Button>
+                {canManage ? (
+                  <Button size="xs" variant="default" leftSection={<IconFileCertificate size={14} />} disabled={!currentScanComplete || approved === 0} onClick={openCreatePolicy}>
+                    Create policy
+                  </Button>
+                ) : null}
                 <Button size="xs" variant="default" leftSection={<IconMap size={14} />} disabled={!hasReviewContext} onClick={() => setWorkspace('impact')}>
                   Impact map
                 </Button>
@@ -699,14 +731,16 @@ export function PiiDiscoveryPage() {
                       Approve true PII, reject false positives, and tune suggested masking rules in place.
                     </Text>
                   </div>
-                  <Group gap="xs">
-                    <Button size="xs" variant="default" onClick={() => bulkMutation.mutate('APPROVED')} loading={bulkMutation.isPending}>
-                      Approve visible
-                    </Button>
-                    <Button size="xs" variant="light" color="red" onClick={() => bulkMutation.mutate('REJECTED')} loading={bulkMutation.isPending}>
-                      Reject visible
-                    </Button>
-                  </Group>
+                  {canManage ? (
+                    <Group gap="xs">
+                      <Button size="xs" variant="default" onClick={() => handleBulkUpdate('APPROVED')} loading={bulkMutation.isPending}>
+                        Approve visible
+                      </Button>
+                      <Button size="xs" variant="light" color="red" onClick={() => handleBulkUpdate('REJECTED')} loading={bulkMutation.isPending}>
+                        Reject visible
+                      </Button>
+                    </Group>
+                  ) : null}
                 </div>
                 <div className="pii-filter-row">
                   <TextInput
@@ -736,7 +770,8 @@ export function PiiDiscoveryPage() {
                   rows={visibleFindings}
                   functions={maskFunctions}
                   updating={updateFindingMutation.isPending}
-                  onUpdate={(id, body) => updateFindingMutation.mutate({ id, body })}
+                  canManage={canManage}
+                  onUpdate={handleFindingUpdate}
                 />
               </Paper>
             ) : null}
@@ -752,8 +787,9 @@ export function PiiDiscoveryPage() {
                 functions={maskFunctions}
                 manualDrafts={manualDrafts}
                 setManualDrafts={setManualDrafts}
-                onUpdate={(id, body) => updateFindingMutation.mutate({ id, body })}
-                onManual={(row, draft) => manualMutation.mutate({ row, draft })}
+                canManage={canManage}
+                onUpdate={handleFindingUpdate}
+                onManual={handleManualClassification}
                 manualPending={manualMutation.isPending}
               />
             ) : null}
@@ -828,14 +864,16 @@ export function PiiDiscoveryPage() {
             </div>
             <Group justify="space-between">
               <Button component={Link} href="/masking-policies" variant="subtle">Open Masking Policies</Button>
-              <Button leftSection={<IconPlus size={15} />} disabled={!currentScanComplete || approved === 0} onClick={openCreatePolicy}>
-                Create from scan
-              </Button>
+              {canManage ? (
+                <Button leftSection={<IconPlus size={15} />} disabled={!currentScanComplete || approved === 0} onClick={openCreatePolicy}>
+                  Create from scan
+                </Button>
+              ) : null}
             </Group>
           </Stack>
         </Drawer>
 
-        <Drawer
+        {canManage ? <Drawer
           opened={policyDrawer === 'create'}
           onClose={() => setPolicyDrawer(null)}
           position="right"
@@ -866,13 +904,13 @@ export function PiiDiscoveryPage() {
                 leftSection={<IconFileCertificate size={16} />}
                 loading={generatePolicyMutation.isPending}
                 disabled={Boolean(policyNameError) || !policyName.trim() || !currentScanComplete || approved === 0}
-                onClick={() => generatePolicyMutation.mutate()}
+                onClick={handleCreatePolicy}
               >
                 Create policy
               </Button>
             </Group>
           </Stack>
-        </Drawer>
+        </Drawer> : null}
 
         <Modal
           opened={!!browseModal}

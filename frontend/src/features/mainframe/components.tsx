@@ -143,13 +143,15 @@ export function ParamInput({
   index,
   value,
   onChange,
-  scripts = []
+  scripts = [],
+  disabled = false
 }: {
   fn: string;
   index: 1 | 2;
   value: string;
   onChange: (value: string) => void;
   scripts?: MaskingScript[];
+  disabled?: boolean;
 }) {
   const label = fn === 'NONE' ? null : maskParamLabel(fn, index);
   if (!label) {
@@ -161,13 +163,14 @@ export function ParamInput({
       <Select
         size="xs"
         label={label}
+        disabled={disabled}
         data={options}
         value={value || BLANK_PARAM}
         onChange={(next) => onChange(normalizeParam(next) || '')}
       />
     );
   }
-  return <TextInput {...technicalInputProps} size="xs" label={label} value={value} onChange={(event) => onChange(event.currentTarget.value)} />;
+  return <TextInput {...technicalInputProps} size="xs" label={label} value={value} disabled={disabled} onChange={(event) => onChange(event.currentTarget.value)} />;
 }
 
 export function maskFunctionOptions(functions: string[] = [], includeNone = false) {

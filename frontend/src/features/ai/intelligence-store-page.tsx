@@ -16,17 +16,21 @@ import { useQueryClient } from '@tanstack/react-query';
 import { apiFetch, apiPost } from '@/lib/api';
 import { useConfirm } from '@/components/confirm';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import { useDataStoreDocuments, useDataStoreStatus } from './hooks';
 import type { DataStoreDocument, DataStoreStatus } from './types';
 
 export function IntelligenceStorePage() {
   const queryClient = useQueryClient();
+  const { can, ready } = usePermissions();
+  const canUseAssistant = can('assistant.use');
+  const canManage = can('assistant.manage');
   const { confirm, confirmElement } = useConfirm();
-  const statusQuery = useDataStoreStatus();
+  const statusQuery = useDataStoreStatus(canUseAssistant);
   const [query, setQuery] = useState('');
   const [debounced] = useDebouncedValue(query, 250);
   const [type, setType] = useState('');
-  const documentsQuery = useDataStoreDocuments(debounced, type);
+  const documentsQuery = useDataStoreDocuments(debounced, type, canUseAssistant);
   const [syncing, setSyncing] = useState(false);
   const [opened, modal] = useDisclosure(false);
   const [title, setTitle] = useState('');
@@ -37,6 +41,7 @@ export function IntelligenceStorePage() {
   const status = statusQuery.data;
 
   const refresh = async () => {
+    if (!canManage) return;
     setSyncing(true);
     try {
       const result = await apiPost<DataStoreStatus>('/api/agent/data-store/sync', {});
@@ -50,6 +55,7 @@ export function IntelligenceStorePage() {
   };
 
   const addKnowledge = async () => {
+    if (!canManage) return;
     const cleanTitle = title.trim();
     if (cleanTitle.length < 8 || cleanTitle.length > 120 || !content.trim()) return;
     setSaving(true);
@@ -66,6 +72,7 @@ export function IntelligenceStorePage() {
   };
 
   const remove = async (document: DataStoreDocument) => {
+    if (!canManage) return;
     const systemRecord = document.origin !== 'USER';
     const confirmed = await confirm({
       title: systemRecord ? 'Exclude catalog record?' : 'Delete governed knowledge?',
@@ -91,6 +98,9 @@ export function IntelligenceStorePage() {
     } catch (error) { notifyError('Knowledge could not be removed', error); }
   };
 
+  if (!ready) return <main className="forge-page intelligence-page"><Paper p="lg"><Text c="dimmed">Checking Forge Data Store access...</Text></Paper></main>;
+  if (!canUseAssistant) return <main className="forge-page intelligence-page"><Paper p="lg"><Text fw={800}>Forge Data Store is not available</Text><Text c="dimmed">Your role does not include access to private AI grounding data.</Text></Paper></main>;
+
   return <main className="forge-page intelligence-page">
     {confirmElement}
     <header className="forge-page-header intelligence-header">
@@ -101,7 +111,7 @@ export function IntelligenceStorePage() {
           <Text c="dimmed">Private, versioned business and TDM context for grounded Story to Data plans.</Text>
         </div>
       </Group>
-      {status?.canManage ? <Group><Button variant="default" leftSection={<IconPlus size={16} />} onClick={modal.open}>Add knowledge</Button><Button leftSection={<IconRefresh size={16} />} loading={syncing} onClick={() => void refresh()}>Synchronize</Button></Group> : null}
+      {canManage ? <Group><Button variant="default" leftSection={<IconPlus size={16} />} onClick={modal.open}>Add knowledge</Button><Button leftSection={<IconRefresh size={16} />} loading={syncing} onClick={() => void refresh()}>Synchronize</Button></Group> : null}
     </header>
 
     <Paper className="intelligence-privacy" p="md">
@@ -124,12 +134,12 @@ export function IntelligenceStorePage() {
         </Group>
       </Group>
       <Stack gap={0} mt="md" className="intelligence-document-list">
-        {(documentsQuery.data || []).map((document) => <DocumentRow key={document.id} document={document} canManage={Boolean(status?.canManage)} onOpen={setSelectedDocument} onRemove={remove} />)}
+        {(documentsQuery.data || []).map((document) => <DocumentRow key={document.id} document={document} canManage={canManage} onOpen={setSelectedDocument} onRemove={remove} />)}
         {!documentsQuery.isLoading && !documentsQuery.data?.length ? <Stack align="center" py={60}><ThemeIcon size={48} variant="light"><IconDatabaseSearch size={24} /></ThemeIcon><Text fw={800}>No grounding documents match</Text><Text size="sm" c="dimmed">Synchronize ForgeTDM metadata or add governed business terminology.</Text></Stack> : null}
       </Stack>
     </Paper>
 
-    <Modal opened={opened} onClose={modal.close} title="Add governed knowledge" size="lg">
+    <Modal opened={canManage && opened} onClose={modal.close} title="Add governed knowledge" size="lg">
       <Stack>
         <Text size="sm" c="dimmed">Add acronyms, business rules, test conventions or approved operating guidance. Do not paste production values or credentials.</Text>
         <Select label="Knowledge type" value={manualType} onChange={(value) => setManualType(value || 'BUSINESS_GLOSSARY')} data={[{ value: 'BUSINESS_GLOSSARY', label: 'Business glossary' }, { value: 'TESTING_STANDARD', label: 'Testing standard' }, { value: 'DOMAIN_RULE', label: 'Domain rule' }, { value: 'OPERATING_GUIDE', label: 'Operating guide' }]} />

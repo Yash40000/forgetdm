@@ -284,7 +284,7 @@ export function ReportDetail({
   diagnosing,
   onApplyFix,
   applyingKey,
-  canApplyFix = true,
+  canRun,
   dsName,
   policyName
 }: {
@@ -295,7 +295,7 @@ export function ReportDetail({
   diagnosing: boolean;
   onApplyFix: (remedy: ValidationRemedy) => void;
   applyingKey: string | null;
-  canApplyFix?: boolean;
+  canRun: boolean;
   dsName: (id?: number | null) => string;
   policyName: (id?: number | null) => string;
 }) {
@@ -323,12 +323,12 @@ export function ReportDetail({
             {policyName(report.policyId)} · {validationWhen(report.createdAt)}
           </Text>
         </div>
-        {failing ? (
+        {failing && canRun ? (
           <Button
             variant="light"
             leftSection={<IconSparkles size={16} />}
             loading={diagnosing}
-            onClick={onDiagnose}
+            onClick={() => canRun && onDiagnose()}
           >
             Diagnose with AI
           </Button>
@@ -413,13 +413,13 @@ export function ReportDetail({
                         {remedy.suggestedFunction}
                         {remedy.suggestedParam1 ? ` · ${remedy.suggestedParam1}` : ''}
                       </Badge>
-                      {canApplyFix ? (
+                      {canRun ? (
                         <Button
                           size="compact-xs"
                           variant="light"
                           loading={applyingKey === key}
                           disabled={!report.policyId}
-                          onClick={() => onApplyFix(remedy)}
+                          onClick={() => canRun && onApplyFix(remedy)}
                         >
                           Apply fix
                         </Button>

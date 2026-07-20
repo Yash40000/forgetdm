@@ -9,6 +9,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { DataSource } from '@/lib/types';
+import { usePermissions } from '@/lib/use-permissions';
 import type { LooseMap } from '../hooks';
 import type { BusinessEntityDetail, CapsuleInstance } from '../types';
 import { listOfMaps, num, statusDot, str, technicalInputProps } from '../utils';
@@ -32,6 +33,8 @@ export function DeliverPanel({
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const entityId = detail.entity.id!;
   const issuePackages = listOfMaps(enterprise, 'issuePackages');
   const lookalikes = listOfMaps(enterprise, 'lookalikeProfiles');
@@ -48,6 +51,7 @@ export function DeliverPanel({
 
   const createIssue = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
       if (!issueForm.issueKey.trim()) throw new Error('Enter the issue key, e.g. INC-12345.');
       return apiPost<LooseMap>(`/api/business-entities/${entityId}/issue-packages`, {
         issueKey: issueForm.issueKey.trim(),
@@ -66,13 +70,15 @@ export function DeliverPanel({
   });
 
   const createLookalike = useMutation({
-    mutationFn: () =>
-      apiPost<LooseMap>(`/api/business-entities/${entityId}/lookalike-profiles`, {
+    mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
+      return apiPost<LooseMap>(`/api/business-entities/${entityId}/lookalike-profiles`, {
         name: lookForm.name.trim() || `${detail.entity.name} look-alike`,
         objective: lookForm.objective.trim() || null,
         privacyMode: lookForm.privacy,
         rowGoal: num(lookForm.rows) || 1000
-      }),
+      });
+    },
     onSuccess: async () => {
       notifications.show({ color: 'green', title: 'Look-alike plan created', message: 'Metadata-only — no raw values stored.' });
       setLookForm({ name: '', rows: lookForm.rows, privacy: lookForm.privacy, objective: '' });
@@ -82,15 +88,17 @@ export function DeliverPanel({
   });
 
   const createPlan = useMutation({
-    mutationFn: () =>
-      apiPost<LooseMap>(`/api/business-entities/${entityId}/execution-plans`, {
+    mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
+      return apiPost<LooseMap>(`/api/business-entities/${entityId}/execution-plans`, {
         name: planForm.name.trim() || `${planForm.operation} ${detail.entity.name}`,
         operationType: planForm.operation,
         mode: planForm.mode,
         sourceEnvironment: planForm.source.trim() || null,
         targetEnvironment: planForm.target.trim() || null,
         capsuleInstanceId: planForm.capsuleId ? Number(planForm.capsuleId) : null
-      }),
+      });
+    },
     onSuccess: async (plan) => {
       notifications.show({
         color: str(plan.status) === 'APPROVED' ? 'green' : 'yellow',
@@ -105,6 +113,7 @@ export function DeliverPanel({
 
   const launchPlan = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
       if (!launchForm.planId) throw new Error('Pick the execution plan to launch.');
       return apiPost<LooseMap>(`/api/business-entities/execution-plans/${launchForm.planId}/launch`, {
         targetDataSourceId: launchForm.targetId ? Number(launchForm.targetId) : null,
@@ -124,6 +133,7 @@ export function DeliverPanel({
 
   const createPackage = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
       if (!packageForm.planId) throw new Error('Pick the execution plan to package.');
       return apiPost<LooseMap>(`/api/business-entities/${entityId}/operational-packages`, {
         name: packageForm.name.trim() || 'Scheduler package',
@@ -159,7 +169,7 @@ export function DeliverPanel({
             <Text size="xs" c="dimmed" mb="xs">
               Capture the defect context as a replayable, privacy-safe package.
             </Text>
-            <SimpleGrid cols={{ base: 1, sm: 3, lg: 6 }} mb="xs">
+            {canManage ? <SimpleGrid cols={{ base: 1, sm: 3, lg: 6 }} mb="xs">
               <TextInput {...technicalInputProps} size="xs" label="Issue key" placeholder="INC-12345" value={issueForm.issueKey} onChange={(e) => setIssueForm({ ...issueForm, issueKey: e.currentTarget.value })} />
               <TextInput size="xs" label="Title" placeholder="Payment fails for active customer" value={issueForm.title} onChange={(e) => setIssueForm({ ...issueForm, title: e.currentTarget.value })} />
               <Select size="xs" label="Severity" data={['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']} value={issueForm.severity} onChange={(value) => setIssueForm({ ...issueForm, severity: value || 'MEDIUM' })} />
@@ -178,7 +188,7 @@ export function DeliverPanel({
               <Button size="xs" mt={22} loading={createIssue.isPending} onClick={() => createIssue.mutate()}>
                 Create package
               </Button>
-            </SimpleGrid>
+            </SimpleGrid> : null}
             {issuePackages.map((pkg) => (
               <LineRow key={str(pkg.id)} status={str(pkg.status)} title={`${str(pkg.issueKey)} — ${str(pkg.title, 'issue package')}`} meta={`${str(pkg.recreationMode)} · ${str(pkg.privacyAction)} · ${str(pkg.approvalStatus)}`} />
             ))}
@@ -191,7 +201,7 @@ export function DeliverPanel({
             <Text size="xs" c="dimmed" mb="xs">
               Metadata-only synthetic plans with the production shape and zero raw values.
             </Text>
-            <SimpleGrid cols={{ base: 1, sm: 3, lg: 5 }} mb="xs">
+            {canManage ? <SimpleGrid cols={{ base: 1, sm: 3, lg: 5 }} mb="xs">
               <NameInput size="xs" label="Name" placeholder={`${detail.entity.name} UAT look-alike`} value={lookForm.name} onChange={(value) => setLookForm({ ...lookForm, name: value })} />
               <NumberInput
                 size="xs"
@@ -214,7 +224,7 @@ export function DeliverPanel({
               <Button size="xs" mt={22} loading={createLookalike.isPending} onClick={() => createLookalike.mutate()}>
                 Create plan
               </Button>
-            </SimpleGrid>
+            </SimpleGrid> : null}
             {lookalikes.map((profile) => (
               <LineRow key={str(profile.id)} status={str(profile.status)} title={str(profile.name)} meta={`${str(profile.privacyMode)} · ${str(profile.rowGoal, '0')} rows`} />
             ))}
@@ -235,7 +245,7 @@ export function DeliverPanel({
             <Text size="xs" c="dimmed" mb="xs">
               Plan entity-level subset/mask or synthetic execution; launch fans out one run per application slice.
             </Text>
-            <SimpleGrid cols={{ base: 1, sm: 3, lg: 7 }} mb="xs">
+            {canManage ? <SimpleGrid cols={{ base: 1, sm: 3, lg: 7 }} mb="xs">
               <NameInput size="xs" label="Name" placeholder="Customer UAT release" value={planForm.name} onChange={(value) => setPlanForm({ ...planForm, name: value })} />
               <Select size="xs" label="Operation" data={['SUBSET_MASK', 'SYNTHETIC_LOOKALIKE', 'ISSUE_RECREATE']} value={planForm.operation} onChange={(value) => setPlanForm({ ...planForm, operation: value || 'SUBSET_MASK' })} />
               <Select size="xs" label="Mode" data={['PLAN_ONLY', 'APPROVED_RUN_READY']} value={planForm.mode} onChange={(value) => setPlanForm({ ...planForm, mode: value || 'PLAN_ONLY' })} />
@@ -253,7 +263,7 @@ export function DeliverPanel({
               <Button size="xs" mt={22} loading={createPlan.isPending} onClick={() => createPlan.mutate()}>
                 Create plan
               </Button>
-            </SimpleGrid>
+            </SimpleGrid> : null}
             {executionPlans.map((plan) => (
               <LineRow
                 key={str(plan.id)}
@@ -264,7 +274,7 @@ export function DeliverPanel({
             ))}
           </div>
 
-          <div>
+          {canManage ? <div>
             <Text fw={650} size="sm">
               Launch
             </Text>
@@ -287,20 +297,20 @@ export function DeliverPanel({
                 Launch
               </Button>
             </SimpleGrid>
-          </div>
+          </div> : null}
 
           <div>
             <Text fw={650} size="sm">
               Operational packages
             </Text>
-            <Group gap="xs" align="flex-end" mb="xs">
+            {canManage ? <Group gap="xs" align="flex-end" mb="xs">
               <Select size="xs" label="Execution plan" placeholder="Pick a plan" data={planOptions} value={packageForm.planId} onChange={(value) => setPackageForm({ ...packageForm, planId: value || '' })} w={240} />
               <NameInput size="xs" label="Package name" placeholder="Nightly scheduler package" value={packageForm.name} onChange={(value) => setPackageForm({ ...packageForm, name: value })} w={240} />
               <TextInput {...technicalInputProps} size="xs" label="Target environment" placeholder="QA" value={packageForm.targetEnvironment} onChange={(e) => setPackageForm({ ...packageForm, targetEnvironment: e.currentTarget.value })} w={170} />
               <Button size="xs" loading={createPackage.isPending} onClick={() => createPackage.mutate()}>
                 Create package
               </Button>
-            </Group>
+            </Group> : null}
             <OperationalPackageList entityId={entityId} packages={operationalPackages} />
           </div>
         </Stack>

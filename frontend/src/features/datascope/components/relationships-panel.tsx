@@ -11,6 +11,7 @@ import { useConfirm } from '@/components/confirm';
 import { apiFetch, apiPost, apiPut } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { CustomPk, DataSetDefinition, RelationshipInfo, TableProfile, TraversalRule, UserDefinedRelationship } from '@/lib/types';
+import { usePermissions } from '@/lib/use-permissions';
 import { useCustomPks, useRelationships, useUserRels } from '../hooks';
 import { equalsIgnoreCase, isProfileIncluded, qModeValue, technicalInputProps } from '../utils';
 
@@ -37,6 +38,8 @@ export function RelationshipsPanel({
 }) {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const relationshipsQuery = useRelationships(blueprint.id);
   const userRelsQuery = useUserRels(blueprint.id);
   const customPksQuery = useCustomPks(blueprint.id);
@@ -78,6 +81,7 @@ export function RelationshipsPanel({
 
   const saveDirections = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('DataScope management permission is required.');
       const rules: TraversalRule[] = relationshipGroups.flatMap((group) => {
         const selected = selections[group.key] || edgeKey(preferredRelationship(group.edges));
         return group.edges.map((edge) => {
@@ -108,6 +112,7 @@ export function RelationshipsPanel({
   const [relForm, setRelForm] = useState({ relName: '', parentTable: '', parentColumns: '', childTable: '', childColumns: '', note: '' });
   const createRel = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('DataScope management permission is required.');
       if (!relForm.parentTable.trim() || !relForm.parentColumns.trim() || !relForm.childTable.trim() || !relForm.childColumns.trim()) {
         throw new Error('Parent/child table and columns are required.');
       }
@@ -131,6 +136,7 @@ export function RelationshipsPanel({
   });
 
   const deleteRel = async (rel: UserDefinedRelationship) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Delete custom relationship',
       message: `Delete ${rel.childTable}(${rel.childColumns}) → ${rel.parentTable}(${rel.parentColumns})? The closure stops walking this edge.`,
@@ -149,10 +155,10 @@ export function RelationshipsPanel({
 
   /* custom PK form */
   const [pkForm, setPkForm] = useState({ tableName: '', columnNames: '', note: '' });
-  const editorDirty =
+  const editorDirty = canManage && (
     directionsDirty ||
     Object.values(relForm).some((value) => value.trim()) ||
-    Object.values(pkForm).some((value) => value.trim());
+    Object.values(pkForm).some((value) => value.trim()));
 
   useEffect(() => {
     onDirtyChange?.(editorDirty);
@@ -164,6 +170,7 @@ export function RelationshipsPanel({
 
   const createPk = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('DataScope management permission is required.');
       if (!pkForm.tableName.trim() || !pkForm.columnNames.trim()) throw new Error('Table and key column(s) are required.');
       return apiPost<CustomPk>(`/api/datasets/${blueprint.id}/custom-pks`, {
         datasetId: blueprint.id,
@@ -181,6 +188,7 @@ export function RelationshipsPanel({
   });
 
   const deletePk = async (pk: CustomPk) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Delete custom key',
       message: `Remove the custom key on ${pk.tableName} (${pk.columnNames})?`,
@@ -220,7 +228,7 @@ export function RelationshipsPanel({
               <Button variant="subtle" leftSection={<IconListDetails size={16} />} onClick={() => setStepsOpened(true)}>
                 Show steps
               </Button>
-              <Button loading={saveDirections.isPending} disabled={!directionsDirty} onClick={() => saveDirections.mutate()}>
+              <Button loading={saveDirections.isPending} disabled={!canManage || !directionsDirty} onClick={() => saveDirections.mutate()}>
                 Save relationships
               </Button>
             </Group>
@@ -273,7 +281,8 @@ export function RelationshipsPanel({
                             { value: 'NONE', label: 'None - do not use a relationship' },
                             ...group.edges.map((edge) => ({ value: edgeKey(edge), label: relationshipLabel(edge) }))
                           ]}
-                          value={selected}
+                           value={selected}
+                           disabled={!canManage}
                           onChange={(value) => {
                             if (!value) return;
                             setDirectionsDirty(true);
@@ -284,7 +293,7 @@ export function RelationshipsPanel({
                       <td>
                         <Select
                           data={DIRECTION_OPTIONS}
-                          disabled={!selectedEdge}
+                          disabled={!canManage || !selectedEdge}
                           value={selectedEdge ? directions[edgeKey(selectedEdge)] ?? '' : ''}
                           onChange={(value) => {
                             if (!selectedEdge) return;
@@ -321,37 +330,42 @@ export function RelationshipsPanel({
             <SimpleGrid cols={{ base: 1, sm: 2 }}>
               <NameInput
                 label="Name"
-                placeholder="orders-to-customers"
-                value={relForm.relName}
+                 placeholder="orders-to-customers"
+                 value={relForm.relName}
+                 disabled={!canManage}
                 onChange={(value) => setRelForm({ ...relForm, relName: value })}
               />
               <div />
               <TextInput
                 {...technicalInputProps}
                 label="Child table (FK side)"
-                placeholder="orders"
-                value={relForm.childTable}
+                 placeholder="orders"
+                 value={relForm.childTable}
+                 disabled={!canManage}
                 onChange={(e) => setRelForm({ ...relForm, childTable: e.currentTarget.value })}
               />
               <TextInput
                 {...technicalInputProps}
                 label="Child column(s)"
-                placeholder="customer_id"
-                value={relForm.childColumns}
+                 placeholder="customer_id"
+                 value={relForm.childColumns}
+                 disabled={!canManage}
                 onChange={(e) => setRelForm({ ...relForm, childColumns: e.currentTarget.value })}
               />
               <TextInput
                 {...technicalInputProps}
                 label="Parent table (PK side)"
-                placeholder="customers"
-                value={relForm.parentTable}
+                 placeholder="customers"
+                 value={relForm.parentTable}
+                 disabled={!canManage}
                 onChange={(e) => setRelForm({ ...relForm, parentTable: e.currentTarget.value })}
               />
               <TextInput
                 {...technicalInputProps}
                 label="Parent column(s)"
-                placeholder="id"
-                value={relForm.parentColumns}
+                 placeholder="id"
+                 value={relForm.parentColumns}
+                 disabled={!canManage}
                 onChange={(e) => setRelForm({ ...relForm, parentColumns: e.currentTarget.value })}
               />
             </SimpleGrid>
@@ -359,11 +373,12 @@ export function RelationshipsPanel({
               <TextInput
                 label="Note"
                 placeholder="optional"
-                style={{ flex: 1 }}
-                value={relForm.note}
+                 style={{ flex: 1 }}
+                 value={relForm.note}
+                 disabled={!canManage}
                 onChange={(e) => setRelForm({ ...relForm, note: e.currentTarget.value })}
               />
-              <Button leftSection={<IconPlus size={16} />} loading={createRel.isPending} onClick={() => createRel.mutate()}>
+              <Button leftSection={<IconPlus size={16} />} loading={createRel.isPending} disabled={!canManage} onClick={() => createRel.mutate()}>
                 Add relationship
               </Button>
             </Group>
@@ -378,9 +393,7 @@ export function RelationshipsPanel({
                     {rel.note ? ` · ${rel.note}` : ''}
                   </Text>
                 </div>
-                <Button size="xs" variant="subtle" color="red" onClick={() => void deleteRel(rel)}>
-                  Delete
-                </Button>
+                {canManage ? <Button size="xs" variant="subtle" color="red" onClick={() => void deleteRel(rel)}>Delete</Button> : null}
               </Group>
             ))}
           </Stack>
@@ -398,15 +411,17 @@ export function RelationshipsPanel({
               <TextInput
                 {...technicalInputProps}
                 label="Table"
-                placeholder="audit_log"
-                value={pkForm.tableName}
+                 placeholder="audit_log"
+                 value={pkForm.tableName}
+                 disabled={!canManage}
                 onChange={(e) => setPkForm({ ...pkForm, tableName: e.currentTarget.value })}
               />
               <TextInput
                 {...technicalInputProps}
                 label="Key column(s)"
-                placeholder="id or col1,col2"
-                value={pkForm.columnNames}
+                 placeholder="id or col1,col2"
+                 value={pkForm.columnNames}
+                 disabled={!canManage}
                 onChange={(e) => setPkForm({ ...pkForm, columnNames: e.currentTarget.value })}
               />
             </SimpleGrid>
@@ -414,11 +429,12 @@ export function RelationshipsPanel({
               <TextInput
                 label="Note"
                 placeholder="optional"
-                style={{ flex: 1 }}
-                value={pkForm.note}
+                 style={{ flex: 1 }}
+                 value={pkForm.note}
+                 disabled={!canManage}
                 onChange={(e) => setPkForm({ ...pkForm, note: e.currentTarget.value })}
               />
-              <Button leftSection={<IconPlus size={16} />} loading={createPk.isPending} onClick={() => createPk.mutate()}>
+              <Button leftSection={<IconPlus size={16} />} loading={createPk.isPending} disabled={!canManage} onClick={() => createPk.mutate()}>
                 Add key
               </Button>
             </Group>
@@ -433,9 +449,7 @@ export function RelationshipsPanel({
                     {pk.note ? ` · ${pk.note}` : ''}
                   </Text>
                 </div>
-                <Button size="xs" variant="subtle" color="red" onClick={() => void deletePk(pk)}>
-                  Delete
-                </Button>
+                {canManage ? <Button size="xs" variant="subtle" color="red" onClick={() => void deletePk(pk)}>Delete</Button> : null}
               </Group>
             ))}
           </Stack>

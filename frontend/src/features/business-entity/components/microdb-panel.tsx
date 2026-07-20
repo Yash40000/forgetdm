@@ -9,6 +9,7 @@ import { useConfirm } from '@/components/confirm';
 import { apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { DataSource, MaskingPolicy } from '@/lib/types';
+import { usePermissions } from '@/lib/use-permissions';
 import { useCapsuleDetail } from '../hooks';
 import type { BusinessEntityDetail, CapsuleGrant, CapsuleInstance, CapsuleVersion } from '../types';
 import { formatDate, numberOrNull, parseBusinessKeyInput, statusDot, technicalInputProps } from '../utils';
@@ -29,6 +30,8 @@ export function MicrodbPanel({
   dataSources: DataSource[];
 }) {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const { confirm, confirmElement } = useConfirm();
   const entityId = detail.entity.id!;
   const keyPlaceholder = `${(detail.entity.businessKeyColumns || 'customer_id').split(',')[0].trim()}=CUST-10025`;
@@ -43,6 +46,7 @@ export function MicrodbPanel({
 
   const materialize = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
       const businessKey = parseBusinessKeyInput(form.key);
       if (!businessKey) throw new Error(`Enter the business key as col=value, e.g. ${keyPlaceholder}`);
       return apiPost<{ instance?: CapsuleInstance }>(`/api/business-entities/${entityId}/capsules/materialize`, {
@@ -67,6 +71,7 @@ export function MicrodbPanel({
   });
 
   const retire = async (instance: CapsuleInstance) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Retire capsule',
       danger: true,
@@ -84,6 +89,7 @@ export function MicrodbPanel({
   };
 
   const restore = async (instance: CapsuleInstance, version: CapsuleVersion) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Restore version',
       okText: 'Restore',
@@ -100,6 +106,7 @@ export function MicrodbPanel({
   };
 
   const revokeGrant = async (instance: CapsuleInstance, grant: CapsuleGrant) => {
+    if (!canManage) return;
     try {
       await apiPost(`/api/business-entities/capsule-access-grants/${grant.id}/revoke`, {});
       notifications.show({ color: 'green', title: 'Access revoked', message: grant.grantee });
@@ -115,7 +122,7 @@ export function MicrodbPanel({
     <Stack gap="lg">
       {confirmElement}
 
-      <div>
+      {canManage ? <div>
         <Text fw={650} size="sm">
           Materialize a capsule
         </Text>
@@ -175,7 +182,7 @@ export function MicrodbPanel({
             Materialize
           </Button>
         </SimpleGrid>
-      </div>
+      </div> : null}
 
       <div>
         <Text fw={650} size="sm" mb={6}>
@@ -213,7 +220,7 @@ export function MicrodbPanel({
                   {instance.lastMaterializedAt ? `refreshed ${formatDate(instance.lastMaterializedAt)}` : 'never materialized'}
                 </Text>
               </div>
-              {instance.status === 'ACTIVE' ? (
+              {canManage && instance.status === 'ACTIVE' ? (
                 <Button
                   size="compact-xs"
                   variant="subtle"
@@ -239,6 +246,7 @@ export function MicrodbPanel({
         <CapsuleDetailView
           detail={selected}
           dataSources={dataSources}
+          canManage={canManage}
           onRestore={(version) => void restore(selected.instance, version)}
           onRevoke={(grant) => void revokeGrant(selected.instance, grant)}
           onChanged={() => void invalidate(selected.instance.id)}
@@ -251,12 +259,14 @@ export function MicrodbPanel({
 function CapsuleDetailView({
   detail,
   dataSources,
+  canManage,
   onRestore,
   onRevoke,
   onChanged
 }: {
   detail: NonNullable<ReturnType<typeof useCapsuleDetail>['data']>;
   dataSources: DataSource[];
+  canManage: boolean;
   onRestore: (version: CapsuleVersion) => void;
   onRevoke: (grant: CapsuleGrant) => void;
   onChanged: () => void;
@@ -266,6 +276,7 @@ function CapsuleDetailView({
   const [provisionTarget, setProvisionTarget] = useState('');
 
   const grantAccess = async () => {
+    if (!canManage) return;
     if (!grantForm.grantee.trim()) {
       notifications.show({ color: 'red', title: 'Grantee required', message: 'Enter a username or role.' });
       return;
@@ -286,6 +297,7 @@ function CapsuleDetailView({
   };
 
   const provision = async () => {
+    if (!canManage) return;
     if (!provisionTarget) {
       notifications.show({ color: 'red', title: 'Target required', message: 'Pick a target data source.' });
       return;
@@ -318,7 +330,7 @@ function CapsuleDetailView({
             {instance.syncMode || 'MANUAL'}
           </Text>
         </div>
-        <Group gap="xs" align="flex-end">
+        {canManage ? <Group gap="xs" align="flex-end">
           <Select
             size="xs"
             placeholder="Provision to target…"
@@ -333,7 +345,7 @@ function CapsuleDetailView({
           <Button size="xs" variant="light" onClick={() => void provision()}>
             Provision
           </Button>
-        </Group>
+        </Group> : null}
       </Group>
 
       <Tabs defaultValue="fragments" keepMounted={false}>
@@ -399,7 +411,7 @@ function CapsuleDetailView({
                   {version.fragmentCount || 0} fragments · {Number(version.totalRows || 0).toLocaleString()} rows · {formatDate(version.createdAt)}
                 </Text>
               </div>
-              {version.versionNo !== instance.currentVersion && instance.status === 'ACTIVE' ? (
+              {canManage && version.versionNo !== instance.currentVersion && instance.status === 'ACTIVE' ? (
                 <Button size="compact-xs" variant="subtle" onClick={() => onRestore(version)}>
                   Restore
                 </Button>
@@ -431,7 +443,7 @@ function CapsuleDetailView({
         </Tabs.Panel>
 
         <Tabs.Panel value="grants" pt="xs">
-          <Group gap="xs" mb="xs" align="flex-end">
+          {canManage ? <Group gap="xs" mb="xs" align="flex-end">
             <Select size="xs" label="Type" data={['USER', 'ROLE']} value={grantForm.granteeType} onChange={(value) => setGrantForm({ ...grantForm, granteeType: value || 'USER' })} w={90} />
             <TextInput size="xs" label="Grantee" placeholder="username or role" value={grantForm.grantee} onChange={(e) => setGrantForm({ ...grantForm, grantee: e.currentTarget.value })} />
             <Select size="xs" label="Scope" data={['READ', 'PROVISION', 'MANAGE', 'OWNER']} value={grantForm.scope} onChange={(value) => setGrantForm({ ...grantForm, scope: value || 'READ' })} w={120} />
@@ -439,7 +451,7 @@ function CapsuleDetailView({
             <Button size="xs" onClick={() => void grantAccess()}>
               Grant
             </Button>
-          </Group>
+          </Group> : null}
           {detail.grants.map((grant) => (
             <div className="be-line-row" key={grant.id}>
               <span className="be-dot" style={{ background: grant.revoked ? '#cbd5e1' : statusDot('ACTIVE') }} aria-hidden />
@@ -466,7 +478,7 @@ function CapsuleDetailView({
                   {grant.expiresAt ? ` · expires ${formatDate(grant.expiresAt)}` : ''}
                 </Text>
               </div>
-              {!grant.revoked ? (
+              {canManage && !grant.revoked ? (
                 <Button size="compact-xs" variant="subtle" color="red" onClick={() => onRevoke(grant)}>
                   Revoke
                 </Button>

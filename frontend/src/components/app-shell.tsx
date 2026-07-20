@@ -64,13 +64,20 @@ import { FORGE_THEME_KEY, forgeThemes, isForgeTheme, themeFor, type ForgeTheme }
 
 const SHELL_COLLAPSED_KEY = 'forgetdm.shell.collapsed';
 
+type PermissionRequirement = {
+  mode: 'ALL' | 'ANY';
+  permissions: readonly string[];
+};
+
+const requireAll = (...permissions: string[]): PermissionRequirement => ({ mode: 'ALL', permissions });
+const requireAny = (...permissions: string[]): PermissionRequirement => ({ mode: 'ANY', permissions });
+
 type NavigationItem = {
   label: string;
   href: string;
   icon: typeof IconId;
-  adminOnly?: boolean;
-  /** Read permission required to see this module; omitted = visible to any authenticated user. */
-  permission?: string;
+  /** ALL protects ordinary routes; ANY exposes a composite page when at least one slice is usable. */
+  permission: PermissionRequirement;
 };
 
 type NavigationGroup = {
@@ -78,66 +85,83 @@ type NavigationGroup = {
   items: NavigationItem[];
 };
 
-const overviewItem: NavigationItem = { label: 'Dashboard', href: '/', icon: IconLayoutDashboard };
+const overviewItem: NavigationItem = {
+  label: 'Dashboard',
+  href: '/',
+  icon: IconLayoutDashboard,
+  permission: requireAll('dashboard.read')
+};
 
 // Follow the operating workflow: connect, protect, build, deliver, operate, administer.
 const navigationGroups: NavigationGroup[] = [
   {
     label: 'Data foundation',
     items: [
-      { label: 'Data Sources', href: '/datasources', icon: IconPlugConnected, permission: 'datasource.read' },
-      { label: 'Business Entities', href: '/business-entities', icon: IconId, permission: 'datascope.read' },
-      { label: 'Forge Data Store', href: '/intelligence-store', icon: IconDatabaseSearch, permission: 'assistant.use' }
+      { label: 'Data Sources', href: '/datasources', icon: IconPlugConnected, permission: requireAll('datasource.read') },
+      { label: 'Business Entities', href: '/business-entities', icon: IconId, permission: requireAll('datascope.read') },
+      { label: 'Forge Data Store', href: '/intelligence-store', icon: IconDatabaseSearch, permission: requireAll('assistant.use') }
     ]
   },
   {
     label: 'Discover & protect',
     items: [
-      { label: 'PII Discovery', href: '/pii-discovery', icon: IconShieldSearch, permission: 'discovery.read' },
-      { label: 'Masking Studio', href: '/masking-studio', icon: IconCode, permission: 'policy.read' },
-      { label: 'Masking Scripts', href: '/masking-scripts', icon: IconScript, permission: 'policy.read' },
-      { label: 'Masking Policies', href: '/masking-policies', icon: IconShieldCheck, permission: 'policy.read' },
-      { label: 'Unstructured Masking', href: '/unstructured-masking', icon: IconFileTextShield, permission: 'unstructured.read' }
+      { label: 'PII Discovery', href: '/pii-discovery', icon: IconShieldSearch, permission: requireAll('discovery.read') },
+      { label: 'Masking Studio', href: '/masking-studio', icon: IconCode, permission: requireAll('policy.read') },
+      { label: 'Masking Scripts', href: '/masking-scripts', icon: IconScript, permission: requireAll('policy.read') },
+      { label: 'Masking Policies', href: '/masking-policies', icon: IconShieldCheck, permission: requireAll('policy.read') },
+      { label: 'Unstructured Masking', href: '/unstructured-masking', icon: IconFileTextShield, permission: requireAll('unstructured.read') }
     ]
   },
   {
     label: 'Design & generate',
     items: [
-      { label: 'Design Catalogue', href: '/data-catalog', icon: IconBook2, permission: 'synthetic.read' },
-      { label: 'Mapping Designer', href: '/mapping-designer', icon: IconArrowsExchange, permission: 'mapping.read' },
-      { label: 'Synthetic Data', href: '/synthetic', icon: IconFlask, permission: 'synthetic.read' }
+      {
+        label: 'Design Catalogue',
+        href: '/data-catalog',
+        icon: IconBook2,
+        permission: requireAll('policy.read', 'synthetic.read', 'datascope.read', 'provision.read')
+      },
+      { label: 'Mapping Designer', href: '/mapping-designer', icon: IconArrowsExchange, permission: requireAll('mapping.read') },
+      { label: 'Synthetic Data', href: '/synthetic', icon: IconFlask, permission: requireAll('synthetic.read') }
     ]
   },
   {
     label: 'Provision & deliver',
     items: [
-      { label: 'DataScope', href: '/datascope', icon: IconDatabase, permission: 'datascope.read' },
-      { label: 'Auto Provision', href: '/auto-provision', icon: IconRobot, permission: 'provision.read' },
-      { label: 'Self-Service', href: '/self-service', icon: IconForms, permission: 'provision.read' },
-      { label: 'Virtualization', href: '/virtualization', icon: IconDatabaseExport, permission: 'virtualization.read' }
+      { label: 'DataScope', href: '/datascope', icon: IconDatabase, permission: requireAll('datascope.read') },
+      {
+        label: 'Auto Provision',
+        href: '/auto-provision',
+        icon: IconRobot,
+        permission: requireAny('assistant.use', 'mapping.read')
+      },
+      { label: 'Self-Service', href: '/self-service', icon: IconForms, permission: requireAll('provision.read') },
+      { label: 'Virtualization', href: '/virtualization', icon: IconDatabaseExport, permission: requireAll('virtualization.read') }
     ]
   },
   {
     label: 'Mainframe',
     items: [
-      { label: 'Copybook Studio', href: '/copybook-studio', icon: IconFileCode, permission: 'mainframe.read' },
-      { label: 'Mainframe Files', href: '/mainframe-files', icon: IconServerCog, permission: 'mainframe.read' },
-      { label: 'File Generator', href: '/mf-file-generator', icon: IconFileExport, permission: 'mainframe.read' }
+      { label: 'Copybook Studio', href: '/copybook-studio', icon: IconFileCode, permission: requireAll('mainframe.read') },
+      { label: 'Mainframe Files', href: '/mainframe-files', icon: IconServerCog, permission: requireAll('mainframe.read') },
+      { label: 'File Generator', href: '/mf-file-generator', icon: IconFileExport, permission: requireAll('mainframe.read') }
     ]
   },
   {
     label: 'Operations & governance',
     items: [
-      { label: 'Automation', href: '/automation', icon: IconApi, permission: 'integration.read' },
-      { label: 'Validation', href: '/validation', icon: IconChecklist, permission: 'validation.read' },
-      { label: 'Audit Trail', href: '/audit', icon: IconListDetails, permission: 'audit.read' }
+      { label: 'Automation', href: '/automation', icon: IconApi, permission: requireAll('integration.read') },
+      { label: 'Validation', href: '/validation', icon: IconChecklist, permission: requireAll('validation.read') },
+      { label: 'Audit Trail', href: '/audit', icon: IconListDetails, permission: requireAll('audit.read') }
     ]
   },
   {
     label: 'Administration',
-    items: [{ label: 'Access Control', href: '/access-control', icon: IconLockAccess, adminOnly: true }]
+    items: [{ label: 'Access Control', href: '/access-control', icon: IconLockAccess, permission: requireAll('security.admin') }]
   }
 ];
+
+const navigationItems = [overviewItem, ...navigationGroups.flatMap((group) => group.items)];
 
 export function ForgeAppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -163,10 +187,17 @@ export function ForgeAppShell({ children }: { children: ReactNode }) {
 
   const user = meQuery.data?.authenticated ? meQuery.data.user : null;
   const perms = user?.permissions ?? [];
-  const isAdmin = Boolean(user?.roles?.includes('ADMIN')) || perms.includes('admin.all');
-  const canRead = (permission?: string) => !permission || isAdmin || perms.includes(permission);
+  const isAdmin = perms.includes('admin.all');
+  const canAccess = (requirement: PermissionRequirement) => {
+    if (!requirement.permissions.length) return false;
+    if (isAdmin) return true;
+    return requirement.mode === 'ALL'
+      ? requirement.permissions.every((permission) => perms.includes(permission))
+      : requirement.permissions.some((permission) => perms.includes(permission));
+  };
+  const canAccessPage = canAccess(permissionForPath(pathname));
   const visibleNavigationGroups = navigationGroups
-    .map((group) => ({ ...group, items: group.items.filter((item) => (!item.adminOnly || isAdmin) && canRead(item.permission)) }))
+    .map((group) => ({ ...group, items: group.items.filter((item) => canAccess(item.permission)) }))
     .filter((group) => group.items.length > 0);
   const displayName = user?.displayName || user?.username || 'User';
   const initials = initialsFor(displayName);
@@ -354,7 +385,9 @@ export function ForgeAppShell({ children }: { children: ReactNode }) {
           </Tooltip>
         </Group>
         <div className="forge-nav-scroll">
-          <NavigationLink item={overviewItem} pathname={pathname} collapsed={navCollapsed} onNavigate={mobileNav.close} />
+          {canAccess(overviewItem.permission) ? (
+            <NavigationLink item={overviewItem} pathname={pathname} collapsed={navCollapsed} onNavigate={mobileNav.close} />
+          ) : null}
           {visibleNavigationGroups.map((group) => (
             <section className="forge-nav-group" key={group.label} aria-label={group.label}>
               {navCollapsed ? (
@@ -377,8 +410,22 @@ export function ForgeAppShell({ children }: { children: ReactNode }) {
           ))}
         </div>
       </MantineAppShell.Navbar>
-      <MantineAppShell.Main>{children}</MantineAppShell.Main>
+      <MantineAppShell.Main>{canAccessPage ? children : <AccessDenied />}</MantineAppShell.Main>
     </MantineAppShell>
+  );
+}
+
+function AccessDenied() {
+  return (
+    <Center component="section" mih="calc(100vh - 58px)" px="md" role="alert">
+      <Stack align="center" gap="xs" maw={480} ta="center">
+        <IconLockAccess size={36} aria-hidden="true" />
+        <Text component="h1" size="xl" fw={800}>
+          Access denied
+        </Text>
+        <Text c="dimmed">Your account does not have permission to view this page.</Text>
+      </Stack>
+    </Center>
   );
 }
 
@@ -393,7 +440,7 @@ function NavigationLink({
   collapsed: boolean;
   onNavigate: () => void;
 }) {
-  const active = item.href === '/' ? pathname === '/' : pathname.startsWith(item.href);
+  const active = matchesNavigationPath(pathname, item.href);
 
   return (
     <Tooltip label={item.label} position="right" disabled={!collapsed} withinPortal>
@@ -409,6 +456,16 @@ function NavigationLink({
       />
     </Tooltip>
   );
+}
+
+function matchesNavigationPath(pathname: string, href: string) {
+  return href === '/' ? pathname === '/' : pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function permissionForPath(pathname: string): PermissionRequirement {
+  const item = navigationItems.find((candidate) => matchesNavigationPath(pathname, candidate.href));
+  // AccessControlFilter defaults otherwise-unmapped GET routes to dashboard.read.
+  return item?.permission ?? overviewItem.permission;
 }
 
 function sectionForPath(pathname: string) {

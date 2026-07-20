@@ -23,6 +23,8 @@ type FootballProgressProps = {
   mode?: 'compact' | 'full';
   onExpand?: () => void;
   onOpenLog?: () => void;
+  canCancelPartitions?: boolean;
+  canRetryPartitions?: boolean;
   onPartitionAction?: (partitionId: string, action: 'cancel' | 'retry') => void;
 };
 
@@ -33,6 +35,8 @@ export function FootballProgress({
   mode = 'full',
   onExpand,
   onOpenLog,
+  canCancelPartitions = false,
+  canRetryPartitions = false,
   onPartitionAction
 }: FootballProgressProps) {
   const percent = clamp(Math.round(Number(job?.percent || 0)), 0, 100);
@@ -229,7 +233,14 @@ export function FootballProgress({
         </div>
       </div>
 
-      <PartitionDeck partitions={job?.partitions || []} stats={partitionStats} cancelled={cancelled} onPartitionAction={onPartitionAction} />
+      <PartitionDeck
+        partitions={job?.partitions || []}
+        stats={partitionStats}
+        cancelled={cancelled}
+        canCancelPartitions={canCancelPartitions}
+        canRetryPartitions={canRetryPartitions}
+        onPartitionAction={onPartitionAction}
+      />
     </Paper>
   );
 }
@@ -264,11 +275,15 @@ function PartitionDeck({
   partitions,
   stats,
   cancelled,
+  canCancelPartitions,
+  canRetryPartitions,
   onPartitionAction
 }: {
   partitions: SyntheticPartition[];
   stats: ReturnType<typeof partitionSummary>;
   cancelled: boolean;
+  canCancelPartitions: boolean;
+  canRetryPartitions: boolean;
   onPartitionAction?: (partitionId: string, action: 'cancel' | 'retry') => void;
 }) {
   if (!stats.total) {
@@ -297,7 +312,13 @@ function PartitionDeck({
       </Group>
       <div className="syn-partition-table-grid">
         {groupPartitionsByTable(partitions).map((group) => (
-          <PartitionTableCard key={group.table} group={group} onPartitionAction={onPartitionAction} />
+          <PartitionTableCard
+            key={group.table}
+            group={group}
+            canCancelPartitions={canCancelPartitions}
+            canRetryPartitions={canRetryPartitions}
+            onPartitionAction={onPartitionAction}
+          />
         ))}
       </div>
     </div>
@@ -314,7 +335,17 @@ type PartitionTableGroup = {
   failed: number;
 };
 
-function PartitionTableCard({ group, onPartitionAction }: { group: PartitionTableGroup; onPartitionAction?: (partitionId: string, action: 'cancel' | 'retry') => void }) {
+function PartitionTableCard({
+  group,
+  canCancelPartitions,
+  canRetryPartitions,
+  onPartitionAction
+}: {
+  group: PartitionTableGroup;
+  canCancelPartitions: boolean;
+  canRetryPartitions: boolean;
+  onPartitionAction?: (partitionId: string, action: 'cancel' | 'retry') => void;
+}) {
   const pct = percentOf(group.rowsCompleted, group.plannedRows) ?? 0;
   const status = group.failed ? 'FAILED' : group.running ? 'RUNNING' : group.completed === group.partitions.length ? 'COMPLETED' : 'QUEUED';
   return (
@@ -343,14 +374,30 @@ function PartitionTableCard({ group, onPartitionAction }: { group: PartitionTabl
       </summary>
       <div className="syn-partition-detail-grid">
         {group.partitions.map((partition) => (
-          <PartitionPill key={partition.id} partition={partition} onPartitionAction={onPartitionAction} />
+          <PartitionPill
+            key={partition.id}
+            partition={partition}
+            canCancelPartitions={canCancelPartitions}
+            canRetryPartitions={canRetryPartitions}
+            onPartitionAction={onPartitionAction}
+          />
         ))}
       </div>
     </details>
   );
 }
 
-function PartitionPill({ partition, onPartitionAction }: { partition: SyntheticPartition; onPartitionAction?: (partitionId: string, action: 'cancel' | 'retry') => void }) {
+function PartitionPill({
+  partition,
+  canCancelPartitions,
+  canRetryPartitions,
+  onPartitionAction
+}: {
+  partition: SyntheticPartition;
+  canCancelPartitions: boolean;
+  canRetryPartitions: boolean;
+  onPartitionAction?: (partitionId: string, action: 'cancel' | 'retry') => void;
+}) {
   const pct = percentOf(partition.rowsCompleted, partition.plannedRows) ?? 0;
   const status = String(partition.status || 'QUEUED').toUpperCase();
   const canCancel = !['COMPLETED', 'FAILED', 'CANCELLED', 'CANCELED'].includes(status);
@@ -374,16 +421,16 @@ function PartitionPill({ partition, onPartitionAction }: { partition: SyntheticP
           {partition.error}
         </Text>
       ) : null}
-      {onPartitionAction && (canCancel || canRetry) ? (
+      {onPartitionAction && ((canCancel && canCancelPartitions) || (canRetry && canRetryPartitions)) ? (
         <Group justify="flex-end" gap={4} mt={5}>
-          {canCancel ? (
+          {canCancel && canCancelPartitions ? (
             <Tooltip label="Cancel partition">
               <ActionIcon size="sm" color="red" variant="light" aria-label={`Cancel ${partition.table || 'partition'} ${partition.number ?? ''}`} onClick={() => onPartitionAction(partition.id, 'cancel')}>
                 <IconX size={14} />
               </ActionIcon>
             </Tooltip>
           ) : null}
-          {canRetry ? (
+          {canRetry && canRetryPartitions ? (
             <Tooltip label="Retry partition">
               <ActionIcon size="sm" color="blue" variant="light" aria-label={`Retry ${partition.table || 'partition'} ${partition.number ?? ''}`} onClick={() => onPartitionAction(partition.id, 'retry')}>
                 <IconRepeat size={14} />

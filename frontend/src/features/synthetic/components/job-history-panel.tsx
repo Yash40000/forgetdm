@@ -9,6 +9,7 @@ import { IconArrowsMaximize, IconDownload, IconFileText, IconHistory, IconRefres
 import { apiPost } from '@/lib/api';
 import { useConfirm } from '@/components/confirm';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import type { SyntheticJob, SyntheticPlan } from '../types';
 import { downloadTextFile, formatRows, formatTime, isJobDone, jobTone } from '../utils';
 import { FootballProgress } from './football-progress';
@@ -23,6 +24,10 @@ type JobHistoryPanelProps = {
 export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }: JobHistoryPanelProps) {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canCancelJobs = can('synthetic.cancel');
+  const canRetryPartitions = can('synthetic.run');
+  const canExport = can('synthetic.export');
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [historyOpened, setHistoryOpened] = useState(false);
   const [matchJobId, setMatchJobId] = useState<string | null>(null);
@@ -39,6 +44,7 @@ export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }
   const logJob = jobs.find((job) => job.id === logJobId) || selectedJob;
 
   const cancelJob = async (id: string) => {
+    if (!canCancelJobs) return;
     const job = jobs.find((item) => item.id === id);
     const ok = await confirm({
       title: 'Cancel synthetic run',
@@ -60,6 +66,7 @@ export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }
   };
 
   const partitionAction = async (jobId: string, partitionId: string, action: 'cancel' | 'retry') => {
+    if (action === 'cancel' ? !canCancelJobs : !canRetryPartitions) return;
     try {
       await apiPost(`/api/synthetic/jobs/${encodeURIComponent(jobId)}/partitions/${encodeURIComponent(partitionId)}/${action}`, {});
       notifications.show({ color: action === 'retry' ? 'blue' : 'yellow', title: `Partition ${action} requested`, message: partitionId });
@@ -94,6 +101,8 @@ export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }
             jobs={jobs}
             selectedJob={selectedJob}
             cancellingId={cancellingId}
+            canCancel={canCancelJobs}
+            canExport={canExport}
             onSelectJob={onSelectJob}
             onOpenMatch={(id) => setMatchJobId(id)}
             onOpenLog={(id) => setLogJobId(id)}
@@ -114,7 +123,9 @@ export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }
           plan={activePlan}
           title={matchJob ? `${matchJob.dataset || 'synthetic'} run` : 'Synthetic generation progress'}
           onOpenLog={matchJob ? () => setLogJobId(matchJob.id) : undefined}
-          onPartitionAction={matchJob ? (partitionId, action) => void partitionAction(matchJob.id, partitionId, action) : undefined}
+          canCancelPartitions={canCancelJobs}
+          canRetryPartitions={canRetryPartitions}
+          onPartitionAction={matchJob && (canCancelJobs || canRetryPartitions) ? (partitionId, action) => void partitionAction(matchJob.id, partitionId, action) : undefined}
         />
       </Modal>
       <Modal
@@ -125,7 +136,7 @@ export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }
         zIndex={440}
         classNames={{ body: 'syn-history-modal-body' }}
       >
-        <RunLogPanel job={logJob} />
+        <RunLogPanel job={logJob} canExport={canExport} />
       </Modal>
 
       <Group justify="space-between" align="flex-start">
@@ -147,7 +158,7 @@ export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }
           >
             Run log
           </Button>
-          {monitoredJob && !isJobDone(monitoredJob.status) ? (
+          {canCancelJobs && monitoredJob && !isJobDone(monitoredJob.status) ? (
             <Button
               color="red"
               variant="light"
@@ -158,7 +169,7 @@ export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }
               Cancel run
             </Button>
           ) : null}
-          {monitoredJob?.result?.files?.length ? (
+          {canExport && monitoredJob?.result?.files?.length ? (
             <Button
               variant="light"
               leftSection={<IconDownload size={16} />}
@@ -180,7 +191,9 @@ export function JobHistoryPanel({ jobs, selectedJobId, activePlan, onSelectJob }
         title={monitoredJob ? `${monitoredJob.dataset || 'synthetic'} run` : 'Synthetic generation progress'}
         onExpand={monitoredJob ? () => setMatchJobId(monitoredJob.id) : undefined}
         onOpenLog={monitoredJob ? () => setLogJobId(monitoredJob.id) : undefined}
-        onPartitionAction={monitoredJob ? (partitionId, action) => void partitionAction(monitoredJob.id, partitionId, action) : undefined}
+        canCancelPartitions={canCancelJobs}
+        canRetryPartitions={canRetryPartitions}
+        onPartitionAction={monitoredJob && (canCancelJobs || canRetryPartitions) ? (partitionId, action) => void partitionAction(monitoredJob.id, partitionId, action) : undefined}
       />
 
     </Stack>
@@ -191,6 +204,8 @@ function HistoryTable({
   jobs,
   selectedJob,
   cancellingId,
+  canCancel,
+  canExport,
   onSelectJob,
   onOpenMatch,
   onOpenLog,
@@ -199,6 +214,8 @@ function HistoryTable({
   jobs: SyntheticJob[];
   selectedJob: SyntheticJob | null;
   cancellingId: string | null;
+  canCancel: boolean;
+  canExport: boolean;
   onSelectJob: (id: string) => void;
   onOpenMatch: (id: string) => void;
   onOpenLog: (id: string) => void;
@@ -274,7 +291,7 @@ function HistoryTable({
                           <IconFileText size={16} />
                         </ActionIcon>
                       </Tooltip>
-                      {!isJobDone(job.status) ? (
+                      {canCancel && !isJobDone(job.status) ? (
                         <ActionIcon
                           color="red"
                           variant="light"
@@ -286,7 +303,7 @@ function HistoryTable({
                           <IconX size={16} />
                         </ActionIcon>
                       ) : null}
-                      {job.result?.files?.length ? (
+                      {canExport && job.result?.files?.length ? (
                         <ActionIcon
                           variant="light"
                           title="Download generated files"
@@ -322,7 +339,7 @@ type RunLogEntry = {
   detail?: string;
 };
 
-function RunLogPanel({ job }: { job?: SyntheticJob | null }) {
+function RunLogPanel({ job, canExport }: { job?: SyntheticJob | null; canExport: boolean }) {
   const entries = useMemo(() => buildRunLog(job), [job]);
   if (!job) {
     return <Text c="dimmed">Select a run to inspect its log.</Text>;
@@ -344,13 +361,15 @@ function RunLogPanel({ job }: { job?: SyntheticJob | null }) {
             Persisted job, stage, and partition evidence for run {job.id}.
           </Text>
         </div>
-        <Button
-          variant="light"
-          leftSection={<IconDownload size={16} />}
-          onClick={() => downloadTextFile(`${job.dataset || 'synthetic'}-${job.id}-run.log`, logText)}
-        >
-          Download log
-        </Button>
+        {canExport ? (
+          <Button
+            variant="light"
+            leftSection={<IconDownload size={16} />}
+            onClick={() => downloadTextFile(`${job.dataset || 'synthetic'}-${job.id}-run.log`, logText)}
+          >
+            Download log
+          </Button>
+        ) : null}
       </Group>
 
       <div className="syn-run-log-summary">

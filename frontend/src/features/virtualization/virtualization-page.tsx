@@ -133,6 +133,7 @@ export function VirtualizationPage() {
   };
 
   const submitCapture = (body: { dataSourceId: number; schemaName?: string; name?: string; note?: string; provider?: string }) => {
+    if (!canManage) return;
     mutations.captureSnapshot.mutate(body, {
       onSuccess: () => {
         notifications.show({ color: 'blue', title: 'Snapshot started', message: 'Track progress in Activity.' });
@@ -143,6 +144,7 @@ export function VirtualizationPage() {
   };
 
   const submitProvision = (body: { snapshotId: number; name?: string; targetDataSourceId?: number | null; pointInTime?: string | null; environmentId?: number | null }) => {
+    if (!canManage) return;
     mutations.provision.mutate(body, {
       onSuccess: () => {
         notifications.show({ color: 'blue', title: 'Provision started', message: 'Track progress in Activity.' });
@@ -154,7 +156,7 @@ export function VirtualizationPage() {
 
   const pickSnapshot = (snapshotId: number) => {
     const { mode, vdb } = picker;
-    if (!vdb) return;
+    if (!canManage || !vdb) return;
     const mutation = mode === 'refresh' ? mutations.refresh : mutations.rewind;
     mutation.mutate(
       { id: vdb.id, snapshotId },
@@ -171,7 +173,7 @@ export function VirtualizationPage() {
   const confirmBookmark = () => {
     const vdb = bookmark.vdb;
     const name = bookmark.name.trim();
-    if (!vdb || !name) return;
+    if (!canManage || !vdb || !name) return;
     mutations.snapshotVdb.mutate(
       { id: vdb.id, name, bookmark: true },
       {
@@ -185,6 +187,7 @@ export function VirtualizationPage() {
   };
 
   const removeSnapshot = async (snapshot: VirtSnapshot) => {
+    if (!canManage) return;
     if (!(await confirm({ title: 'Delete snapshot', message: `Delete ${snapshot.name}? VDBs cloned from it must be removed first.`, okText: 'Delete', danger: true }))) return;
     mutations.deleteSnapshot.mutate(snapshot.id, {
       onSuccess: () => notifications.show({ color: 'green', title: 'Snapshot deleted', message: snapshot.name }),
@@ -193,6 +196,7 @@ export function VirtualizationPage() {
   };
 
   const removeVdb = async (vdb: VirtVdb) => {
+    if (!canManage) return;
     if (!(await confirm({ title: 'Delete VDB', message: `Delete ${vdb.name}? This tears down the virtual database.`, okText: 'Delete', danger: true }))) return;
     mutations.deleteVdb.mutate(vdb.id, {
       onSuccess: () => notifications.show({ color: 'green', title: 'VDB deleted', message: vdb.name }),
@@ -201,6 +205,7 @@ export function VirtualizationPage() {
   };
 
   const removeEnvironment = async (env: VirtEnvironment) => {
+    if (!canManage) return;
     if (!(await confirm({ title: 'Delete environment', message: `Delete ${env.name}?`, okText: 'Delete', danger: true }))) return;
     mutations.deleteEnvironment.mutate(env.id, {
       onSuccess: () => notifications.show({ color: 'green', title: 'Environment deleted', message: env.name }),
@@ -209,6 +214,7 @@ export function VirtualizationPage() {
   };
 
   const submitEnv = (body: Partial<VirtEnvironment>) => {
+    if (!canManage) return;
     mutations.createEnvironment.mutate(body, {
       onSuccess: () => {
         notifications.show({ color: 'green', title: 'Environment added', message: body.name || '' });
@@ -216,6 +222,11 @@ export function VirtualizationPage() {
       },
       onError: notifyErr('Could not add environment')
     });
+  };
+
+  const cancelOperation = (id: string) => {
+    if (!canManage) return;
+    mutations.cancelOperation.mutate(id);
   };
 
   const loading = snapshotsQuery.isLoading || vdbsQuery.isLoading;
@@ -539,11 +550,13 @@ export function VirtualizationPage() {
                           </Table.Td>
                           <Table.Td>
                             <Group justify="flex-end">
-                              <Tooltip label="Delete">
-                                <ActionIcon variant="subtle" color="red" onClick={() => void removeEnvironment(env)}>
-                                  <IconTrash size={16} />
-                                </ActionIcon>
-                              </Tooltip>
+                              {canManage ? (
+                                <Tooltip label="Delete">
+                                  <ActionIcon variant="subtle" color="red" onClick={() => void removeEnvironment(env)}>
+                                    <IconTrash size={16} />
+                                  </ActionIcon>
+                                </Tooltip>
+                              ) : null}
                             </Group>
                           </Table.Td>
                         </Table.Tr>
@@ -564,16 +577,16 @@ export function VirtualizationPage() {
             </Tabs.Panel>
 
             <Tabs.Panel value="activity" pt="md">
-              <ActivityPanel operations={operations} onCancel={(id) => mutations.cancelOperation.mutate(id)} />
+              <ActivityPanel operations={operations} canCancel={canManage} onCancel={cancelOperation} />
             </Tabs.Panel>
           </Tabs>
         )}
       </Stack>
 
-      <CaptureDrawer key={`capture-${captureOpen}`} opened={captureOpen} onClose={() => setCaptureOpen(false)} dataSources={dataSources} onSubmit={submitCapture} submitting={mutations.captureSnapshot.isPending} />
+      <CaptureDrawer key={`capture-${captureOpen}`} opened={canManage && captureOpen} onClose={() => setCaptureOpen(false)} dataSources={dataSources} onSubmit={submitCapture} submitting={mutations.captureSnapshot.isPending} />
       <ProvisionDrawer
         key={`provision-${provisionSnapshot?.id || 'closed'}`}
-        opened={Boolean(provisionSnapshot)}
+        opened={canManage && Boolean(provisionSnapshot)}
         onClose={() => setProvisionSnapshot(null)}
         snapshot={provisionSnapshot}
         dataSources={dataSources}
@@ -583,7 +596,7 @@ export function VirtualizationPage() {
       />
       <SnapshotPickerModal
         key={`picker-${picker.open}-${picker.mode}-${picker.vdb?.id || 'none'}`}
-        opened={picker.open}
+        opened={canManage && picker.open}
         onClose={() => setPicker({ open: false, mode: picker.mode, vdb: null })}
         title={picker.mode === 'refresh' ? `Refresh ${picker.vdb?.name || ''}` : `Rewind ${picker.vdb?.name || ''}`}
         description={picker.mode === 'refresh' ? 'Re-provision this VDB from a parent source (dSource) snapshot.' : 'Roll this VDB back to an earlier snapshot or bookmark on its own timeline. Changes after that point are discarded.'}
@@ -596,9 +609,9 @@ export function VirtualizationPage() {
         onPick={pickSnapshot}
         submitting={mutations.refresh.isPending || mutations.rewind.isPending}
       />
-      <EnvironmentDrawer key={`environment-${envOpen}`} opened={envOpen} onClose={() => setEnvOpen(false)} onSubmit={submitEnv} submitting={mutations.createEnvironment.isPending} />
+      <EnvironmentDrawer key={`environment-${envOpen}`} opened={canManage && envOpen} onClose={() => setEnvOpen(false)} onSubmit={submitEnv} submitting={mutations.createEnvironment.isPending} />
 
-      <Modal opened={Boolean(bookmark.vdb)} onClose={() => setBookmark({ vdb: null, name: '' })} title={`Bookmark ${bookmark.vdb?.name || ''}`} size="md">
+      <Modal opened={canManage && Boolean(bookmark.vdb)} onClose={() => setBookmark({ vdb: null, name: '' })} title={`Bookmark ${bookmark.vdb?.name || ''}`} size="md">
         <Stack gap="sm">
           <Text size="sm" c="dimmed">
             Take a named snapshot of this VDB now — a rewind point you can roll back to later (e.g. before a batch job).

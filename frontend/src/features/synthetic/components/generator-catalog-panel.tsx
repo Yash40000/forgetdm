@@ -6,6 +6,7 @@ import { notifications } from '@mantine/notifications';
 import { IconFlask, IconSearch, IconX } from '@tabler/icons-react';
 
 import { apiPost } from '@/lib/api';
+import { usePermissions } from '@/lib/use-permissions';
 import type { GeneratorSpec, SyntheticDraft } from '../types';
 import { GENERATOR_FALLBACKS, generatorName, safeInputValue, technicalInputProps } from '../utils';
 
@@ -187,6 +188,8 @@ const FALLBACK_DETAILS: Record<string, Partial<CatalogItem>> = {
 };
 
 export function GeneratorCatalogPanel({ generators, draft }: GeneratorCatalogPanelProps) {
+  const { can } = usePermissions();
+  const canRead = can('synthetic.read');
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState<string | null>('ALL');
   const [tryOpened, setTryOpened] = useState(false);
@@ -224,6 +227,7 @@ export function GeneratorCatalogPanel({ generators, draft }: GeneratorCatalogPan
   );
 
   const openTry = (item: CatalogItem) => {
+    if (!canRead) return;
     setTryState((current) =>
       current.generator === item.name
         ? current
@@ -242,6 +246,7 @@ export function GeneratorCatalogPanel({ generators, draft }: GeneratorCatalogPan
   };
 
   const runPreview = async (item: CatalogItem) => {
+    if (!canRead) return;
     setTryState((current) => ({
       ...current,
       generator: item.name,
@@ -335,7 +340,7 @@ export function GeneratorCatalogPanel({ generators, draft }: GeneratorCatalogPan
                     ) : (
                       <Text size="xs" c="dimmed">Available in table design</Text>
                     )}
-                    <Button size="compact-sm" variant="light" leftSection={<IconFlask size={14} />} onClick={() => openTry(item)}>
+                    <Button size="compact-sm" variant="light" leftSection={<IconFlask size={14} />} disabled={!canRead} onClick={() => openTry(item)}>
                       Try
                     </Button>
                   </Group>
@@ -409,7 +414,7 @@ export function GeneratorCatalogPanel({ generators, draft }: GeneratorCatalogPan
               </SimpleGrid>
               <Group justify="space-between" mt="sm">
                 <Text size="xs" c="dimmed">Runs through the same backend engine used by generation jobs.</Text>
-                <Button onClick={() => void runPreview(selectedItem)} disabled={tryState.loading}>
+                <Button onClick={() => void runPreview(selectedItem)} disabled={!canRead || tryState.loading}>
                   {tryState.loading ? <Loader size="xs" /> : 'Generate sample'}
                 </Button>
               </Group>

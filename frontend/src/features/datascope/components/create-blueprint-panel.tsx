@@ -11,6 +11,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { DataSetDefinition, DataSource } from '@/lib/types';
+import { usePermissions } from '@/lib/use-permissions';
 import { useSchemas } from '../hooks';
 import {
   catalogHasName,
@@ -32,6 +33,8 @@ export function CreateBlueprintPanel({
   onCreated: (id: number) => void;
 }) {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const [form, setForm] = useState<CreateBlueprintForm>(emptyBlueprintForm);
   const [sourceBrowseOpened, sourceBrowse] = useDisclosure(false);
   const [schemaBrowseOpened, schemaBrowse] = useDisclosure(false);
@@ -63,6 +66,7 @@ export function CreateBlueprintPanel({
 
   const createBlueprint = useMutation({
     mutationFn: (payload: CreateBlueprintForm) => {
+      if (!canManage) throw new Error('DataScope management permission is required.');
       const dataSourceId = resolveDataSourceInput(payload.dataSourceId, dataSources);
       const nameLength = payload.name.trim().length;
       if (nameLength < DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH || nameLength > DATASCOPE_BLUEPRINT_NAME_MAX_LENGTH) {
@@ -100,7 +104,8 @@ export function CreateBlueprintPanel({
             label="Name"
             description={`${DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH}-${DATASCOPE_BLUEPRINT_NAME_MAX_LENGTH} characters`}
             placeholder="bank-customer-subset"
-            value={form.name}
+             value={form.name}
+             disabled={!canManage}
             onChange={(value) => setForm({ ...form, name: value })}
             maxLength={DATASCOPE_BLUEPRINT_NAME_MAX_LENGTH}
             error={blueprintNameError}
@@ -112,12 +117,13 @@ export function CreateBlueprintPanel({
               description="Type an exact source id/name or open the catalog."
               placeholder="demo-source or 1"
               value={form.dataSourceId}
+              disabled={!canManage}
               error={sourceInputError}
               onChange={(event) => setForm({ ...form, dataSourceId: event.currentTarget.value, schemaName: '' })}
               style={{ flex: 1 }}
             />
             <Tooltip label="Browse source catalog" withArrow>
-              <ActionIcon size={36} variant="light" aria-label="Browse source catalog" onClick={sourceBrowse.open}><IconFolderOpen size={17} /></ActionIcon>
+              <ActionIcon size={36} variant="light" aria-label="Browse source catalog" disabled={!canManage} onClick={sourceBrowse.open}><IconFolderOpen size={17} /></ActionIcon>
             </Tooltip>
           </Group>
           <Group align="flex-end" wrap="nowrap">
@@ -127,12 +133,13 @@ export function CreateBlueprintPanel({
               description="Type an exact schema or open the catalog."
               placeholder="public"
               value={form.schemaName}
+              disabled={!canManage}
               error={schemaInputError}
               onChange={(event) => setForm({ ...form, schemaName: event.currentTarget.value })}
               style={{ flex: 1 }}
             />
             <Tooltip label="Browse schema catalog" withArrow>
-              <ActionIcon size={36} variant="light" aria-label="Browse schema catalog" disabled={!selectedSourceId} onClick={schemaBrowse.open}><IconFolderOpen size={17} /></ActionIcon>
+              <ActionIcon size={36} variant="light" aria-label="Browse schema catalog" disabled={!canManage || !selectedSourceId} onClick={schemaBrowse.open}><IconFolderOpen size={17} /></ActionIcon>
             </Tooltip>
           </Group>
           <Textarea
@@ -140,12 +147,13 @@ export function CreateBlueprintPanel({
             minRows={2}
             placeholder="Customer entity with transactions and addresses"
             value={form.description}
+            disabled={!canManage}
             onChange={(event) => setForm({ ...form, description: event.currentTarget.value })}
           />
           <Button
             leftSection={<IconPlus size={16} />}
             loading={createBlueprint.isPending}
-            disabled={!!blueprintNameError || blueprintNameLength < DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH || !selectedSourceId || !!schemaInputError}
+            disabled={!canManage || !!blueprintNameError || blueprintNameLength < DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH || !selectedSourceId || !!schemaInputError}
             onClick={() => createBlueprint.mutate(form)}
           >
             Create blueprint
@@ -157,7 +165,7 @@ export function CreateBlueprintPanel({
         onClose={sourceBrowse.close}
         title="Browse Source DB"
         candidates={sourceCandidates}
-        onPick={(source) => setForm({ ...form, dataSourceId: source.name, schemaName: '' })}
+        onPick={(source) => canManage && setForm({ ...form, dataSourceId: source.name, schemaName: '' })}
       />
       <SchemaBrowseModal
         opened={schemaBrowseOpened}
@@ -165,7 +173,7 @@ export function CreateBlueprintPanel({
         title="Browse Schema"
         schemas={schemaNames}
         loading={schemasQuery.isFetching}
-        onPick={(schema) => setForm({ ...form, schemaName: schema })}
+        onPick={(schema) => canManage && setForm({ ...form, schemaName: schema })}
       />
     </>
   );

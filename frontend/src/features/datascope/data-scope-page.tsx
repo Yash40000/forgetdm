@@ -9,6 +9,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { useConfirm } from '@/components/confirm';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
+import { usePermissions } from '@/lib/use-permissions';
 import {
   useBlueprints,
   useDataSources,
@@ -26,6 +27,8 @@ import { CreateBlueprintPanel } from './components/create-blueprint-panel';
 export function DataScopePage() {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [workspaceDirty, setWorkspaceDirty] = useState(false);
   const [libraryOpened, setLibraryOpened] = useState(false);
@@ -88,7 +91,7 @@ export function DataScopePage() {
             <Button variant="subtle" leftSection={<IconFolderOpen size={16} />} onClick={() => setLibraryOpened(true)}>
               Blueprints <Badge size="xs" variant="light">{blueprintsQuery.data?.length || 0}</Badge>
             </Button>
-            <Button variant="light" leftSection={<IconPlus size={16} />} onClick={() => setCreateOpened(true)}>New blueprint</Button>
+            {canManage ? <Button variant="light" leftSection={<IconPlus size={16} />} onClick={() => setCreateOpened(true)}>New blueprint</Button> : null}
             <Tooltip label="Refresh DataScope">
               <ActionIcon size={36} variant="light" aria-label="Refresh DataScope" onClick={() => void queryClient.invalidateQueries()}>
                 <IconRefresh size={17} />
@@ -131,7 +134,7 @@ export function DataScopePage() {
               isProfilesLoading={profilesQuery.isFetching}
               isGuardrailsLoading={piiCoverageQuery.isFetching || driftQuery.isFetching}
               onOpenLibrary={() => setLibraryOpened(true)}
-              onOpenCreate={() => setCreateOpened(true)}
+              onOpenCreate={canManage ? () => setCreateOpened(true) : undefined}
               onDeleted={() => {
                 setWorkspaceDirty(false);
                 setSelectedId(null);
@@ -148,14 +151,15 @@ export function DataScopePage() {
           dataSources={dataSourcesQuery.data || []}
           selectedId={selectedId}
           onSelect={(id) => void selectBlueprint(id)}
-          onCreate={() => {
-            setLibraryOpened(false);
-            setCreateOpened(true);
-          }}
+          onCreate={canManage ? () => {
+             if (!canManage) return;
+             setLibraryOpened(false);
+             setCreateOpened(true);
+           } : undefined}
         />
       </Drawer>
 
-      <Drawer opened={createOpened} onClose={() => setCreateOpened(false)} position="right" size="lg" title="Create DataScope blueprint">
+      <Drawer opened={createOpened && canManage} onClose={() => setCreateOpened(false)} position="right" size="lg" title="Create DataScope blueprint">
         <CreateBlueprintPanel
           dataSources={dataSourcesQuery.data || []}
           onCreated={(id) => {

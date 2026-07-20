@@ -23,6 +23,7 @@ import { useConfirm } from '@/components/confirm';
 import { StatusPill } from '@/components/status-pill';
 import { apiFetch, apiPut } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import type {
   ColumnOverride,
   DataSetDefinition,
@@ -82,6 +83,8 @@ export function SelectedBlueprintWorkspace({
 }) {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const [editOpened, setEditOpened] = useState(false);
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
@@ -103,7 +106,7 @@ export function SelectedBlueprintWorkspace({
         </div>
         <Group gap="xs">
           <Button variant="light" leftSection={<IconFolderOpen size={16} />} onClick={onOpenLibrary}>Open blueprints</Button>
-          <Button leftSection={<IconPlus size={16} />} onClick={onOpenCreate}>New blueprint</Button>
+          {canManage ? <Button leftSection={<IconPlus size={16} />} onClick={onOpenCreate}>New blueprint</Button> : null}
         </Group>
       </section>
     );
@@ -125,6 +128,7 @@ export function SelectedBlueprintWorkspace({
       : null;
 
   const openEdit = () => {
+    if (!canManage) return;
     setEditName(blueprint.name);
     setEditDescription(blueprint.description || '');
     setEditPolicyId(blueprint.policyId ? String(blueprint.policyId) : '');
@@ -132,7 +136,7 @@ export function SelectedBlueprintWorkspace({
   };
 
   const saveEdit = async () => {
-    if (savingEdit || editNameError || editNameLength < DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH) return;
+    if (!canManage || savingEdit || editNameError || editNameLength < DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH) return;
     setSavingEdit(true);
     try {
       await apiPut<DataSetDefinition>(`/api/datasets/${blueprint.id}`, {
@@ -154,7 +158,7 @@ export function SelectedBlueprintWorkspace({
   };
 
   const deleteBlueprint = async () => {
-    if (deleting) return;
+    if (!canManage || deleting) return;
     const ok = await confirm({
       title: 'Delete blueprint',
       danger: true,
@@ -219,8 +223,8 @@ export function SelectedBlueprintWorkspace({
           <Button size="xs" variant="subtle" leftSection={<IconHistory size={14} />} onClick={() => openRunWorkspace('history')}>Run history</Button>
           <Button size="xs" variant="subtle" leftSection={<IconDatabase size={14} />} onClick={() => openRunWorkspace('saved')}>Saved jobs {savedJobs.length ? `(${savedJobs.length})` : ''}</Button>
           <Button size="xs" variant="subtle" leftSection={<IconVersions size={14} />} onClick={() => setVersionsOpened(true)}>Versions</Button>
-          <Button size="xs" variant="light" leftSection={<IconEdit size={14} />} onClick={openEdit}>Edit</Button>
-          <Button size="xs" variant="subtle" color="red" loading={deleting} onClick={() => void deleteBlueprint()}>Delete</Button>
+          {canManage ? <Button size="xs" variant="light" leftSection={<IconEdit size={14} />} onClick={openEdit}>Edit</Button> : null}
+          {canManage ? <Button size="xs" variant="subtle" color="red" loading={deleting} onClick={() => void deleteBlueprint()}>Delete</Button> : null}
         </Group>
       </header>
 
@@ -240,13 +244,13 @@ export function SelectedBlueprintWorkspace({
             <span className="datascope-workflow-icon" data-step="1"><IconTable size={18} /></span>
             <span className="datascope-workflow-copy"><strong>Table profile &amp; map</strong><small>{includedCount ? `${includedCount} included table${includedCount === 1 ? '' : 's'} · driver ${blueprint.driverTable || 'not selected'}` : 'Choose source tables, mappings, filters, and driver'}</small></span>
             <Badge size="xs" variant="light" color={profileReady ? 'green' : 'yellow'}>{profileReady ? 'Saved' : 'Configure'}</Badge>
-            <span className="datascope-workflow-affordance"><IconEdit size={13} /> Edit</span>
+            <span className="datascope-workflow-affordance"><IconEdit size={13} /> {canManage ? 'Edit' : 'View'}</span>
           </button>
           <button type="button" className="datascope-workflow-action" disabled={!includedCount} onClick={() => setWorkspaceView('relationships')}>
             <span className="datascope-workflow-icon" data-step="2"><IconRoute size={18} /></span>
             <span className="datascope-workflow-copy"><strong>Relationships</strong><small>{includedCount ? `FK traversal, custom keys · parents ${blueprint.globalQ1 === false ? 'off' : 'on'} · children ${blueprint.globalQ2 === false ? 'off' : 'on'}` : 'Add profile tables first'}</small></span>
             <Badge size="xs" variant="light" color={includedCount ? 'blue' : 'gray'}>{includedCount ? 'Review' : 'Locked'}</Badge>
-            <span className="datascope-workflow-affordance">{includedCount ? <IconEdit size={13} /> : <IconLock size={13} />}{includedCount ? ' Edit' : ' Locked'}</span>
+            <span className="datascope-workflow-affordance">{includedCount ? <IconEdit size={13} /> : <IconLock size={13} />}{includedCount ? (canManage ? ' Edit' : ' View') : ' Locked'}</span>
           </button>
           <button type="button" className="datascope-workflow-action" disabled={!includedCount} onClick={() => setWorkspaceView('guardrails')}>
             <span className="datascope-workflow-icon" data-step="3"><IconShieldCheck size={18} /></span>
@@ -313,23 +317,25 @@ export function SelectedBlueprintWorkspace({
           <NameInput
             label="Name"
             description={`${DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH}-${DATASCOPE_BLUEPRINT_NAME_MAX_LENGTH} characters`}
-            value={editName}
+             value={editName}
+             disabled={!canManage}
             onChange={setEditName}
             maxLength={DATASCOPE_BLUEPRINT_NAME_MAX_LENGTH}
             error={editNameError}
           />
-          <Textarea label="Description" minRows={2} value={editDescription} onChange={(event) => setEditDescription(event.currentTarget.value)} />
+          <Textarea label="Description" minRows={2} value={editDescription} disabled={!canManage} onChange={(event) => setEditDescription(event.currentTarget.value)} />
           <Select
             label="Default masking policy"
             description="Per-table policies in the table map override this."
             data={[{ value: '', label: 'No default policy' }].concat(policies.map((item) => ({ value: String(item.id), label: item.name })))}
             value={editPolicyId}
-            searchable
+             searchable
+             disabled={!canManage}
             onChange={(value) => setEditPolicyId(value || '')}
           />
           <Group justify="flex-end">
             <Button variant="light" onClick={() => setEditOpened(false)}>Cancel</Button>
-            <Button loading={savingEdit} disabled={!!editNameError || editNameLength < DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH} onClick={() => void saveEdit()}>Save</Button>
+            <Button loading={savingEdit} disabled={!canManage || !!editNameError || editNameLength < DATASCOPE_BLUEPRINT_NAME_MIN_LENGTH} onClick={() => void saveEdit()}>Save</Button>
           </Group>
         </Stack>
       </Modal>

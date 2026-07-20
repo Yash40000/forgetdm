@@ -168,7 +168,7 @@ export function EngineHealth({
   );
 }
 
-export function ActivityPanel({ operations, onCancel }: { operations: VirtOperation[]; onCancel: (id: string) => void }) {
+export function ActivityPanel({ operations, canCancel, onCancel }: { operations: VirtOperation[]; canCancel: boolean; onCancel: (id: string) => void }) {
   if (!operations.length) {
     return (
       <Paper className="forge-card" p="md">
@@ -200,9 +200,9 @@ export function ActivityPanel({ operations, onCancel }: { operations: VirtOperat
                 <Text size="xs" c="dimmed">
                   {op.message}
                 </Text>
-                {running ? (
+                {running && canCancel ? (
                   <Tooltip label="Cancel">
-                    <ActionIcon size="sm" variant="subtle" color="red" onClick={() => onCancel(op.id)}>
+                    <ActionIcon size="sm" variant="subtle" color="red" onClick={() => canCancel && onCancel(op.id)}>
                       <IconPlayerStop size={14} />
                     </ActionIcon>
                   </Tooltip>

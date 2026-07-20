@@ -9,6 +9,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useConfirm } from '@/components/confirm';
 import { apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import type { MaskingPolicy } from '@/lib/types';
 import type { BeReservation, BeSnapshot, BusinessEntityDetail } from '../types';
 import { formatDate, numberOrNull, statusDot } from '../utils';
@@ -26,6 +27,8 @@ export function TimePanel({
   policies: MaskingPolicy[];
 }) {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const { confirm, confirmElement } = useConfirm();
   const entityId = detail.entity.id!;
   const [snapForm, setSnapForm] = useState({ name: '', mode: 'EVIDENCE_ONLY', retention: '', criteria: '', note: '' });
@@ -38,14 +41,16 @@ export function TimePanel({
   };
 
   const createSnapshot = useMutation({
-    mutationFn: () =>
-      apiPost(`/api/business-entities/${entityId}/snapshots`, {
+    mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
+      return apiPost(`/api/business-entities/${entityId}/snapshots`, {
         name: snapForm.name.trim() || `${detail.entity.name} baseline`,
         mode: snapForm.mode,
         retentionDays: numberOrNull(snapForm.retention),
         criteria: snapForm.criteria.trim() || null,
         note: snapForm.note.trim() || null
-      }),
+      });
+    },
     onSuccess: async () => {
       notifications.show({ color: 'green', title: 'Snapshot created', message: snapForm.name.trim() || 'Baseline captured.' });
       setSnapForm({ name: '', mode: 'EVIDENCE_ONLY', retention: '', criteria: '', note: '' });
@@ -55,6 +60,7 @@ export function TimePanel({
   });
 
   const rollback = async (snapshot: BeSnapshot) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Roll back to snapshot',
       danger: true,
@@ -72,8 +78,9 @@ export function TimePanel({
   };
 
   const reserve = useMutation({
-    mutationFn: () =>
-      apiPost(`/api/business-entities/${entityId}/reservations`, {
+    mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
+      return apiPost(`/api/business-entities/${entityId}/reservations`, {
         name: resForm.name.trim() || null,
         count: numberOrNull(resForm.count) || 1,
         ttlHours: numberOrNull(resForm.ttl) || 24,
@@ -82,7 +89,8 @@ export function TimePanel({
         purpose: resForm.purpose.trim() || null,
         materializeCapsules: resForm.capsule !== '',
         capsulePolicyId: resForm.capsule && resForm.capsule !== '0' ? Number(resForm.capsule) : null
-      }),
+      });
+    },
     onSuccess: async () => {
       notifications.show({ color: 'green', title: 'Entity reserved', message: 'Keys locked for your team.' });
       setResForm({ name: '', count: '1', ttl: '24', environment: '', criteria: '', purpose: '', capsule: '' });
@@ -92,6 +100,7 @@ export function TimePanel({
   });
 
   const release = async (reservation: BeReservation) => {
+    if (!canManage) return;
     try {
       await apiPost(`/api/business-entities/reservations/${reservation.id}/release`, {});
       notifications.show({ color: 'green', title: 'Reservation released', message: reservation.name || `#${reservation.id}` });
@@ -112,7 +121,7 @@ export function TimePanel({
         <Text size="xs" c="dimmed" mb="xs">
           Bookmark the entity at a point in time. Physical mode links to Virtualization for real rollback.
         </Text>
-        <SimpleGrid cols={{ base: 1, sm: 3, lg: 6 }} mb="sm">
+        {canManage ? <SimpleGrid cols={{ base: 1, sm: 3, lg: 6 }} mb="sm">
           <NameInput size="xs" label="Name" placeholder={`${detail.entity.name} baseline`} value={snapForm.name} onChange={(value) => setSnapForm({ ...snapForm, name: value })} />
           <Select
             size="xs"
@@ -130,7 +139,7 @@ export function TimePanel({
           <Button size="xs" mt={22} loading={createSnapshot.isPending} onClick={() => createSnapshot.mutate()}>
             Create snapshot
           </Button>
-        </SimpleGrid>
+        </SimpleGrid> : null}
         {snapshots.length ? (
           snapshots.map((snapshot) => (
             <div className="be-line-row" key={snapshot.id}>
@@ -144,9 +153,9 @@ export function TimePanel({
                   {snapshot.note ? ` · ${snapshot.note}` : ''}
                 </Text>
               </div>
-              <Button size="compact-xs" variant="subtle" onClick={() => void rollback(snapshot)}>
+              {canManage ? <Button size="compact-xs" variant="subtle" onClick={() => void rollback(snapshot)}>
                 Roll back
-              </Button>
+              </Button> : null}
             </div>
           ))
         ) : (
@@ -163,7 +172,7 @@ export function TimePanel({
         <Text size="xs" c="dimmed" mb="xs">
           Lock whole business objects for one team with a TTL — two teams never collide on the same test customer.
         </Text>
-        <SimpleGrid cols={{ base: 1, sm: 3, lg: 7 }} mb="sm">
+        {canManage ? <SimpleGrid cols={{ base: 1, sm: 3, lg: 7 }} mb="sm">
           <NameInput size="xs" label="Name" placeholder="QA cycle" value={resForm.name} onChange={(value) => setResForm({ ...resForm, name: value })} />
           <NumberInput size="xs" label="Count" min={1} value={resForm.count === '' ? '' : Number(resForm.count)} onChange={(value) => setResForm({ ...resForm, count: value === '' || value === null ? '' : String(value) })} />
           <NumberInput size="xs" label="TTL hours" min={1} value={resForm.ttl === '' ? '' : Number(resForm.ttl)} onChange={(value) => setResForm({ ...resForm, ttl: value === '' || value === null ? '' : String(value) })} />
@@ -181,7 +190,7 @@ export function TimePanel({
           <Button size="xs" mt={22} loading={reserve.isPending} onClick={() => reserve.mutate()}>
             Reserve
           </Button>
-        </SimpleGrid>
+        </SimpleGrid> : null}
         {reservations.length ? (
           reservations.map((reservation) => (
             <div className="be-line-row" key={reservation.id}>
@@ -200,7 +209,7 @@ export function TimePanel({
                   {reservation.environment ? ` · ${reservation.environment}` : ''} · expires {formatDate(reservation.expiresAt)}
                 </Text>
               </div>
-              {reservation.status === 'ACTIVE' ? (
+              {canManage && reservation.status === 'ACTIVE' ? (
                 <Button size="compact-xs" variant="subtle" color="red" onClick={() => void release(reservation)}>
                   Release
                 </Button>

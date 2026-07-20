@@ -221,11 +221,13 @@ export function FindingsTable({
   rows,
   functions,
   updating,
+  canManage,
   onUpdate
 }: {
   rows: DiscoveryFinding[];
   functions: string[];
   updating: boolean;
+  canManage: boolean;
   onUpdate: (id: number, body: Record<string, string | null>) => void;
 }) {
   if (!rows.length) {
@@ -277,46 +279,54 @@ export function FindingsTable({
                 <Confidence value={row.confidence} />
               </Table.Td>
               <Table.Td>
-                <Select
-                  size="xs"
-                  data={compatibleFunctions(functions, row.dataType, row.suggestedFunction)}
-                  value={row.suggestedFunction || null}
-                  onChange={(value) => {
-                    if (value) {
+                {canManage ? (
+                  <Select
+                    size="xs"
+                    data={compatibleFunctions(functions, row.dataType, row.suggestedFunction)}
+                    value={row.suggestedFunction || null}
+                    onChange={(value) => {
+                      if (!canManage || !value) return;
                       const params = defaultMaskParamsForMap(value, row.piiType);
                       onUpdate(row.id, {
                         suggestedFunction: value,
                         suggestedParam1: params.param1,
                         suggestedParam2: params.param2
                       });
-                    }
-                  }}
-                  searchable
-                  disabled={updating}
-                  w={170}
-                />
+                    }}
+                    searchable
+                    disabled={updating}
+                    w={170}
+                  />
+                ) : <Text size="sm">{row.suggestedFunction || 'Not configured'}</Text>}
               </Table.Td>
               <Table.Td>
-                <ParamEditors
-                  fn={row.suggestedFunction}
-                  param1={row.suggestedParam1 ?? ''}
-                  param2={row.suggestedParam2 ?? ''}
-                  onParam={(n, value) => onUpdate(row.id, n === 1 ? { suggestedParam1: value } : { suggestedParam2: value })}
-                />
+                {canManage ? (
+                  <ParamEditors
+                    fn={row.suggestedFunction}
+                    param1={row.suggestedParam1 ?? ''}
+                    param2={row.suggestedParam2 ?? ''}
+                    onParam={(n, value) => {
+                      if (!canManage) return;
+                      onUpdate(row.id, n === 1 ? { suggestedParam1: value } : { suggestedParam2: value });
+                    }}
+                  />
+                ) : <Text size="xs" c="dimmed">{[row.suggestedParam1, row.suggestedParam2].filter(Boolean).join(' / ') || 'No parameters'}</Text>}
               </Table.Td>
               <Table.Td className="pii-mono-muted">{row.sampleValue || ''}</Table.Td>
               <Table.Td>
                 <StatusBadge status={row.status} />
               </Table.Td>
               <Table.Td>
-                <Group gap={6} wrap="nowrap">
-                  <Button size="xs" variant="light" onClick={() => onUpdate(row.id, { status: 'APPROVED' })}>
-                    Approve
-                  </Button>
-                  <Button size="xs" variant="subtle" color="red" onClick={() => onUpdate(row.id, { status: 'REJECTED' })}>
-                    Not PII
-                  </Button>
-                </Group>
+                {canManage ? (
+                  <Group gap={6} wrap="nowrap">
+                    <Button size="xs" variant="light" onClick={() => { if (canManage) onUpdate(row.id, { status: 'APPROVED' }); }}>
+                      Approve
+                    </Button>
+                    <Button size="xs" variant="subtle" color="red" onClick={() => { if (canManage) onUpdate(row.id, { status: 'REJECTED' }); }}>
+                      Not PII
+                    </Button>
+                  </Group>
+                ) : null}
               </Table.Td>
             </Table.Tr>
           ))}
@@ -338,7 +348,8 @@ export function ColumnReviewPanel({
   setManualDrafts,
   onUpdate,
   onManual,
-  manualPending
+  manualPending,
+  canManage
 }: {
   selectedTable: string | null;
   tableOptions: Array<{ value: string; label: string }>;
@@ -352,6 +363,7 @@ export function ColumnReviewPanel({
   onUpdate: (id: number, body: Record<string, string | null>) => void;
   onManual: (row: DiscoveryColumnReviewRow, draft: ManualDraft) => void;
   manualPending: boolean;
+  canManage: boolean;
 }) {
   const piiOptions = piiTypes.map((type) => ({ value: type, label: type }));
   return (
@@ -418,6 +430,7 @@ export function ColumnReviewPanel({
                   suggestedParam2: row.suggestedParam2 ?? initialParams.param2 ?? ''
                 };
                 const setDraft = (patch: Partial<ManualDraft>) => {
+                  if (!canManage) return;
                   setManualDrafts((current) => ({
                     ...current,
                     [key]: { ...draft, ...patch }
@@ -439,7 +452,7 @@ export function ColumnReviewPanel({
                         <Badge color="blue" variant="light">
                           {row.piiType}
                         </Badge>
-                      ) : (
+                      ) : canManage ? (
                         <Select
                           size="xs"
                           data={piiOptions}
@@ -458,75 +471,80 @@ export function ColumnReviewPanel({
                           searchable
                           w={160}
                         />
-                      )}
+                      ) : <Text size="sm" c="dimmed">Not classified</Text>}
                     </Table.Td>
                     <Table.Td>
-                      <Select
-                        size="xs"
-                        data={compatibleFunctions(functions, row.dataType, hasFinding ? row.suggestedFunction : draft.suggestedFunction)}
-                        value={hasFinding ? row.suggestedFunction || null : draft.suggestedFunction}
-                        onChange={(value) => {
-                          if (!value) return;
-                          if (hasFinding && row.classificationId) {
-                            const params = defaultMaskParamsForMap(value, row.piiType);
-                            onUpdate(row.classificationId, {
-                              suggestedFunction: value,
-                              suggestedParam1: params.param1,
-                              suggestedParam2: params.param2
-                            });
-                          }
-                          else {
-                            const params = defaultMaskParamsForMap(value, draft.piiType);
-                            setDraft({ suggestedFunction: value, suggestedParam1: params.param1 || '', suggestedParam2: params.param2 || '' });
-                          }
-                        }}
-                        searchable
-                        w={170}
-                      />
+                      {canManage ? (
+                        <Select
+                          size="xs"
+                          data={compatibleFunctions(functions, row.dataType, hasFinding ? row.suggestedFunction : draft.suggestedFunction)}
+                          value={hasFinding ? row.suggestedFunction || null : draft.suggestedFunction}
+                          onChange={(value) => {
+                            if (!canManage || !value) return;
+                            if (hasFinding && row.classificationId) {
+                              const params = defaultMaskParamsForMap(value, row.piiType);
+                              onUpdate(row.classificationId, {
+                                suggestedFunction: value,
+                                suggestedParam1: params.param1,
+                                suggestedParam2: params.param2
+                              });
+                            }
+                            else {
+                              const params = defaultMaskParamsForMap(value, draft.piiType);
+                              setDraft({ suggestedFunction: value, suggestedParam1: params.param1 || '', suggestedParam2: params.param2 || '' });
+                            }
+                          }}
+                          searchable
+                          w={170}
+                        />
+                      ) : <Text size="sm">{row.suggestedFunction || 'Not configured'}</Text>}
                     </Table.Td>
                     <Table.Td>
-                      {hasFinding && row.classificationId ? (
-                        <ParamEditors
-                          fn={row.suggestedFunction}
-                          param1={row.suggestedParam1 || ''}
-                          param2={row.suggestedParam2 || ''}
-                          onParam={(n, value) =>
-                            onUpdate(row.classificationId as number, n === 1 ? { suggestedParam1: value } : { suggestedParam2: value })
-                          }
-                        />
-                      ) : (
-                        <ParamEditors
-                          fn={draft.suggestedFunction}
-                          param1={draft.suggestedParam1}
-                          param2={draft.suggestedParam2}
-                          onParam={(n, value) => setDraft(n === 1 ? { suggestedParam1: value } : { suggestedParam2: value })}
-                        />
-                      )}
+                      {canManage ? (
+                        hasFinding && row.classificationId ? (
+                          <ParamEditors
+                            fn={row.suggestedFunction}
+                            param1={row.suggestedParam1 || ''}
+                            param2={row.suggestedParam2 || ''}
+                            onParam={(n, value) => {
+                              if (!canManage) return;
+                              onUpdate(row.classificationId as number, n === 1 ? { suggestedParam1: value } : { suggestedParam2: value });
+                            }}
+                          />
+                        ) : (
+                          <ParamEditors
+                            fn={draft.suggestedFunction}
+                            param1={draft.suggestedParam1}
+                            param2={draft.suggestedParam2}
+                            onParam={(n, value) => setDraft(n === 1 ? { suggestedParam1: value } : { suggestedParam2: value })}
+                          />
+                        )
+                      ) : <Text size="xs" c="dimmed">{[row.suggestedParam1, row.suggestedParam2].filter(Boolean).join(' / ') || 'No parameters'}</Text>}
                     </Table.Td>
                     <Table.Td className="pii-mono-muted">{row.sampleValue || ''}</Table.Td>
                     <Table.Td>
                       <StatusBadge status={row.status || (hasFinding ? 'SUGGESTED' : 'NOT_PII')} />
                     </Table.Td>
                     <Table.Td>
-                      {hasFinding && row.classificationId ? (
+                      {canManage && hasFinding && row.classificationId ? (
                         <Group gap={6} wrap="nowrap">
-                          <Button size="xs" variant="light" onClick={() => onUpdate(row.classificationId as number, { status: 'APPROVED' })}>
+                          <Button size="xs" variant="light" onClick={() => { if (canManage) onUpdate(row.classificationId as number, { status: 'APPROVED' }); }}>
                             Approve
                           </Button>
                           <Button
                             size="xs"
                             variant="subtle"
                             color="red"
-                            onClick={() => onUpdate(row.classificationId as number, { status: 'REJECTED' })}
+                            onClick={() => { if (canManage) onUpdate(row.classificationId as number, { status: 'REJECTED' }); }}
                           >
                             Not PII
                           </Button>
                         </Group>
-                      ) : (
-                        <Button size="xs" loading={manualPending} onClick={() => onManual(row, draft)}>
+                      ) : canManage ? (
+                        <Button size="xs" loading={manualPending} onClick={() => { if (canManage) onManual(row, draft); }}>
                           Mark PII
                         </Button>
-                      )}
+                      ) : null}
                     </Table.Td>
                   </Table.Tr>
                 );
@@ -543,11 +561,13 @@ export function FindingsWorkspaceTable({
   rows,
   functions,
   updating,
+  canManage,
   onUpdate
 }: {
   rows: DiscoveryFinding[];
   functions: string[];
   updating: boolean;
+  canManage: boolean;
   onUpdate: (id: number, body: Record<string, string | null>) => void;
 }) {
   const [tableFilter, setTableFilter] = useState<string | null>(null);
@@ -573,6 +593,7 @@ export function FindingsWorkspaceTable({
   }
 
   const openEditor = (row: DiscoveryFinding) => {
+    if (!canManage) return;
     setEditing({
       row,
       fn: row.suggestedFunction || defaultFunctionForPii(row.piiType),
@@ -610,18 +631,20 @@ export function FindingsWorkspaceTable({
             <Text size="xs" c="dimmed" className="pii-review-sample">{row.dataType || 'type unknown'}{row.sampleValue ? ` - sample ${row.sampleValue}` : ''}</Text>
           </div>
           <div><Badge color="blue" variant="light">{row.piiType}</Badge><Confidence value={row.confidence} /></div>
-          <div className="pii-review-mask"><Text size="sm" fw={700}>{row.suggestedFunction || 'Not configured'}</Text><Text size="xs" c="dimmed" truncate="end">{[row.suggestedParam1, row.suggestedParam2].filter(Boolean).join(' / ') || 'No parameters'}</Text><Button size="compact-xs" variant="subtle" onClick={() => openEditor(row)}>Configure</Button></div>
+          <div className="pii-review-mask"><Text size="sm" fw={700}>{row.suggestedFunction || 'Not configured'}</Text><Text size="xs" c="dimmed" truncate="end">{[row.suggestedParam1, row.suggestedParam2].filter(Boolean).join(' / ') || 'No parameters'}</Text>{canManage ? <Button size="compact-xs" variant="subtle" onClick={() => openEditor(row)}>Configure</Button> : null}</div>
           <StatusIcon status={row.status} />
-          <Group gap={5} wrap="nowrap" justify="flex-end">
-            <Tooltip label="Approve as PII"><ActionIcon aria-label={`Approve ${row.tableName}.${row.columnName} as PII`} variant="light" color="green" disabled={updating} onClick={() => onUpdate(row.id, { status: 'APPROVED' })}><IconCircleCheck size={17} /></ActionIcon></Tooltip>
-            <Tooltip label="Mark as not PII"><ActionIcon aria-label={`Mark ${row.tableName}.${row.columnName} as not PII`} variant="subtle" color="red" disabled={updating} onClick={() => onUpdate(row.id, { status: 'REJECTED' })}><IconX size={17} /></ActionIcon></Tooltip>
-          </Group>
+          {canManage ? (
+            <Group gap={5} wrap="nowrap" justify="flex-end">
+              <Tooltip label="Approve as PII"><ActionIcon aria-label={`Approve ${row.tableName}.${row.columnName} as PII`} variant="light" color="green" disabled={updating} onClick={() => { if (canManage) onUpdate(row.id, { status: 'APPROVED' }); }}><IconCircleCheck size={17} /></ActionIcon></Tooltip>
+              <Tooltip label="Mark as not PII"><ActionIcon aria-label={`Mark ${row.tableName}.${row.columnName} as not PII`} variant="subtle" color="red" disabled={updating} onClick={() => { if (canManage) onUpdate(row.id, { status: 'REJECTED' }); }}><IconX size={17} /></ActionIcon></Tooltip>
+            </Group>
+          ) : <span />}
         </div>
       ))}
       {!visibleRows.length ? <div className="pii-empty-small">No findings match the selected table.</div> : null}
     </div>
 
-    <Modal opened={Boolean(editing)} onClose={() => setEditing(null)} title={editing ? `Configure ${editing.row.tableName}.${editing.row.columnName}` : 'Configure masking'} size="md" centered>
+    <Modal opened={canManage && Boolean(editing)} onClose={() => setEditing(null)} title={editing ? `Configure ${editing.row.tableName}.${editing.row.columnName}` : 'Configure masking'} size="md" centered>
       {editing ? <Stack gap="sm">
         <Select
           label="Masking function"
@@ -640,7 +663,7 @@ export function FindingsWorkspaceTable({
           param2={editing.param2}
           onParam={(n, value) => setEditing((current) => current ? { ...current, [n === 1 ? 'param1' : 'param2']: value } : current)}
         />
-        <Group justify="flex-end"><Button variant="default" onClick={() => setEditing(null)}>Discard</Button><Button loading={updating} onClick={() => { onUpdate(editing.row.id, { suggestedFunction: editing.fn, suggestedParam1: editing.param1 || null, suggestedParam2: editing.param2 || null }); setEditing(null); }}>Apply recommendation</Button></Group>
+        <Group justify="flex-end"><Button variant="default" onClick={() => setEditing(null)}>Discard</Button><Button loading={updating} disabled={!canManage} onClick={() => { if (!canManage) return; onUpdate(editing.row.id, { suggestedFunction: editing.fn, suggestedParam1: editing.param1 || null, suggestedParam2: editing.param2 || null }); setEditing(null); }}>Apply recommendation</Button></Group>
       </Stack> : null}
     </Modal>
   </>;
@@ -658,7 +681,8 @@ export function ColumnReviewWorkspace({
   setManualDrafts,
   onUpdate,
   onManual,
-  manualPending
+  manualPending,
+  canManage
 }: {
   selectedTable: string | null;
   tableOptions: Array<{ value: string; label: string }>;
@@ -672,11 +696,13 @@ export function ColumnReviewWorkspace({
   onUpdate: (id: number, body: Record<string, string | null>) => void;
   onManual: (row: DiscoveryColumnReviewRow, draft: ManualDraft) => void;
   manualPending: boolean;
+  canManage: boolean;
 }) {
   const [editing, setEditing] = useState<{ key: string; row: DiscoveryColumnReviewRow; draft: ManualDraft; hasFinding: boolean } | null>(null);
   const piiOptions = piiTypes.map((type) => ({ value: type, label: type }));
 
   const openEditor = (row: DiscoveryColumnReviewRow, index: number) => {
+    if (!canManage) return;
     const key = reviewKey(row, index);
     const hasFinding = Boolean(row.classificationId);
     const piiType = row.piiType || 'MANUAL_PII';
@@ -709,14 +735,14 @@ export function ColumnReviewWorkspace({
             return <div className="pii-review-list-row" key={reviewKey(row, index)}>
               <div className="pii-review-primary"><Text size="sm" fw={760}>{row.columnName}</Text><Text size="xs" c="dimmed" className="pii-review-sample">{row.dataType || 'type unknown'}{row.nullable ? ' - nullable' : ''}{row.sampleValue ? ` - sample ${row.sampleValue}` : ''}</Text></div>
               <div>{hasFinding ? <Badge color="blue" variant="light">{row.piiType}</Badge> : <Text size="sm" c="dimmed">Not classified</Text>}</div>
-              <div className="pii-review-mask"><Text size="sm" fw={700}>{row.suggestedFunction || (hasFinding ? 'Not configured' : 'Configure to classify')}</Text><Button size="compact-xs" variant="subtle" onClick={() => openEditor(row, index)}>Configure</Button></div>
+              <div className="pii-review-mask"><Text size="sm" fw={700}>{row.suggestedFunction || (hasFinding ? 'Not configured' : 'Configure to classify')}</Text>{canManage ? <Button size="compact-xs" variant="subtle" onClick={() => openEditor(row, index)}>Configure</Button> : null}</div>
               <StatusBadge status={row.status || (hasFinding ? 'SUGGESTED' : 'NOT_PII')} />
-              <Group gap={5} wrap="nowrap" justify="flex-end">{hasFinding && row.classificationId ? <><Button size="compact-xs" variant="light" onClick={() => onUpdate(row.classificationId as number, { status: 'APPROVED' })}>Approve</Button><Button size="compact-xs" variant="subtle" color="red" onClick={() => onUpdate(row.classificationId as number, { status: 'REJECTED' })}>Not PII</Button></> : <Button size="compact-xs" onClick={() => openEditor(row, index)}>Mark PII</Button>}</Group>
+              {canManage ? <Group gap={5} wrap="nowrap" justify="flex-end">{hasFinding && row.classificationId ? <><Button size="compact-xs" variant="light" onClick={() => { if (canManage) onUpdate(row.classificationId as number, { status: 'APPROVED' }); }}>Approve</Button><Button size="compact-xs" variant="subtle" color="red" onClick={() => { if (canManage) onUpdate(row.classificationId as number, { status: 'REJECTED' }); }}>Not PII</Button></> : <Button size="compact-xs" onClick={() => openEditor(row, index)}>Mark PII</Button>}</Group> : <span />}
             </div>;
           })}
         </div>}
 
-    <Modal opened={Boolean(editing)} onClose={() => setEditing(null)} title={editing ? `Configure ${editing.row.columnName}` : 'Configure column'} size="md" centered>
+    <Modal opened={canManage && Boolean(editing)} onClose={() => setEditing(null)} title={editing ? `Configure ${editing.row.columnName}` : 'Configure column'} size="md" centered>
       {editing ? <Stack gap="sm">
         <Select
           label="PII type"
@@ -748,7 +774,8 @@ export function ColumnReviewWorkspace({
           param2={editing.draft.suggestedParam2}
           onParam={(n, value) => setEditing((current) => current ? { ...current, draft: { ...current.draft, [n === 1 ? 'suggestedParam1' : 'suggestedParam2']: value } } : current)}
         />
-        <Group justify="flex-end"><Button variant="default" onClick={() => setEditing(null)}>Discard</Button><Button loading={manualPending} onClick={() => {
+        <Group justify="flex-end"><Button variant="default" onClick={() => setEditing(null)}>Discard</Button><Button loading={manualPending} disabled={!canManage} onClick={() => {
+          if (!canManage) return;
           if (editing.hasFinding && editing.row.classificationId) onUpdate(editing.row.classificationId, { suggestedFunction: editing.draft.suggestedFunction, suggestedParam1: editing.draft.suggestedParam1 || null, suggestedParam2: editing.draft.suggestedParam2 || null });
           else {
             setManualDrafts((current) => ({ ...current, [editing.key]: editing.draft }));
@@ -1191,7 +1218,7 @@ export function ImpactDiagramPanel({ graph, loading }: { graph: DiscoveryGraph; 
   );
 }
 
-export function PatternsTable({ rows, onDelete }: { rows: PiiPattern[]; onDelete: (pattern: PiiPattern) => void }) {
+export function PatternsTable({ rows, canManage, onDelete }: { rows: PiiPattern[]; canManage: boolean; onDelete: (pattern: PiiPattern) => void }) {
   if (!rows.length) {
     return (
       <div className="pii-empty-state">
@@ -1218,7 +1245,7 @@ export function PatternsTable({ rows, onDelete }: { rows: PiiPattern[]; onDelete
             <Table.Th>Mask</Table.Th>
             <Table.Th>Scope</Table.Th>
             <Table.Th>Owner</Table.Th>
-            <Table.Th />
+            {canManage ? <Table.Th /> : null}
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -1236,13 +1263,15 @@ export function PatternsTable({ rows, onDelete }: { rows: PiiPattern[]; onDelete
                 </Badge>
               </Table.Td>
               <Table.Td>{row.ownerUsername || '-'}</Table.Td>
-              <Table.Td>
-                <Tooltip label="Delete pattern">
-                  <ActionIcon variant="subtle" color="red" onClick={() => onDelete(row)} aria-label={`Delete ${row.piiType} pattern`}>
-                    <IconTrash size={16} />
-                  </ActionIcon>
-                </Tooltip>
-              </Table.Td>
+              {canManage ? (
+                <Table.Td>
+                  <Tooltip label="Delete pattern">
+                    <ActionIcon variant="subtle" color="red" onClick={() => { if (canManage) onDelete(row); }} aria-label={`Delete ${row.piiType} pattern`}>
+                      <IconTrash size={16} />
+                    </ActionIcon>
+                  </Tooltip>
+                </Table.Td>
+              ) : null}
             </Table.Tr>
           ))}
         </Table.Tbody>

@@ -27,6 +27,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { apiFetch, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import { PatternsTable } from './components';
 import { useMaskFunctions, usePiiPatternGroups, usePiiPatterns } from './hooks';
 import type { PatternDraft, PiiPattern } from './types';
@@ -40,9 +41,12 @@ const EMPTY_PATTERN: PatternDraft = {
   visibility: 'PRIVATE',
   ownerGroupId: ''
 };
+const DISCOVERY_MANAGE_REQUIRED = 'Discovery management permission is required.';
 
 export function PiiPatternsPage() {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('discovery.manage');
   const patternsQuery = usePiiPatterns();
   const groupsQuery = usePiiPatternGroups();
   const functionsQuery = useMaskFunctions();
@@ -69,6 +73,7 @@ export function PiiPatternsPage() {
 
   const createMutation = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error(DISCOVERY_MANAGE_REQUIRED);
       if (!draft.piiType.trim() || !draft.regex.trim()) throw new Error('PII type and regex are required.');
       if (draft.visibility === 'GROUP' && !draft.ownerGroupId) throw new Error('Select a group for GROUP visibility.');
       return apiPost('/api/discovery/patterns', {
@@ -96,11 +101,14 @@ export function PiiPatternsPage() {
   });
 
   const testMutation = useMutation({
-    mutationFn: () => apiPost<{ matched: boolean }>('/api/discovery/patterns/test', {
-      kind: draft.kind,
-      regex: draft.regex,
-      sample
-    }),
+    mutationFn: () => {
+      if (!canManage) throw new Error(DISCOVERY_MANAGE_REQUIRED);
+      return apiPost<{ matched: boolean }>('/api/discovery/patterns/test', {
+        kind: draft.kind,
+        regex: draft.regex,
+        sample
+      });
+    },
     onSuccess: (result) => setTestResult(Boolean(result.matched)),
     onError: (error) => {
       setTestResult(null);
@@ -109,7 +117,10 @@ export function PiiPatternsPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (pattern: PiiPattern) => apiFetch<void>(`/api/discovery/patterns/${pattern.id}`, { method: 'DELETE' }),
+    mutationFn: (pattern: PiiPattern) => {
+      if (!canManage) throw new Error(DISCOVERY_MANAGE_REQUIRED);
+      return apiFetch<void>(`/api/discovery/patterns/${pattern.id}`, { method: 'DELETE' });
+    },
     onSuccess: async () => {
       setDeletePattern(null);
       notifications.show({ color: 'green', title: 'Pattern deleted', message: 'Future scans will no longer use this rule.' });
@@ -122,10 +133,31 @@ export function PiiPatternsPage() {
   });
 
   const openCreate = () => {
+    if (!canManage) return;
     setDraft(EMPTY_PATTERN);
     setSample('');
     setTestResult(null);
     setDrawerOpen(true);
+  };
+
+  const handleTest = () => {
+    if (!canManage) return;
+    testMutation.mutate();
+  };
+
+  const handleSave = () => {
+    if (!canManage) return;
+    createMutation.mutate();
+  };
+
+  const handleDeleteRequest = (pattern: PiiPattern) => {
+    if (!canManage) return;
+    setDeletePattern(pattern);
+  };
+
+  const handleDelete = () => {
+    if (!canManage || !deletePattern) return;
+    deleteMutation.mutate(deletePattern);
   };
 
   return <main className="forge-page pii-page pii-patterns-page">
@@ -137,7 +169,7 @@ export function PiiPatternsPage() {
         </Group>
         <Group gap="xs">
           <Button component={Link} href="/pii-discovery" variant="subtle" leftSection={<IconArrowLeft size={16} />}>PII Discovery</Button>
-          <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>Add pattern</Button>
+          {canManage ? <Button leftSection={<IconPlus size={16} />} onClick={openCreate}>Add pattern</Button> : null}
         </Group>
       </Group>
 
@@ -157,11 +189,11 @@ export function PiiPatternsPage() {
           <Select placeholder="Any match mode" data={[{ value: 'NAME', label: 'Column name' }, { value: 'VALUE', label: 'Sample value' }]} value={kindFilter} onChange={setKindFilter} clearable />
           <Select placeholder="Any visibility" data={['PRIVATE', 'GROUP', 'GLOBAL']} value={visibilityFilter} onChange={setVisibilityFilter} clearable />
         </div>
-        <PatternsTable rows={visiblePatterns} onDelete={setDeletePattern} />
+        <PatternsTable rows={visiblePatterns} canManage={canManage} onDelete={handleDeleteRequest} />
       </Paper>
     </Stack>
 
-    <Drawer opened={drawerOpen} onClose={() => setDrawerOpen(false)} position="right" size="lg" title="Add detection pattern" classNames={{ body: 'pii-pattern-drawer-body' }}>
+    {canManage ? <Drawer opened={drawerOpen} onClose={() => setDrawerOpen(false)} position="right" size="lg" title="Add detection pattern" classNames={{ body: 'pii-pattern-drawer-body' }}>
       <Stack gap="md">
         <Text size="sm" c="dimmed">NAME rules search a column name. VALUE rules must match an entire sampled value.</Text>
         <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="sm">
@@ -179,18 +211,20 @@ export function PiiPatternsPage() {
         <Paper className="pii-pattern-test" p="sm">
           <Group justify="space-between" align="flex-end">
             <TextInput label="Test sample" description={draft.kind === 'NAME' ? 'Example column name' : 'Example field value'} value={sample} onChange={(event) => { setSample(event.currentTarget?.value || ''); setTestResult(null); }} style={{ flex: 1 }} spellCheck={false} />
-            <Button variant="default" leftSection={<IconTestPipe size={15} />} loading={testMutation.isPending} disabled={!draft.regex.trim() || !sample} onClick={() => testMutation.mutate()}>Test</Button>
+            <Button variant="default" leftSection={<IconTestPipe size={15} />} loading={testMutation.isPending} disabled={!draft.regex.trim() || !sample} onClick={handleTest}>Test</Button>
           </Group>
           {testResult !== null ? <Alert mt="sm" color={testResult ? 'green' : 'yellow'}>{testResult ? 'Pattern matched this sample.' : 'Pattern did not match this sample.'}</Alert> : null}
         </Paper>
 
-        <Group justify="flex-end"><Button variant="default" onClick={() => setDrawerOpen(false)}>Discard</Button><Button loading={createMutation.isPending} disabled={!draft.piiType.trim() || !draft.regex.trim() || (draft.visibility === 'GROUP' && !draft.ownerGroupId)} onClick={() => createMutation.mutate()}>Save pattern</Button></Group>
+        <Group justify="flex-end"><Button variant="default" onClick={() => setDrawerOpen(false)}>Discard</Button><Button loading={createMutation.isPending} disabled={!draft.piiType.trim() || !draft.regex.trim() || (draft.visibility === 'GROUP' && !draft.ownerGroupId)} onClick={handleSave}>Save pattern</Button></Group>
       </Stack>
-    </Drawer>
+    </Drawer> : null}
 
-    <Modal opened={Boolean(deletePattern)} onClose={() => setDeletePattern(null)} title="Delete detection pattern" centered>
-      <Stack gap="sm"><Text size="sm">Delete the <b>{deletePattern?.piiType}</b> pattern? Future scans will stop using this rule.</Text><Group justify="flex-end"><Button variant="default" onClick={() => setDeletePattern(null)}>Cancel</Button><Button color="red" loading={deleteMutation.isPending} onClick={() => deletePattern && deleteMutation.mutate(deletePattern)}>Delete pattern</Button></Group></Stack>
-    </Modal>
+    {canManage ? (
+      <Modal opened={Boolean(deletePattern)} onClose={() => setDeletePattern(null)} title="Delete detection pattern" centered>
+        <Stack gap="sm"><Text size="sm">Delete the <b>{deletePattern?.piiType}</b> pattern? Future scans will stop using this rule.</Text><Group justify="flex-end"><Button variant="default" onClick={() => setDeletePattern(null)}>Cancel</Button><Button color="red" loading={deleteMutation.isPending} onClick={handleDelete}>Delete pattern</Button></Group></Stack>
+      </Modal>
+    ) : null}
   </main>;
 }
 

@@ -9,11 +9,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { apiPost, apiFetch } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import type { LooseMap } from '../hooks';
 import { formatDate, statusDot, str, technicalInputProps } from '../utils';
 
 export function OperationalPackageList({ entityId, packages }: { entityId: number; packages: LooseMap[] }) {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [versionForm, setVersionForm] = useState({ retentionPolicy: 'STANDARD_7_YEAR', retentionDays: '2555', changeNote: '' });
   const [promotionForm, setPromotionForm] = useState({ versionId: '', fromEnvironment: 'DEV', toEnvironment: 'QA', approver: '', comments: '' });
@@ -31,6 +34,7 @@ export function OperationalPackageList({ entityId, packages }: { entityId: numbe
 
   const createVersion = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
       if (!selectedId) throw new Error('Choose a package first.');
       if (!versionForm.changeNote.trim()) throw new Error('Enter the version change note.');
       return apiPost<LooseMap>(`/api/business-entities/operational-packages/${selectedId}/versions`, {
@@ -49,6 +53,7 @@ export function OperationalPackageList({ entityId, packages }: { entityId: numbe
 
   const promote = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
       if (!selectedId) throw new Error('Choose a package first.');
       if (!promotionForm.toEnvironment.trim() || !promotionForm.comments.trim()) throw new Error('Target environment and promotion evidence are required.');
       return apiPost<LooseMap>(`/api/business-entities/operational-packages/${selectedId}/promotions`, {
@@ -105,7 +110,7 @@ export function OperationalPackageList({ entityId, packages }: { entityId: numbe
               </Group>
               <Text size="xs" c="dimmed">{str(pkg.packageType)} - plan #{str(pkg.executionPlanId, '-')} - {formatDate(str(pkg.updatedAt) || null)}</Text>
             </div>
-            <Button size="compact-xs" variant="light" leftSection={<IconEye size={13} />} onClick={() => setSelectedId(Number(pkg.id))}>Manage</Button>
+            <Button size="compact-xs" variant="light" leftSection={<IconEye size={13} />} onClick={() => setSelectedId(Number(pkg.id))}>{canManage ? 'Manage' : 'View'}</Button>
           </div>
         )) : <Text size="sm" c="dimmed">No operational packages yet.</Text>}
       </Stack>
@@ -125,7 +130,7 @@ export function OperationalPackageList({ entityId, packages }: { entityId: numbe
 
               <Textarea {...technicalInputProps} label="Scheduler runner" readOnly autosize minRows={8} maxRows={16} value={str(detail.shellScript)} />
 
-              <SimpleGrid cols={{ base: 1, lg: 2 }}>
+              {canManage ? <SimpleGrid cols={{ base: 1, lg: 2 }}>
                 <Stack gap="sm">
                   <Group gap="xs"><IconVersions size={17} /><Text fw={800}>Create immutable version</Text></Group>
                   <SimpleGrid cols={{ base: 1, sm: 2 }}>
@@ -147,7 +152,7 @@ export function OperationalPackageList({ entityId, packages }: { entityId: numbe
                   <Textarea label="Promotion evidence" minRows={2} value={promotionForm.comments} onChange={(event) => setPromotionForm({ ...promotionForm, comments: event.currentTarget.value })} />
                   <Button leftSection={<IconPackageExport size={15} />} loading={promote.isPending} disabled={!promotionForm.toEnvironment.trim() || !promotionForm.comments.trim()} onClick={() => promote.mutate()}>Promote</Button>
                 </Stack>
-              </SimpleGrid>
+              </SimpleGrid> : null}
 
               <div className="forge-grid-panel">
                 <ScrollArea>

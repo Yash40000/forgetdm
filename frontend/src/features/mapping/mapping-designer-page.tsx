@@ -17,6 +17,7 @@ import { useConfirm } from '@/components/confirm';
 import { apiFetch, apiFormPost, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { DataSource } from '@/lib/types';
+import { usePermissions } from '@/lib/use-permissions';
 import { useDataSources } from '@/features/datasources/hooks';
 import { ColumnMapPanel } from './components/column-map-panel';
 import { FunctionLibrary, SqlLineagePanel } from './components/function-lineage-panels';
@@ -33,6 +34,8 @@ type Preview = { columns: string[]; rows: Array<Record<string, unknown>>; rowCou
 export function MappingDesignerPage() {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canManage = can('mapping.manage');
   const mappingsQuery = useMappings();
   const assetsQuery = useMappingAssets();
   const dataSourcesQuery = useDataSources();
@@ -83,7 +86,10 @@ export function MappingDesignerPage() {
   };
 
   const saveMutation = useMutation({
-    mutationFn: () => apiPost<MappingEntity>('/api/mappings', { id: mappingId, name: name.trim(), description: description.trim(), specJson: JSON.stringify(compiledSpec) }),
+    mutationFn: () => {
+      if (!canManage) throw new Error('Mapping management permission is required');
+      return apiPost<MappingEntity>('/api/mappings', { id: mappingId, name: name.trim(), description: description.trim(), specJson: JSON.stringify(compiledSpec) });
+    },
     onSuccess: (saved) => {
       setMappingId(saved.id); setDirty(false); setValidation(null);
       void queryClient.invalidateQueries({ queryKey: keys.mappings.all });
@@ -94,6 +100,7 @@ export function MappingDesignerPage() {
 
   const uploadMutation = useMutation({
     mutationFn: async () => {
+      if (!canManage) throw new Error('Mapping management permission is required');
       if (!assetFile) throw new Error('Choose a file');
       const form = new FormData(); form.append('file', assetFile); form.append('name', assetName || assetFile.name); form.append('format', assetFormat); form.append('header', 'true');
       return apiFormPost<MappingAsset>('/api/mappings/assets', form);
@@ -106,7 +113,10 @@ export function MappingDesignerPage() {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: () => apiFetch<void>(`/api/mappings/${mappingId}`, { method: 'DELETE' }),
+    mutationFn: () => {
+      if (!canManage) throw new Error('Mapping management permission is required');
+      return apiFetch<void>(`/api/mappings/${mappingId}`, { method: 'DELETE' });
+    },
     onSuccess: () => {
       setDeleteOpened(false); newMapping(); void queryClient.invalidateQueries({ queryKey: keys.mappings.all });
       notifications.show({ color: 'green', title: 'Mapping deleted', message: 'The definition was removed. Immutable audit evidence remains.' });
@@ -214,7 +224,7 @@ export function MappingDesignerPage() {
           <Button size="sm" variant="subtle" leftSection={<IconFolderOpen size={16} />} onClick={() => setLibraryOpened(true)}>Mappings <Badge size="xs" variant="light">{mappings.length}</Badge></Button>
           <Button size="sm" variant="default" leftSection={<IconRefresh size={16} />} onClick={() => void requestNewMapping()}>New</Button>
           <Button size="sm" variant="default" leftSection={<IconCircleCheck size={16} />} onClick={() => void validate()}>Validate</Button>
-          <Button size="sm" leftSection={<IconDatabase size={16} />} loading={saveMutation.isPending} disabled={!name.trim()} onClick={() => saveMutation.mutate()}>Save version</Button>
+          {canManage ? <Button size="sm" leftSection={<IconDatabase size={16} />} loading={saveMutation.isPending} disabled={!name.trim()} onClick={() => saveMutation.mutate()}>Save version</Button> : <Badge variant="light" color="gray">Read-only</Badge>}
         </Group>
       </header>
 
@@ -230,7 +240,7 @@ export function MappingDesignerPage() {
               <TextInput size="sm" label="Description" value={description} onChange={(event) => { setDescription(event.currentTarget?.value || ''); setDirty(true); }} placeholder="Purpose and owning application" />
               <Group gap={6} className="mapx-definition-actions">
                 {mappingId ? <Button size="xs" variant="subtle" leftSection={<IconRestore size={14} />} onClick={() => setVersionsOpened(true)}>Versions</Button> : <Badge variant="light">New draft</Badge>}
-                {mappingId ? <ActionIcon variant="subtle" color="red" aria-label="Delete mapping" onClick={() => setDeleteOpened(true)}><IconTrash size={16} /></ActionIcon> : null}
+                {mappingId && canManage ? <ActionIcon variant="subtle" color="red" aria-label="Delete mapping" onClick={() => setDeleteOpened(true)}><IconTrash size={16} /></ActionIcon> : null}
               </Group>
             </div>
             <Group gap={6} mt="xs" className="mapx-design-summary">
@@ -265,7 +275,7 @@ export function MappingDesignerPage() {
               />
             </Tabs.Panel>
             <Tabs.Panel value="CONFIGURE" pt="md">
-              <SourceTargetPanel spec={spec} dataSources={sourceDataSources} targets={targetDataSources} assets={assets} onChange={updateSpec} onUpload={() => setAssetModal(true)} />
+              <SourceTargetPanel spec={spec} dataSources={sourceDataSources} targets={targetDataSources} assets={assets} onChange={updateSpec} onUpload={canManage ? () => setAssetModal(true) : null} />
             </Tabs.Panel>
             <Tabs.Panel value="TRANSFORMS" pt="md">
               <TransformationStudio transforms={spec.transforms || []} onChange={(transforms) => updateSpec((current) => ({ ...current, transforms, sqlOverride: undefined }))} />
@@ -289,9 +299,9 @@ export function MappingDesignerPage() {
           </Tabs>
       </Stack>
 
-      <AssetModal opened={assetModal} onClose={() => setAssetModal(false)} file={assetFile} setFile={setAssetFile} name={assetName} setName={setAssetName} format={assetFormat} setFormat={setAssetFormat} loading={uploadMutation.isPending} onUpload={() => uploadMutation.mutate()} />
-      <VersionsModal mappingId={mappingId} opened={versionsOpened} onClose={() => setVersionsOpened(false)} onRestored={(mapping) => { openMapping(mapping); void queryClient.invalidateQueries({ queryKey: keys.mappings.all }); }} />
-      <Modal opened={deleteOpened} onClose={() => setDeleteOpened(false)} title="Delete mapping"><Stack><Text size="sm">Delete <b>{name}</b>? Saved execution and audit evidence is retained, but this definition will no longer be available for new runs.</Text><Group justify="flex-end"><Button variant="default" onClick={() => setDeleteOpened(false)}>Keep mapping</Button><Button color="red" loading={deleteMutation.isPending} onClick={() => deleteMutation.mutate()}>Delete mapping</Button></Group></Stack></Modal>
+      {canManage ? <AssetModal opened={assetModal} onClose={() => setAssetModal(false)} file={assetFile} setFile={setAssetFile} name={assetName} setName={setAssetName} format={assetFormat} setFormat={setAssetFormat} loading={uploadMutation.isPending} onUpload={() => uploadMutation.mutate()} /> : null}
+      <VersionsModal mappingId={mappingId} opened={versionsOpened} onClose={() => setVersionsOpened(false)} canRestore={canManage} onRestored={(mapping) => { openMapping(mapping); void queryClient.invalidateQueries({ queryKey: keys.mappings.all }); }} />
+      {canManage ? <Modal opened={deleteOpened} onClose={() => setDeleteOpened(false)} title="Delete mapping"><Stack><Text size="sm">Delete <b>{name}</b>? Saved execution and audit evidence is retained, but this definition will no longer be available for new runs.</Text><Group justify="flex-end"><Button variant="default" onClick={() => setDeleteOpened(false)}>Keep mapping</Button><Button color="red" loading={deleteMutation.isPending} onClick={() => deleteMutation.mutate()}>Delete mapping</Button></Group></Stack></Modal> : null}
       <Drawer opened={libraryOpened} onClose={() => setLibraryOpened(false)} position="left" size="md" title="Mapping library">
         <Stack gap="sm">
           <Group justify="space-between"><Text size="sm" c="dimmed">Open a versioned mapping or start a clean design.</Text><Badge variant="light">{mappings.length}</Badge></Group>
@@ -309,7 +319,7 @@ export function MappingDesignerPage() {
   );
 }
 
-function SourceTargetPanel({ spec, dataSources, targets, assets, onChange, onUpload }: { spec: MappingSpec; dataSources: DataSource[]; targets: DataSource[]; assets: MappingAsset[]; onChange: (next: MappingSpec | ((current: MappingSpec) => MappingSpec)) => void; onUpload: () => void }) {
+function SourceTargetPanel({ spec, dataSources, targets, assets, onChange, onUpload }: { spec: MappingSpec; dataSources: DataSource[]; targets: DataSource[]; assets: MappingAsset[]; onChange: (next: MappingSpec | ((current: MappingSpec) => MappingSpec)) => void; onUpload: (() => void) | null }) {
   const patchSource = (id: string, patch: Partial<MappingSource>) => onChange((current) => ({ ...current, sources: current.sources.map((source) => source.id === id ? { ...source, ...patch } : source) }));
   return <Paper className="mapx-panel" p="md">
     <Group justify="space-between"><div><Text fw={800}>Source to target flow</Text><Text size="sm" c="dimmed">Database and encrypted file sources share one column-mapping model.</Text></div><Button size="xs" variant="light" leftSection={<IconPlus size={15} />} onClick={() => onChange((current) => ({ ...current, sources: [...current.sources, { id: crypto.randomUUID(), type: 'DATABASE', alias: `source_${current.sources.length + 1}`, dataSourceId: null, schema: '', table: '' }] }))}>Add source</Button></Group>
@@ -327,17 +337,17 @@ function SourceTargetPanel({ spec, dataSources, targets, assets, onChange, onUpl
   </Paper>;
 }
 
-function SourceRow({ source, index, dataSources, assets, patch, remove, onUpload }: { source: MappingSource; index: number; dataSources: DataSource[]; assets: MappingAsset[]; patch: (patch: Partial<MappingSource>) => void; remove: () => void; onUpload: () => void }) {
+function SourceRow({ source, index, dataSources, assets, patch, remove, onUpload }: { source: MappingSource; index: number; dataSources: DataSource[]; assets: MappingAsset[]; patch: (patch: Partial<MappingSource>) => void; remove: () => void; onUpload: (() => void) | null }) {
   const schemas = useQuery({ queryKey: keys.dataSources.schemas(source.dataSourceId), queryFn: () => apiFetch<Array<{ schema?: string }>>(`/api/datasources/${source.dataSourceId}/schemas`), enabled: source.type === 'DATABASE' && !!source.dataSourceId });
   const tables = useQuery({ queryKey: keys.dataSources.tables(source.dataSourceId, source.schema), queryFn: () => apiFetch<Array<{ name?: string; table?: string }>>(`/api/datasources/${source.dataSourceId}/tables?schema=${encodeURIComponent(source.schema || '')}`), enabled: source.type === 'DATABASE' && !!source.dataSourceId });
-  return <div className="mapx-source-row"><Group justify="space-between"><Group gap="xs"><ThemeIcon variant="light" size="sm">{source.type === 'FILE' ? <IconFile size={14} /> : <IconDatabase size={14} />}</ThemeIcon><Text fw={750}>Source {index + 1}</Text></Group>{index > 0 ? <ActionIcon color="red" variant="subtle" onClick={remove}><IconTrash size={15} /></ActionIcon> : null}</Group><SimpleGrid cols={{ base: 1, sm: 2, xl: source.type === 'FILE' ? 4 : 5 }} mt="sm" spacing="sm"><SegmentedControl data={['DATABASE', 'FILE']} value={source.type} onChange={(value) => patch({ type: value as MappingSource['type'], dataSourceId: null, assetId: null, schema: '', table: '' })} /><TextInput label="Alias" value={source.alias} onChange={(event) => patch({ alias: event.currentTarget?.value || '' })} spellCheck={false} />{source.type === 'DATABASE' ? <><Select label="Connection" searchable data={dataSources.map((item) => ({ value: String(item.id), label: `${item.name} (${item.kind})` }))} value={source.dataSourceId ? String(source.dataSourceId) : null} onChange={(value) => patch({ dataSourceId: value ? Number(value) : null, schema: '', table: '' })} /><Select label="Schema" searchable data={(schemas.data || []).map((item) => item.schema || '').filter(Boolean)} value={source.schema || null} onChange={(value) => patch({ schema: value || '', table: '' })} /><Select label="Table" searchable data={(tables.data || []).map((item) => item.name || item.table || '').filter(Boolean)} value={source.table || null} onChange={(value) => patch({ table: value || '' })} /><TextInput label="Optional filter" value={source.filter || ''} onChange={(event) => patch({ filter: event.currentTarget?.value || '' })} placeholder="status = 'ACTIVE'" /></> : <><Select label="Managed file" searchable data={assets.map((asset) => ({ value: String(asset.id), label: `${asset.name} (${asset.format})` }))} value={source.assetId ? String(source.assetId) : null} onChange={(value) => patch({ assetId: value ? Number(value) : null })} /><Button mt={24} variant="default" leftSection={<IconUpload size={15} />} onClick={onUpload}>Upload file</Button></>}</SimpleGrid></div>;
+  return <div className="mapx-source-row"><Group justify="space-between"><Group gap="xs"><ThemeIcon variant="light" size="sm">{source.type === 'FILE' ? <IconFile size={14} /> : <IconDatabase size={14} />}</ThemeIcon><Text fw={750}>Source {index + 1}</Text></Group>{index > 0 ? <ActionIcon color="red" variant="subtle" onClick={remove}><IconTrash size={15} /></ActionIcon> : null}</Group><SimpleGrid cols={{ base: 1, sm: 2, xl: source.type === 'FILE' ? 4 : 5 }} mt="sm" spacing="sm"><SegmentedControl data={['DATABASE', 'FILE']} value={source.type} onChange={(value) => patch({ type: value as MappingSource['type'], dataSourceId: null, assetId: null, schema: '', table: '' })} /><TextInput label="Alias" value={source.alias} onChange={(event) => patch({ alias: event.currentTarget?.value || '' })} spellCheck={false} />{source.type === 'DATABASE' ? <><Select label="Connection" searchable data={dataSources.map((item) => ({ value: String(item.id), label: `${item.name} (${item.kind})` }))} value={source.dataSourceId ? String(source.dataSourceId) : null} onChange={(value) => patch({ dataSourceId: value ? Number(value) : null, schema: '', table: '' })} /><Select label="Schema" searchable data={(schemas.data || []).map((item) => item.schema || '').filter(Boolean)} value={source.schema || null} onChange={(value) => patch({ schema: value || '', table: '' })} /><Select label="Table" searchable data={(tables.data || []).map((item) => item.name || item.table || '').filter(Boolean)} value={source.table || null} onChange={(value) => patch({ table: value || '' })} /><TextInput label="Optional filter" value={source.filter || ''} onChange={(event) => patch({ filter: event.currentTarget?.value || '' })} placeholder="status = 'ACTIVE'" /></> : <><Select label="Managed file" searchable data={assets.map((asset) => ({ value: String(asset.id), label: `${asset.name} (${asset.format})` }))} value={source.assetId ? String(source.assetId) : null} onChange={(value) => patch({ assetId: value ? Number(value) : null })} />{onUpload ? <Button mt={24} variant="default" leftSection={<IconUpload size={15} />} onClick={onUpload}>Upload file</Button> : null}</>}</SimpleGrid></div>;
 }
 
 function PreviewTable({ preview }: { preview: Preview }) { return <div className="mapx-preview"><Group justify="space-between" my="sm"><Text fw={750}>Preview result</Text><Badge variant="light">{preview.rowCount}{preview.truncated ? '+' : ''} rows</Badge></Group><ScrollArea><Table striped withTableBorder><Table.Thead><Table.Tr>{preview.columns.map((column) => <Table.Th key={column}>{column}</Table.Th>)}</Table.Tr></Table.Thead><Table.Tbody>{preview.rows.slice(0, 100).map((row, index) => <Table.Tr key={index}>{preview.columns.map((column) => <Table.Td key={column}>{display(row[column])}</Table.Td>)}</Table.Tr>)}</Table.Tbody></Table></ScrollArea></div>; }
 
 function AssetModal({ opened, onClose, file, setFile, name, setName, format, setFormat, loading, onUpload }: { opened: boolean; onClose: () => void; file: File | null; setFile: (file: File | null) => void; name: string; setName: (value: string) => void; format: string; setFormat: (value: string) => void; loading: boolean; onUpload: () => void }) { return <Modal opened={opened} onClose={onClose} title="Add managed mapping file" size="lg"><Stack><Text size="sm" c="dimmed">The uploaded file is encrypted with AES-GCM, profiled for columns, and referenced by immutable SHA-256 digest.</Text><FileInput label="CSV, TSV, JSON, JSONL, or XML" value={file} onChange={setFile} accept=".csv,.tsv,.json,.jsonl,.ndjson,.xml" leftSection={<IconFile size={15} />} /><TextInput label="Asset name" value={name} onChange={(event) => setName(event.currentTarget?.value || '')} placeholder={file?.name || 'Customer extract'} /><Select label="Format" value={format} data={['AUTO', 'CSV', 'TSV', 'JSON', 'JSONL', 'XML']} onChange={(value) => setFormat(value || 'AUTO')} /><Group justify="flex-end"><Button variant="default" onClick={onClose}>Cancel</Button><Button loading={loading} disabled={!file} onClick={onUpload}>Encrypt and profile</Button></Group></Stack></Modal>; }
 
-function VersionsModal({ mappingId, opened, onClose, onRestored }: { mappingId: number | null; opened: boolean; onClose: () => void; onRestored: (mapping: MappingEntity) => void }) { const versions = useQuery({ queryKey: keys.mappings.versions(mappingId), queryFn: () => apiFetch<Array<{ id: number; versionNo: number; specHash: string; createdBy: string; createdAt: string }>>(`/api/mappings/${mappingId}/versions`), enabled: opened && !!mappingId }); return <Modal opened={opened} onClose={onClose} title="Immutable mapping versions" size="lg"><Stack>{(versions.data || []).map((version) => <Paper key={version.id} p="sm" withBorder><Group justify="space-between"><div><Text fw={750}>Version {version.versionNo}</Text><Text size="xs" c="dimmed">{new Date(version.createdAt).toLocaleString()} by {version.createdBy}</Text><Text size="xs" className="mapx-hash">{version.specHash}</Text></div><Button size="xs" variant="default" onClick={async () => { if (!mappingId) return; const restored = await apiPost<MappingEntity>(`/api/mappings/${mappingId}/versions/${version.id}/restore`, {}); onRestored(restored); onClose(); }}>Restore as new version</Button></Group></Paper>)}{!versions.data?.length ? <Text c="dimmed" ta="center" py="lg">No versions found.</Text> : null}</Stack></Modal>; }
+function VersionsModal({ mappingId, opened, onClose, canRestore, onRestored }: { mappingId: number | null; opened: boolean; onClose: () => void; canRestore: boolean; onRestored: (mapping: MappingEntity) => void }) { const versions = useQuery({ queryKey: keys.mappings.versions(mappingId), queryFn: () => apiFetch<Array<{ id: number; versionNo: number; specHash: string; createdBy: string; createdAt: string }>>(`/api/mappings/${mappingId}/versions`), enabled: opened && !!mappingId }); return <Modal opened={opened} onClose={onClose} title="Immutable mapping versions" size="lg"><Stack>{(versions.data || []).map((version) => <Paper key={version.id} p="sm" withBorder><Group justify="space-between"><div><Text fw={750}>Version {version.versionNo}</Text><Text size="xs" c="dimmed">{new Date(version.createdAt).toLocaleString()} by {version.createdBy}</Text><Text size="xs" className="mapx-hash">{version.specHash}</Text></div>{canRestore ? <Button size="xs" variant="default" onClick={async () => { if (!mappingId) return; const restored = await apiPost<MappingEntity>(`/api/mappings/${mappingId}/versions/${version.id}/restore`, {}); onRestored(restored); onClose(); }}>Restore as new version</Button> : null}</Group></Paper>)}{!versions.data?.length ? <Text c="dimmed" ta="center" py="lg">No versions found.</Text> : null}</Stack></Modal>; }
 
 async function fetchSourceColumnMeta(source: MappingSource, assets: MappingAsset[]) { if (source.type === 'FILE') return columnMetaForSource(source, assets); if (!source.dataSourceId || !source.table) return []; return fetchDbColumnMeta(source.dataSourceId, source.schema || '', source.table); }
 async function fetchDbColumnMeta(dataSourceId: number, schema: string, table: string) { const rows = await apiFetch<Array<Record<string, unknown>>>(`/api/datasources/${dataSourceId}/tables/${encodeURIComponent(table)}/columns?schema=${encodeURIComponent(schema)}`); return rows.map((row) => ({ name: String(row.name || row.column || row.columnName || ''), type: String(row.type || row.dataType || row.typeName || '') })).filter((column) => column.name); }

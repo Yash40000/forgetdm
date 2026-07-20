@@ -13,6 +13,7 @@ import { DataTable } from '@/components/data-table';
 import { apiFetch, apiPost, apiPut } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { DataSetDefinition, SavedDataScopeJob } from '@/lib/types';
+import { usePermissions } from '@/lib/use-permissions';
 
 /**
  * Full saved-job lifecycle: run now, load into the designer, rename, schedule
@@ -29,6 +30,8 @@ export function SavedJobsPanel({
 }) {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const [renameJob, setRenameJob] = useState<SavedDataScopeJob | null>(null);
   const [renameName, setRenameName] = useState('');
   const [renameDescription, setRenameDescription] = useState('');
@@ -42,7 +45,7 @@ export function SavedJobsPanel({
   const refresh = () => queryClient.invalidateQueries({ queryKey: keys.datascope.savedJobs });
 
   const runJob = async (job: SavedDataScopeJob) => {
-    if (busyAction) return;
+    if (!canManage || busyAction) return;
     setBusyAction(`run:${job.id}`);
     try {
       const result = await apiPost<{ status?: string; jobId?: number; id?: number }>(
@@ -78,13 +81,14 @@ export function SavedJobsPanel({
   };
 
   const openRename = (job: SavedDataScopeJob) => {
+    if (!canManage) return;
     setRenameJob(job);
     setRenameName(job.name);
     setRenameDescription(job.description || '');
   };
 
   const saveRename = async () => {
-    if (!renameJob || busyAction) return;
+    if (!canManage || !renameJob || busyAction) return;
     setBusyAction('rename');
     try {
       const detail = await apiFetch<SavedDataScopeJob>(`/api/datascope/saved-jobs/${encodeURIComponent(renameJob.id)}`);
@@ -104,6 +108,7 @@ export function SavedJobsPanel({
   };
 
   const openSchedule = (job: SavedDataScopeJob) => {
+    if (!canManage) return;
     setScheduleJob(job);
     setScheduleEnabled(!!job.scheduleEnabled);
     setScheduleCron(job.scheduleCron || '');
@@ -112,7 +117,7 @@ export function SavedJobsPanel({
   };
 
   const previewSchedule = async () => {
-    if (busyAction) return;
+    if (!canManage || busyAction) return;
     setBusyAction('preview-schedule');
     try {
       const result = await apiPost<Record<string, unknown>>('/api/datascope/saved-jobs/schedule/preview', {
@@ -132,7 +137,7 @@ export function SavedJobsPanel({
   };
 
   const saveSchedule = async () => {
-    if (!scheduleJob || busyAction) return;
+    if (!canManage || !scheduleJob || busyAction) return;
     setBusyAction('save-schedule');
     try {
       await apiPut(`/api/datascope/saved-jobs/${encodeURIComponent(scheduleJob.id)}/schedule`, {
@@ -155,6 +160,7 @@ export function SavedJobsPanel({
   };
 
   const deleteJob = async (job: SavedDataScopeJob) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Delete saved job',
       message: `Delete "${job.name}"? Its schedule (if any) stops too. Past runs in the Job Monitor are kept.`,
@@ -176,6 +182,7 @@ export function SavedJobsPanel({
   };
 
   const exportRunner = async (job: SavedDataScopeJob, kind: 'ps1' | 'sh') => {
+    if (!canManage) return;
     const script = kind === 'ps1' ? powershellRunner(job) : bashRunner(job);
     const blob = new Blob([script], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -187,7 +194,7 @@ export function SavedJobsPanel({
   };
 
   const toggleSelfService = async (job: SavedDataScopeJob) => {
-    if (busyAction) return;
+    if (!canManage || busyAction) return;
     setBusyAction(`publish:${job.id}`);
     try {
       await apiPut(`/api/self-service/templates/${encodeURIComponent(job.id)}`, {
@@ -271,7 +278,7 @@ export function SavedJobsPanel({
         enableSorting: false,
         cell: ({ row }) => (
           <Group gap={6} wrap="nowrap">
-            <Button size="xs" leftSection={<IconPlayerPlay size={13} />} loading={busyAction === `run:${row.original.id}`} disabled={!!busyAction && busyAction !== `run:${row.original.id}`} onClick={() => void runJob(row.original)}>
+            <Button size="xs" leftSection={<IconPlayerPlay size={13} />} loading={busyAction === `run:${row.original.id}`} disabled={!canManage || (!!busyAction && busyAction !== `run:${row.original.id}`)} onClick={() => void runJob(row.original)}>
               Run
             </Button>
             {onLoad ? (
@@ -279,10 +286,10 @@ export function SavedJobsPanel({
                 Load
               </Button>
             ) : null}
-            <Button size="xs" variant="light" onClick={() => openRename(row.original)}>
+            <Button size="xs" variant="light" disabled={!canManage} onClick={() => openRename(row.original)}>
               Rename
             </Button>
-            <Button size="xs" variant="light" onClick={() => openSchedule(row.original)}>
+            <Button size="xs" variant="light" disabled={!canManage} onClick={() => openSchedule(row.original)}>
               Schedule
             </Button>
             <Button
@@ -290,6 +297,7 @@ export function SavedJobsPanel({
               variant={row.original.selfServiceEnabled ? 'filled' : 'light'}
               color={row.original.selfServiceEnabled ? 'green' : 'blue'}
               loading={busyAction === `publish:${row.original.id}`}
+              disabled={!canManage}
               onClick={() => void toggleSelfService(row.original)}
             >
               {row.original.selfServiceEnabled ? 'Published' : 'Self-service'}
@@ -299,6 +307,7 @@ export function SavedJobsPanel({
               variant="light"
               leftSection={<IconDownload size={13} />}
               title="PowerShell runner for Windows Task Scheduler"
+              disabled={!canManage}
               onClick={() => void exportRunner(row.original, 'ps1')}
             >
               PS1
@@ -308,11 +317,12 @@ export function SavedJobsPanel({
               variant="light"
               leftSection={<IconDownload size={13} />}
               title="Bash runner for cron"
+              disabled={!canManage}
               onClick={() => void exportRunner(row.original, 'sh')}
             >
               SH
             </Button>
-            <Button size="xs" variant="subtle" color="red" loading={busyAction === `delete:${row.original.id}`} disabled={!!busyAction && busyAction !== `delete:${row.original.id}`} onClick={() => void deleteJob(row.original)}>
+            <Button size="xs" variant="subtle" color="red" loading={busyAction === `delete:${row.original.id}`} disabled={!canManage || (!!busyAction && busyAction !== `delete:${row.original.id}`)} onClick={() => void deleteJob(row.original)}>
               Delete
             </Button>
           </Group>
@@ -320,7 +330,7 @@ export function SavedJobsPanel({
       }
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onLoad, busyAction]
+    [onLoad, busyAction, canManage]
   );
 
   if (!jobs.length) {
@@ -342,7 +352,7 @@ export function SavedJobsPanel({
         initialSorting={[{ id: 'name', desc: false }]}
       />
 
-      <Modal opened={!!renameJob} onClose={() => !busyAction && setRenameJob(null)} title="Rename saved job">
+      <Modal opened={canManage && !!renameJob} onClose={() => !busyAction && setRenameJob(null)} title="Rename saved job">
         <Stack gap="sm">
           <NameInput label="Name" value={renameName} onChange={(value) => setRenameName(value)} />
           <TextInput label="Description" placeholder="optional" value={renameDescription} onChange={(e) => setRenameDescription(e.currentTarget.value)} />
@@ -350,14 +360,14 @@ export function SavedJobsPanel({
             <Button variant="light" onClick={() => setRenameJob(null)}>
               Cancel
             </Button>
-            <Button loading={busyAction === 'rename'} disabled={!renameName.trim()} onClick={() => void saveRename()}>
+            <Button loading={busyAction === 'rename'} disabled={!canManage || !renameName.trim()} onClick={() => void saveRename()}>
               Save
             </Button>
           </Group>
         </Stack>
       </Modal>
 
-      <Modal opened={!!scheduleJob} onClose={() => setScheduleJob(null)} title={`Schedule — ${scheduleJob?.name || ''}`}>
+      <Modal opened={canManage && !!scheduleJob} onClose={() => setScheduleJob(null)} title={`Schedule — ${scheduleJob?.name || ''}`}>
         <Stack gap="sm">
           <Switch label="Run on a schedule" checked={scheduleEnabled} onChange={(e) => setScheduleEnabled(e.currentTarget.checked)} />
           <TextInput
@@ -374,7 +384,7 @@ export function SavedJobsPanel({
             onChange={(e) => setScheduleZone(e.currentTarget.value)}
           />
           <Group>
-              <Button variant="light" loading={busyAction === 'preview-schedule'} disabled={!scheduleCron.trim()} onClick={() => void previewSchedule()}>
+              <Button variant="light" loading={busyAction === 'preview-schedule'} disabled={!canManage || !scheduleCron.trim()} onClick={() => void previewSchedule()}>
               Preview next runs
             </Button>
           </Group>
@@ -391,7 +401,7 @@ export function SavedJobsPanel({
             <Button variant="light" onClick={() => setScheduleJob(null)}>
               Cancel
             </Button>
-            <Button loading={busyAction === 'save-schedule'} disabled={scheduleEnabled && !scheduleCron.trim()} onClick={() => void saveSchedule()}>
+            <Button loading={busyAction === 'save-schedule'} disabled={!canManage || (scheduleEnabled && !scheduleCron.trim())} onClick={() => void saveSchedule()}>
               Save schedule
             </Button>
           </Group>

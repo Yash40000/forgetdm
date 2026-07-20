@@ -26,6 +26,7 @@ import { useMutation } from '@tanstack/react-query';
 import { apiFormPost, apiPost } from '@/lib/api';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import type { MaskingScript } from '@/lib/types';
+import { usePermissions } from '@/lib/use-permissions';
 import { useMaskingFunctions, useMaskingScripts } from '@/features/masking/hooks';
 import {
   EmptyState,
@@ -54,6 +55,8 @@ import {
 } from './utils';
 
 export function CopybookStudioPage() {
+  const { can } = usePermissions();
+  const canManage = can('mainframe.manage');
   const functionsQuery = useMaskingFunctions();
   const scriptsQuery = useMaskingScripts();
   const functions = functionsQuery.data || [];
@@ -76,7 +79,10 @@ export function CopybookStudioPage() {
   const selectedMaskCount = Object.values(maskDrafts).filter((draft) => draft.enabled).length;
 
   const parseMutation = useMutation({
-    mutationFn: () => apiPost<CopybookParseResult>('/api/copybook/parse', { copybook, codePage }),
+    mutationFn: () => {
+      if (!canManage) throw new Error('Mainframe management permission is required');
+      return apiPost<CopybookParseResult>('/api/copybook/parse', { copybook, codePage });
+    },
     onSuccess: (result) => {
       setParseResult(result);
       notifications.show({ color: 'green', title: 'Copybook parsed', message: `${result.record || 'Record'} resolved to ${result.recordLength || 0} bytes.` });
@@ -85,7 +91,10 @@ export function CopybookStudioPage() {
   });
 
   const decodeMutation = useMutation({
-    mutationFn: () => apiPost<CopybookDecodeResult>('/api/copybook/decode', { copybook, codePage, hex }),
+    mutationFn: () => {
+      if (!canManage) throw new Error('Mainframe management permission is required');
+      return apiPost<CopybookDecodeResult>('/api/copybook/decode', { copybook, codePage, hex });
+    },
     onSuccess: (result) => {
       setDecodeResult(result);
       setCurrentHex(hex);
@@ -97,7 +106,10 @@ export function CopybookStudioPage() {
   });
 
   const fileDecodeMutation = useMutation({
-    mutationFn: () => decodeFile(copybook, codePage, file, maxRecords),
+    mutationFn: () => {
+      if (!canManage) throw new Error('Mainframe management permission is required');
+      return decodeFile(copybook, codePage, file, maxRecords);
+    },
     onSuccess: (result) => {
       setFileResult(result);
       const first = result.records?.[0] || null;
@@ -109,13 +121,15 @@ export function CopybookStudioPage() {
   });
 
   const maskMutation = useMutation({
-    mutationFn: () =>
-      apiPost<CopybookMaskPreview>('/api/copybook/mask-preview', {
+    mutationFn: () => {
+      if (!canManage) throw new Error('Mainframe management permission is required');
+      return apiPost<CopybookMaskPreview>('/api/copybook/mask-preview', {
         copybook,
         codePage,
         hex: currentHex,
         masks: maskPayloadFromDrafts(maskDrafts, true)
-      }),
+      });
+    },
     onSuccess: (result) => {
       setMaskPreview(result);
       notifications.show({ color: 'green', title: 'Mask preview complete', message: `${result.bytesChanged || 0} byte(s) changed.` });
@@ -249,7 +263,7 @@ export function CopybookStudioPage() {
             <Button variant="default" leftSection={<IconRefresh size={16} />} onClick={loadSample}>
               Load sample
             </Button>
-            <Button leftSection={<IconFileSearch size={16} />} loading={parseMutation.isPending} onClick={() => parseMutation.mutate()}>
+            <Button leftSection={<IconFileSearch size={16} />} loading={parseMutation.isPending} disabled={!canManage} onClick={() => parseMutation.mutate()}>
               Parse copybook
             </Button>
           </Group>
@@ -291,7 +305,7 @@ export function CopybookStudioPage() {
                 onChange={(event) => setHex(safeInputValue(event))}
                 placeholder="F1F2F3..."
               />
-              <Button leftSection={<IconPlayerPlay size={16} />} loading={decodeMutation.isPending} onClick={() => decodeMutation.mutate()}>
+              <Button leftSection={<IconPlayerPlay size={16} />} loading={decodeMutation.isPending} disabled={!canManage} onClick={() => decodeMutation.mutate()}>
                 Decode record
               </Button>
             </Stack>
@@ -300,7 +314,7 @@ export function CopybookStudioPage() {
             <SimpleGrid cols={{ base: 1, md: 3 }} spacing="sm" className="mf-file-decode-grid">
               <FileInput label="Binary EBCDIC file" value={file} onChange={setFile} placeholder="Choose .dat or unload file" />
               <TextInput {...technicalInputProps} label="Max records to show" value={maxRecords} onChange={(event) => setMaxRecords(safeInputValue(event))} />
-              <Button mt={24} leftSection={<IconUpload size={16} />} loading={fileDecodeMutation.isPending} onClick={() => fileDecodeMutation.mutate()}>
+              <Button mt={24} leftSection={<IconUpload size={16} />} loading={fileDecodeMutation.isPending} disabled={!canManage} onClick={() => fileDecodeMutation.mutate()}>
                 Decode file
               </Button>
             </SimpleGrid>
@@ -355,7 +369,7 @@ export function CopybookStudioPage() {
                 size="xs"
                 leftSection={<IconShieldCheck size={15} />}
                 loading={maskMutation.isPending}
-                disabled={!currentHex || !selectedMaskCount}
+                disabled={!canManage || !currentHex || !selectedMaskCount}
                 onClick={() => maskMutation.mutate()}
               >
                 Preview

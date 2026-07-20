@@ -16,6 +16,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { apiFetch, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 
 type Product = {
   id: string; productType: string; artifactId: string; artifactVersion?: number | null; label: string;
@@ -44,12 +45,15 @@ const DEFAULT_ENVIRONMENTS = ['DEV', 'QA', 'UAT', 'PERFORMANCE', 'TRAINING'];
 
 export function SelfServicePage() {
   const queryClient = useQueryClient();
+  const { can, ready } = usePermissions();
+  const canRead = can('provision.read');
+  const canRequest = can('provision.run');
+  const canApprove = can('provision.approve');
+  const canManage = can('datascope.manage');
   const meQuery = useQuery({ queryKey: keys.auth.me, queryFn: () => apiFetch<AuthMe>('/api/auth/me') });
-  const catalogQuery = useQuery({ queryKey: keys.selfService.enterpriseCatalog, queryFn: () => apiFetch<Product[]>('/api/self-service/v2/catalog') });
-  const ordersQuery = useQuery({ queryKey: keys.selfService.enterpriseOrders, queryFn: () => apiFetch<Order[]>('/api/self-service/v2/orders'), refetchInterval: 8000 });
-  const metricsQuery = useQuery({ queryKey: keys.selfService.enterpriseMetrics, queryFn: () => apiFetch<Metrics>('/api/self-service/v2/metrics'), refetchInterval: 15000 });
-  const roles = meQuery.data?.user?.roles || [];
-  const canManage = roles.includes('ADMIN') || roles.includes('TDM_ARCHITECT');
+  const catalogQuery = useQuery({ queryKey: keys.selfService.enterpriseCatalog, queryFn: () => apiFetch<Product[]>('/api/self-service/v2/catalog'), enabled: canRead });
+  const ordersQuery = useQuery({ queryKey: keys.selfService.enterpriseOrders, queryFn: () => apiFetch<Order[]>('/api/self-service/v2/orders'), enabled: canRead, refetchInterval: 8000 });
+  const metricsQuery = useQuery({ queryKey: keys.selfService.enterpriseMetrics, queryFn: () => apiFetch<Metrics>('/api/self-service/v2/metrics'), enabled: canRead, refetchInterval: 15000 });
   const candidatesQuery = useQuery({ queryKey: keys.selfService.enterpriseCandidates, queryFn: () => apiFetch<Candidate[]>('/api/self-service/v2/candidates'), enabled: canManage });
   const productsQuery = useQuery({ queryKey: keys.selfService.enterpriseProducts, queryFn: () => apiFetch<Product[]>('/api/self-service/v2/products'), enabled: canManage });
   const [search, setSearch] = useState('');
@@ -64,11 +68,11 @@ export function SelfServicePage() {
   const [publishOpened, setPublishOpened] = useState(false);
   const [publishDraft, setPublishDraft] = useState(() => emptyPublish());
 
-  const catalog = useMemo(() => (catalogQuery.data || []).filter((product) => {
+  const catalog = useMemo(() => (canRead ? catalogQuery.data || [] : []).filter((product) => {
     const q = search.trim().toLowerCase();
     return (!typeFilter || product.productType === typeFilter) && (!q || `${product.label} ${product.description || ''} ${(product.tags || []).join(' ')}`.toLowerCase().includes(q));
-  }), [catalogQuery.data, search, typeFilter]);
-  const orders = ordersQuery.data || [];
+  }), [canRead, catalogQuery.data, search, typeFilter]);
+  const orders = canRead ? ordersQuery.data || [] : [];
   const pending = orders.filter((order) => order.status === 'PENDING_APPROVAL');
   const myUsername = meQuery.data?.user?.username || '';
   const productTypes = [...new Set((catalogQuery.data || []).map((product) => product.productType))];
@@ -83,13 +87,14 @@ export function SelfServicePage() {
   };
 
   const openRequest = (product: Product) => {
+    if (!canRequest) return;
     const parameters = Object.fromEntries(fieldsFor(product).map((field) => [field.key, field.type === 'BOOLEAN' ? false : '']));
     setRequestDraft({ ...emptyRequest(), environment: product.allowedEnvironments?.[0] || 'QA', parameters });
     setRequestProduct(product);
   };
 
   const submitRequest = async () => {
-    if (!requestProduct || !requestDraft.purpose.trim()) return;
+    if (!canRequest || !requestProduct || !requestDraft.purpose.trim()) return;
     setBusy('request');
     try {
       await apiPost('/api/self-service/v2/orders', {
@@ -108,6 +113,7 @@ export function SelfServicePage() {
 
   const decide = async () => {
     if (!action?.note.trim()) return;
+    if (action.kind === 'cancel' ? !canRequest : !canApprove) return;
     setBusy(`action:${action.order.id}`);
     try {
       const path = action.kind === 'cancel' ? 'cancel' : `decision/${action.kind}`;
@@ -119,6 +125,7 @@ export function SelfServicePage() {
   };
 
   const fulfill = async (order: Order) => {
+    if (!canRequest) return;
     setBusy(`fulfill:${order.id}`);
     try {
       const result = await apiPost<Order>(`/api/self-service/v2/orders/${order.id}/fulfill`, {});
@@ -129,22 +136,25 @@ export function SelfServicePage() {
   };
 
   const openDetail = async (order: Order) => {
+    if (!canRead) return;
     try { setDetail(await apiFetch<Order>(`/api/self-service/v2/orders/${order.id}`)); }
     catch (error) { notifyError('Request details could not be loaded', error); }
   };
 
   const addComment = async () => {
-    if (!detail || !comment.trim()) return;
+    if (!canRequest || !detail || !comment.trim()) return;
     try { const next = await apiPost<Order>(`/api/self-service/v2/orders/${detail.id}/comments`, { message: comment.trim() }); setDetail(next); setComment(''); await refresh(); }
     catch (error) { notifyError('Comment could not be added', error); }
   };
 
   const openRunner = async (order: Order) => {
+    if (!canRead) return;
     try { setRunner(await apiFetch<Runner>(`/api/self-service/v2/orders/${order.id}/runner`)); }
     catch (error) { notifyError('Runner instructions could not be generated', error); }
   };
 
   const publish = async () => {
+    if (!canManage) return;
     const candidate = (candidatesQuery.data || []).find((item) => candidateKey(item) === publishDraft.candidateKey);
     if (!candidate || !publishDraft.label.trim()) return;
     setBusy('publish');
@@ -163,6 +173,15 @@ export function SelfServicePage() {
     finally { setBusy(null); }
   };
 
+  const toggleProduct = async (product: Product, enabled: boolean) => {
+    if (!canManage) return;
+    await apiPost(`/api/self-service/v2/products/${product.id}/${enabled ? 'enable' : 'disable'}`, {});
+    await refresh();
+  };
+
+  if (!ready) return <main className="forge-page selfx-page"><Paper p="lg"><Text c="dimmed">Checking Self-Service access...</Text></Paper></main>;
+  if (!canRead && !canManage) return <main className="forge-page selfx-page"><Alert color="yellow" title="Self-Service is not available">Your role does not include access to governed data products.</Alert></main>;
+
   return (
     <main className="forge-page selfx-page">
       <Stack gap="lg">
@@ -171,33 +190,33 @@ export function SelfServicePage() {
           {canManage ? <Button leftSection={<IconAdjustments size={16} />} onClick={() => setPublishOpened(true)}>Publish product</Button> : null}
         </Group>
 
-        <MetricsStrip metrics={metricsQuery.data} />
-        <QueryErrorBanner errors={[catalogQuery.error, ordersQuery.error, metricsQuery.error]} onRetry={() => Promise.all([catalogQuery.refetch(), ordersQuery.refetch(), metricsQuery.refetch()])} title="Self-service workspace could not be loaded" />
+        {canRead ? <MetricsStrip metrics={metricsQuery.data} /> : null}
+        {canRead ? <QueryErrorBanner errors={[catalogQuery.error, ordersQuery.error, metricsQuery.error]} onRetry={() => Promise.all([catalogQuery.refetch(), ordersQuery.refetch(), metricsQuery.refetch()])} title="Self-service workspace could not be loaded" /> : null}
 
-        <Tabs defaultValue="catalog" className="selfx-tabs">
+        <Tabs defaultValue={canRead ? 'catalog' : 'manage'} className="selfx-tabs">
           <Tabs.List>
-            <Tabs.Tab value="catalog" leftSection={<IconSearch size={15} />}>Product catalog ({catalogQuery.data?.length || 0})</Tabs.Tab>
-            <Tabs.Tab value="requests" leftSection={<IconActivity size={15} />}>My requests ({orders.filter((order) => order.requestedBy === myUsername).length})</Tabs.Tab>
-            {canManage ? <Tabs.Tab value="approvals" leftSection={<IconShieldCheck size={15} />}>Approvals ({pending.length})</Tabs.Tab> : null}
+            {canRead ? <Tabs.Tab value="catalog" leftSection={<IconSearch size={15} />}>Product catalog ({catalogQuery.data?.length || 0})</Tabs.Tab> : null}
+            {canRead ? <Tabs.Tab value="requests" leftSection={<IconActivity size={15} />}>My requests ({orders.filter((order) => order.requestedBy === myUsername).length})</Tabs.Tab> : null}
+            {canRead && canApprove ? <Tabs.Tab value="approvals" leftSection={<IconShieldCheck size={15} />}>Approvals ({pending.length})</Tabs.Tab> : null}
             {canManage ? <Tabs.Tab value="manage" leftSection={<IconAdjustments size={15} />}>Catalog management</Tabs.Tab> : null}
           </Tabs.List>
 
-          <Tabs.Panel value="catalog" pt="md">
+          {canRead ? <Tabs.Panel value="catalog" pt="md">
             <Group mb="md" align="flex-end"><TextInput label="Search products" placeholder="Customer, cards, regression, reservation..." leftSection={<IconSearch size={15} />} value={search} onChange={(event) => setSearch(event.currentTarget.value)} style={{ flex: 1 }} /><Select label="Product type" clearable value={typeFilter} onChange={setTypeFilter} data={productTypes} w={220} /></Group>
-            {catalogQuery.isLoading ? <Loader size="sm" /> : catalog.length ? <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>{catalog.map((product) => <ProductCard key={product.id} product={product} onRequest={() => openRequest(product)} />)}</SimpleGrid> : <Alert color="blue">No products match this search. Catalog managers can publish approved DataScope, synthetic, mapping, reservation, or virtual-data products.</Alert>}
-          </Tabs.Panel>
+            {catalogQuery.isLoading ? <Loader size="sm" /> : catalog.length ? <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>{catalog.map((product) => <ProductCard key={product.id} product={product} canRequest={canRequest} onRequest={() => openRequest(product)} />)}</SimpleGrid> : <Alert color="blue">No products match this search. Catalog managers can publish approved DataScope, synthetic, mapping, reservation, or virtual-data products.</Alert>}
+          </Tabs.Panel> : null}
 
-          <Tabs.Panel value="requests" pt="md"><OrderList orders={orders.filter((order) => order.requestedBy === myUsername)} username={myUsername} canApprove={false} busy={busy} onAction={setAction} onFulfill={fulfill} onDetail={openDetail} onRunner={openRunner} /></Tabs.Panel>
-          {canManage ? <Tabs.Panel value="approvals" pt="md"><OrderList orders={pending} username={myUsername} canApprove busy={busy} onAction={setAction} onFulfill={fulfill} onDetail={openDetail} onRunner={openRunner} /></Tabs.Panel> : null}
-          {canManage ? <Tabs.Panel value="manage" pt="md"><CatalogManagement products={productsQuery.data || []} onToggle={async (product, enabled) => { await apiPost(`/api/self-service/v2/products/${product.id}/${enabled ? 'enable' : 'disable'}`, {}); await refresh(); }} onPublish={() => setPublishOpened(true)} /></Tabs.Panel> : null}
+          {canRead ? <Tabs.Panel value="requests" pt="md"><OrderList orders={orders.filter((order) => order.requestedBy === myUsername)} username={myUsername} canApprove={false} canRun={canRequest} busy={busy} onAction={setAction} onFulfill={fulfill} onDetail={openDetail} onRunner={openRunner} /></Tabs.Panel> : null}
+          {canRead && canApprove ? <Tabs.Panel value="approvals" pt="md"><OrderList orders={pending} username={myUsername} canApprove canRun={canRequest} busy={busy} onAction={setAction} onFulfill={fulfill} onDetail={openDetail} onRunner={openRunner} /></Tabs.Panel> : null}
+          {canManage ? <Tabs.Panel value="manage" pt="md"><CatalogManagement products={productsQuery.data || []} onToggle={toggleProduct} onPublish={() => setPublishOpened(true)} /></Tabs.Panel> : null}
         </Tabs>
       </Stack>
 
-      <RequestModal product={requestProduct} draft={requestDraft} setDraft={setRequestDraft} busy={busy === 'request'} onClose={() => setRequestProduct(null)} onSubmit={submitRequest} />
-      <ActionModal action={action} setAction={setAction} busy={busy?.startsWith('action:') || false} onSubmit={decide} />
-      <DetailModal order={detail} comment={comment} setComment={setComment} onComment={addComment} onClose={() => setDetail(null)} />
+      <RequestModal product={canRequest ? requestProduct : null} draft={requestDraft} setDraft={setRequestDraft} busy={busy === 'request'} onClose={() => setRequestProduct(null)} onSubmit={submitRequest} />
+      <ActionModal action={action && (action.kind === 'cancel' ? canRequest : canApprove) ? action : null} setAction={setAction} busy={busy?.startsWith('action:') || false} onSubmit={decide} />
+      <DetailModal order={detail} comment={comment} setComment={setComment} canComment={canRequest} onComment={addComment} onClose={() => setDetail(null)} />
       <RunnerModal runner={runner} onClose={() => setRunner(null)} />
-      <PublishModal opened={publishOpened} onClose={() => setPublishOpened(false)} candidates={candidatesQuery.data || []} draft={publishDraft} setDraft={setPublishDraft} busy={busy === 'publish'} onSubmit={publish} />
+      <PublishModal opened={canManage && publishOpened} onClose={() => setPublishOpened(false)} candidates={candidatesQuery.data || []} draft={publishDraft} setDraft={setPublishDraft} busy={busy === 'publish'} onSubmit={publish} />
     </main>
   );
 }
@@ -214,13 +233,13 @@ function MetricsStrip({ metrics }: { metrics?: Metrics }) {
   return <SimpleGrid cols={{ base: 2, lg: 4 }}>{cards.map(([label, value, note]) => <Paper key={String(label)} className="forge-card selfx-metric" p="sm"><Text size="xs" c="dimmed" fw={750}>{label}</Text><Text size="xl" fw={850}>{value}</Text><Text size="xs" c="dimmed">{note}</Text></Paper>)}</SimpleGrid>;
 }
 
-function ProductCard({ product, onRequest }: { product: Product; onRequest: () => void }) {
-  return <Paper className="forge-card selfx-product" p="md"><Stack gap="sm"><Group justify="space-between" align="flex-start"><div className="selfx-product-icon">{productIcon(product.productType)}</div><Badge variant="light" color={typeColor(product.productType)}>{typeLabel(product.productType)}</Badge></Group><div><Text fw={850}>{product.label}</Text><Text size="sm" c="dimmed" lineClamp={3}>{product.description || 'Governed reusable test data product'}</Text></div><Group gap={5}>{(product.tags || []).slice(0, 4).map((tag) => <Badge key={tag} size="xs" variant="outline" color="gray">{tag}</Badge>)}</Group><div className="selfx-product-meta"><span>{product.category || 'General'}</span><span>{product.approvalMode === 'NONE' ? 'Instant' : 'Approval required'}</span></div><Group justify="space-between"><Text size="xs" c="dimmed">{(product.allowedEnvironments || []).join(', ') || 'Published environments'}</Text><Button size="xs" leftSection={<IconSend size={14} />} onClick={onRequest}>Request</Button></Group></Stack></Paper>;
+function ProductCard({ product, canRequest, onRequest }: { product: Product; canRequest: boolean; onRequest: () => void }) {
+  return <Paper className="forge-card selfx-product" p="md"><Stack gap="sm"><Group justify="space-between" align="flex-start"><div className="selfx-product-icon">{productIcon(product.productType)}</div><Badge variant="light" color={typeColor(product.productType)}>{typeLabel(product.productType)}</Badge></Group><div><Text fw={850}>{product.label}</Text><Text size="sm" c="dimmed" lineClamp={3}>{product.description || 'Governed reusable test data product'}</Text></div><Group gap={5}>{(product.tags || []).slice(0, 4).map((tag) => <Badge key={tag} size="xs" variant="outline" color="gray">{tag}</Badge>)}</Group><div className="selfx-product-meta"><span>{product.category || 'General'}</span><span>{product.approvalMode === 'NONE' ? 'Instant' : 'Approval required'}</span></div><Group justify="space-between"><Text size="xs" c="dimmed">{(product.allowedEnvironments || []).join(', ') || 'Published environments'}</Text>{canRequest ? <Button size="xs" leftSection={<IconSend size={14} />} onClick={onRequest}>Request</Button> : null}</Group></Stack></Paper>;
 }
 
-function OrderList({ orders, username, canApprove, busy, onAction, onFulfill, onDetail, onRunner }: { orders: Order[]; username: string; canApprove: boolean; busy: string | null; onAction: (value: { order: Order; kind: 'approve' | 'reject' | 'cancel'; note: string }) => void; onFulfill: (order: Order) => void; onDetail: (order: Order) => void; onRunner: (order: Order) => void }) {
+function OrderList({ orders, username, canApprove, canRun, busy, onAction, onFulfill, onDetail, onRunner }: { orders: Order[]; username: string; canApprove: boolean; canRun: boolean; busy: string | null; onAction: (value: { order: Order; kind: 'approve' | 'reject' | 'cancel'; note: string }) => void; onFulfill: (order: Order) => void; onDetail: (order: Order) => void; onRunner: (order: Order) => void }) {
   if (!orders.length) return <Alert color="blue">No requests in this view.</Alert>;
-  return <Stack gap="sm">{orders.map((order) => <Paper key={order.id} className="forge-card selfx-order" p="md"><Group justify="space-between" align="flex-start" wrap="nowrap"><div className="selfx-order-main"><Group gap="xs"><Text fw={850}>{order.productLabel}</Text><Badge color={statusColor(order.status)} variant="light">{order.status.replaceAll('_', ' ')}</Badge><Badge variant="outline" color="gray">{typeLabel(order.productType)}</Badge></Group><Text size="sm" mt={5}>{order.purpose}</Text><Text size="xs" c="dimmed" mt={5}>{order.requestedBy} · {order.environment || 'Default environment'} · {formatWhen(order.createdAt)}{order.scheduleAt ? ` · scheduled ${formatWhen(order.scheduleAt)}` : ''}</Text>{order.decisionNote ? <Text size="xs" c="dimmed" mt={3}>Decision by {order.decisionBy}: {order.decisionNote}</Text> : null}{order.runRef ? <Text size="xs" fw={750} mt={3}>{order.runType} execution {order.runRef}</Text> : null}</div><Group gap="xs" justify="flex-end">{canApprove && order.status === 'PENDING_APPROVAL' && order.requestedBy !== username ? <><Button size="xs" color="green" leftSection={<IconCheck size={13} />} onClick={() => onAction({ order, kind: 'approve', note: '' })}>Approve</Button><Button size="xs" color="red" variant="light" leftSection={<IconX size={13} />} onClick={() => onAction({ order, kind: 'reject', note: '' })}>Reject</Button></> : null}{order.status === 'APPROVED' && order.requestedBy === username ? <Button size="xs" leftSection={<IconPlayerPlay size={13} />} loading={busy === `fulfill:${order.id}`} onClick={() => void onFulfill(order)}>Launch</Button> : null}{['PENDING_APPROVAL', 'APPROVED'].includes(order.status) && order.requestedBy === username ? <Button size="xs" variant="subtle" color="red" onClick={() => onAction({ order, kind: 'cancel', note: '' })}>Cancel</Button> : null}<Button size="xs" variant="default" onClick={() => void onDetail(order)}>Activity</Button><Button size="xs" variant="subtle" leftSection={<IconCode size={13} />} onClick={() => void onRunner(order)}>API</Button></Group></Group></Paper>)}</Stack>;
+  return <Stack gap="sm">{orders.map((order) => <Paper key={order.id} className="forge-card selfx-order" p="md"><Group justify="space-between" align="flex-start" wrap="nowrap"><div className="selfx-order-main"><Group gap="xs"><Text fw={850}>{order.productLabel}</Text><Badge color={statusColor(order.status)} variant="light">{order.status.replaceAll('_', ' ')}</Badge><Badge variant="outline" color="gray">{typeLabel(order.productType)}</Badge></Group><Text size="sm" mt={5}>{order.purpose}</Text><Text size="xs" c="dimmed" mt={5}>{order.requestedBy} · {order.environment || 'Default environment'} · {formatWhen(order.createdAt)}{order.scheduleAt ? ` · scheduled ${formatWhen(order.scheduleAt)}` : ''}</Text>{order.decisionNote ? <Text size="xs" c="dimmed" mt={3}>Decision by {order.decisionBy}: {order.decisionNote}</Text> : null}{order.runRef ? <Text size="xs" fw={750} mt={3}>{order.runType} execution {order.runRef}</Text> : null}</div><Group gap="xs" justify="flex-end">{canApprove && order.status === 'PENDING_APPROVAL' && order.requestedBy !== username ? <><Button size="xs" color="green" leftSection={<IconCheck size={13} />} onClick={() => onAction({ order, kind: 'approve', note: '' })}>Approve</Button><Button size="xs" color="red" variant="light" leftSection={<IconX size={13} />} onClick={() => onAction({ order, kind: 'reject', note: '' })}>Reject</Button></> : null}{canRun && order.status === 'APPROVED' && order.requestedBy === username ? <Button size="xs" leftSection={<IconPlayerPlay size={13} />} loading={busy === `fulfill:${order.id}`} onClick={() => void onFulfill(order)}>Launch</Button> : null}{canRun && ['PENDING_APPROVAL', 'APPROVED'].includes(order.status) && order.requestedBy === username ? <Button size="xs" variant="subtle" color="red" onClick={() => onAction({ order, kind: 'cancel', note: '' })}>Cancel</Button> : null}<Button size="xs" variant="default" onClick={() => void onDetail(order)}>Activity</Button><Button size="xs" variant="subtle" leftSection={<IconCode size={13} />} onClick={() => void onRunner(order)}>API</Button></Group></Group></Paper>)}</Stack>;
 }
 
 type RequestDraft = ReturnType<typeof emptyRequest>;
@@ -242,8 +261,8 @@ function ActionModal({ action, setAction, busy, onSubmit }: { action: { order: O
   return <Modal opened={Boolean(action)} onClose={() => setAction(null)} title={action ? `${action.kind[0].toUpperCase()}${action.kind.slice(1)} ${action.order.productLabel}` : ''}><Stack><Text size="sm">This decision becomes part of the immutable request activity trail.</Text><Textarea label={action?.kind === 'approve' ? 'Approval note / e-signature reason' : action?.kind === 'reject' ? 'Rejection reason' : 'Cancellation reason'} minRows={3} value={action?.note || ''} onChange={(event) => action && setAction({ ...action, note: event.currentTarget.value })} /><Group justify="flex-end"><Button variant="default" onClick={() => setAction(null)}>Back</Button><Button color={action?.kind === 'approve' ? 'green' : 'red'} loading={busy} disabled={!action?.note.trim()} onClick={onSubmit}>Confirm {action?.kind}</Button></Group></Stack></Modal>;
 }
 
-function DetailModal({ order, comment, setComment, onComment, onClose }: { order: Order | null; comment: string; setComment: (value: string) => void; onComment: () => void; onClose: () => void }) {
-  return <Modal opened={Boolean(order)} onClose={onClose} title={order?.productLabel || 'Request activity'} size="lg"><Stack><Group justify="space-between"><Badge color={statusColor(order?.status || '')}>{order?.status.replaceAll('_', ' ')}</Badge>{order?.runRef ? <Code>{order.runType}:{order.runRef}</Code> : null}</Group><Text size="sm">{order?.purpose}</Text><Timeline active={(order?.events || []).length} bulletSize={20} lineWidth={2}>{(order?.events || []).map((event, index) => <Timeline.Item key={`${event.createdAt}-${index}`} title={event.eventType.replaceAll('_', ' ')} bullet={<IconActivity size={11} />}><Text size="sm">{event.message || 'Status updated'}</Text><Text size="xs" c="dimmed">{event.actor} · {formatWhen(event.createdAt)}</Text></Timeline.Item>)}</Timeline><Group align="flex-end"><Textarea label="Add request comment" value={comment} onChange={(event) => setComment(event.currentTarget.value)} minRows={2} style={{ flex: 1 }} /><Button disabled={!comment.trim()} onClick={onComment}>Add</Button></Group></Stack></Modal>;
+function DetailModal({ order, comment, setComment, canComment, onComment, onClose }: { order: Order | null; comment: string; setComment: (value: string) => void; canComment: boolean; onComment: () => void; onClose: () => void }) {
+  return <Modal opened={Boolean(order)} onClose={onClose} title={order?.productLabel || 'Request activity'} size="lg"><Stack><Group justify="space-between"><Badge color={statusColor(order?.status || '')}>{order?.status.replaceAll('_', ' ')}</Badge>{order?.runRef ? <Code>{order.runType}:{order.runRef}</Code> : null}</Group><Text size="sm">{order?.purpose}</Text><Timeline active={(order?.events || []).length} bulletSize={20} lineWidth={2}>{(order?.events || []).map((event, index) => <Timeline.Item key={`${event.createdAt}-${index}`} title={event.eventType.replaceAll('_', ' ')} bullet={<IconActivity size={11} />}><Text size="sm">{event.message || 'Status updated'}</Text><Text size="xs" c="dimmed">{event.actor} · {formatWhen(event.createdAt)}</Text></Timeline.Item>)}</Timeline>{canComment ? <Group align="flex-end"><Textarea label="Add request comment" value={comment} onChange={(event) => setComment(event.currentTarget.value)} minRows={2} style={{ flex: 1 }} /><Button disabled={!comment.trim()} onClick={onComment}>Add</Button></Group> : null}</Stack></Modal>;
 }
 
 function RunnerModal({ runner, onClose }: { runner: Runner | null; onClose: () => void }) {

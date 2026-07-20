@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import type { LooseMap } from '../hooks';
 import type { BusinessEntityDetail } from '../types';
 import { formatDate, listOfMaps, statusDot, str, technicalInputProps } from '../utils';
@@ -15,6 +16,9 @@ import { formatDate, listOfMaps, statusDot, str, technicalInputProps } from '../
 /** Govern: searchable catalog, maker-checker approvals, and the immutable evidence trail. */
 export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDetail; enterprise: LooseMap }) {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
+  const canApprove = can('provision.approve');
   const entityId = detail.entity.id!;
   const catalogAssets = listOfMaps(enterprise, 'catalogAssets');
   const requests = listOfMaps(enterprise, 'governanceRequests');
@@ -36,7 +40,10 @@ export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDeta
   const invalidate = () => queryClient.invalidateQueries({ queryKey: keys.businessEntity.enterprise(entityId) });
 
   const syncCatalog = useMutation({
-    mutationFn: () => apiPost<LooseMap>(`/api/business-entities/${entityId}/catalog/sync`, {}),
+    mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
+      return apiPost<LooseMap>(`/api/business-entities/${entityId}/catalog/sync`, {});
+    },
     onSuccess: async () => {
       notifications.show({ color: 'green', title: 'Catalog synced', message: 'Ownership, lineage, and certification refreshed.' });
       await invalidate();
@@ -45,14 +52,16 @@ export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDeta
   });
 
   const createRequest = useMutation({
-    mutationFn: () =>
-      apiPost<LooseMap>(`/api/business-entities/${entityId}/governance-requests`, {
+    mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
+      return apiPost<LooseMap>(`/api/business-entities/${entityId}/governance-requests`, {
         objectType: 'BUSINESS_ENTITY',
         action: form.action,
         riskLevel: form.risk,
         reviewer: form.reviewer.trim() || null,
         comments: form.comments.trim() || null
-      }),
+      });
+    },
     onSuccess: async () => {
       notifications.show({ color: 'green', title: 'Approval requested', message: `${form.action} · a second person must sign off.` });
       setForm({ ...form, comments: '' });
@@ -62,6 +71,7 @@ export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDeta
   });
 
   const decide = async () => {
+    if (!canApprove) return;
     if (!decisionDraft || decisionBusy) return;
     if (!decisionDraft.comments.trim() || !decisionDraft.eSignature.trim()) {
       notifications.show({ color: 'red', title: 'Decision evidence required', message: 'Enter both the decision reason and e-signature.' });
@@ -101,7 +111,7 @@ export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDeta
             </Text>
           </div>
         </Group>
-        <SimpleGrid cols={{ base: 1, sm: 3, lg: 5 }} mb="xs">
+        {canManage ? <SimpleGrid cols={{ base: 1, sm: 3, lg: 5 }} mb="xs">
           <Select size="xs" label="Action" data={['RELEASE', 'RUN', 'EXPORT', 'PROMOTE']} value={form.action} onChange={(value) => setForm({ ...form, action: value || 'RELEASE' })} />
           <Select size="xs" label="Risk" data={['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']} value={form.risk} onChange={(value) => setForm({ ...form, risk: value || 'MEDIUM' })} />
           <TextInput {...technicalInputProps} size="xs" label="Reviewer" placeholder="checker username" value={form.reviewer} onChange={(e) => setForm({ ...form, reviewer: e.currentTarget.value })} />
@@ -109,7 +119,7 @@ export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDeta
           <Button size="xs" mt={22} loading={createRequest.isPending} onClick={() => createRequest.mutate()}>
             Request approval
           </Button>
-        </SimpleGrid>
+        </SimpleGrid> : null}
         {requests.length ? (
           requests.map((request) => (
             <div className="be-line-row" key={str(request.id)}>
@@ -130,7 +140,7 @@ export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDeta
                   by {str(request.requestedBy, '-')} · reviewer {str(request.reviewer, 'any')} · {formatDate(str(request.updatedAt) || null)}
                 </Text>
               </div>
-              {str(request.status) === 'PENDING' ? (
+              {canApprove && str(request.status) === 'PENDING' ? (
                 <Group gap={4} wrap="nowrap">
                   <Button size="compact-xs" variant="subtle" onClick={() => setDecisionDraft({ request, decision: 'approve', reviewer: '', comments: '', eSignature: '' })}>
                     Approve
@@ -159,7 +169,7 @@ export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDeta
                 <Text size="xs" c="dimmed">Ownership, lineage, certification, and quality.</Text>
               </div>
             </Group>
-            <Button
+            {canManage ? <Button
               size="compact-xs"
               variant="subtle"
               leftSection={<IconRefresh size={13} />}
@@ -167,7 +177,7 @@ export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDeta
               onClick={() => syncCatalog.mutate()}
             >
               Sync
-            </Button>
+            </Button> : null}
           </Group>
           <Group className="be-operational-summary" gap={6} wrap="wrap">
             <Badge size="sm" variant="light" color="blue">{catalogAssets.length} assets</Badge>
@@ -196,7 +206,7 @@ export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDeta
                 <IconBook2 size={22} />
                 <Text fw={600} size="sm">Catalog has not been synchronized</Text>
                 <Text size="xs" c="dimmed">Sync to capture the current members, ownership, lineage, and quality evidence.</Text>
-                <Button size="compact-xs" variant="light" onClick={() => syncCatalog.mutate()}>Sync catalog</Button>
+                {canManage ? <Button size="compact-xs" variant="light" onClick={() => syncCatalog.mutate()}>Sync catalog</Button> : null}
               </div>
             )}
           </div>
@@ -267,7 +277,7 @@ export function GovernPanel({ detail, enterprise }: { detail: BusinessEntityDeta
         </section>
       </div>
 
-      <Modal opened={Boolean(decisionDraft)} onClose={() => !decisionBusy && setDecisionDraft(null)} closeOnClickOutside={!decisionBusy} closeOnEscape={!decisionBusy} title={decisionDraft?.decision === 'reject' ? 'Reject governance request' : 'Approve governance request'}>
+      <Modal opened={canApprove && Boolean(decisionDraft)} onClose={() => !decisionBusy && setDecisionDraft(null)} closeOnClickOutside={!decisionBusy} closeOnEscape={!decisionBusy} title={decisionDraft?.decision === 'reject' ? 'Reject governance request' : 'Approve governance request'}>
         <Stack gap="sm">
           <Text size="sm">
             Request #{str(decisionDraft?.request.id, '-')} - {str(decisionDraft?.request.action, 'decision')}. The requester cannot approve their own request.

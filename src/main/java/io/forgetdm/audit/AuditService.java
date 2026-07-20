@@ -220,7 +220,7 @@ public class AuditService {
 
     public Map<String, Object> reanchor(String reason) {
         var principal = AccessContext.current().orElseThrow(() -> ApiException.forbidden("Authentication required"));
-        if (!principal.hasPermission("admin.all") && !principal.hasPermission("audit.manage")) {
+        if (!principal.hasPermission("admin.all")) {
             throw ApiException.forbidden("Only an audit administrator can re-anchor the ledger");
         }
         String normalizedReason = reason == null ? "" : reason.trim();

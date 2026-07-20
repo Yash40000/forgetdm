@@ -14,7 +14,6 @@ import { parseFindings } from './utils';
 export function ValidationPage() {
   const { can } = usePermissions();
   const canRun = can('validation.run');
-  const canManagePolicy = can('policy.manage');
   const reportsQuery = useValidationReports();
   const dataSourcesQuery = useValidationDataSources();
   const policiesQuery = useValidationPolicies();
@@ -49,6 +48,7 @@ export function ValidationPage() {
   };
 
   const runValidation = (req: RunValidationRequest) => {
+    if (!canRun) return;
     mutations.run.mutate(req, {
       onSuccess: (report) => {
         notifications.show({
@@ -65,7 +65,7 @@ export function ValidationPage() {
   };
 
   const diagnose = () => {
-    if (!selected) return;
+    if (!canRun || !selected) return;
     mutations.diagnose.mutate(selected.id, {
       onSuccess: (result) => setDiagnosis(result),
       onError: (error) =>
@@ -74,7 +74,7 @@ export function ValidationPage() {
   };
 
   const applyFix = (remedy: ValidationRemedy) => {
-    if (!selected?.policyId || !remedy.table || !remedy.column || !remedy.suggestedFunction) return;
+    if (!canRun || !selected?.policyId || !remedy.table || !remedy.column || !remedy.suggestedFunction) return;
     const key = `${remedy.table}.${remedy.column}`;
     setApplyingKey(key);
     mutations.applyFix.mutate(
@@ -149,7 +149,7 @@ export function ValidationPage() {
                 diagnosing={mutations.diagnose.isPending}
                 onApplyFix={applyFix}
                 applyingKey={applyingKey}
-                canApplyFix={canManagePolicy}
+                canRun={canRun}
                 dsName={dsName}
                 policyName={policyName}
               />

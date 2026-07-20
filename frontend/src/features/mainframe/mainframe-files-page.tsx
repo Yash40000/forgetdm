@@ -39,6 +39,7 @@ import { NameInput } from '@/components/name-input';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { keys } from '@/lib/keys';
 import type { MaskingScript } from '@/lib/types';
+import { usePermissions } from '@/lib/use-permissions';
 import { useMaskingFunctions, useMaskingScripts } from '@/features/masking/hooks';
 import {
   ConnectionName,
@@ -155,6 +156,8 @@ const emptyJobDraft: JobDraft = {
 export function MainframeFilesPage() {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canManage = can('mainframe.manage');
   const connectionsQuery = useMainframeConnections();
   const copybooksQuery = useMainframeCopybooks();
   const jobsQuery = useMainframeJobs();
@@ -237,10 +240,12 @@ export function MainframeFilesPage() {
   const recordsProcessed = jobs.reduce((total, job) => total + Number(job.recordsProcessed || 0), 0);
 
   const saveConnectionMutation = useMutation({
-    mutationFn: () =>
-      editingConnectionId
+    mutationFn: () => {
+      if (!canManage) throw new Error('Mainframe management permission is required');
+      return editingConnectionId
         ? apiPut<MainframeConnection>(`/api/mainframe/connections/${editingConnectionId}`, connectionPayload(connDraft))
-        : apiPost<MainframeConnection>('/api/mainframe/connections', connectionPayload(connDraft)),
+        : apiPost<MainframeConnection>('/api/mainframe/connections', connectionPayload(connDraft));
+    },
     onSuccess: (saved) => {
       notifications.show({ color: 'green', title: editingConnectionId ? 'Connection updated' : 'Connection saved', message: `${saved.name} is available for mainframe jobs.` });
       setConnDraft(emptyConnDraft);
@@ -252,7 +257,10 @@ export function MainframeFilesPage() {
   });
 
   const deleteConnectionMutation = useMutation({
-    mutationFn: (id: number) => apiFetch(`/api/mainframe/connections/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: number) => {
+      if (!canManage) throw new Error('Mainframe management permission is required');
+      return apiFetch(`/api/mainframe/connections/${id}`, { method: 'DELETE' });
+    },
     onSuccess: () => {
       notifications.show({ color: 'green', title: 'Connection deleted', message: 'The LPAR/local endpoint was removed.' });
       setEditingConnectionId(null);
@@ -265,6 +273,7 @@ export function MainframeFilesPage() {
 
   const saveCopybookMutation = useMutation({
     mutationFn: async () => {
+      if (!canManage) throw new Error('Mainframe management permission is required');
       const payload = { name: copybookDraft.name, codePage: copybookDraft.codePage, source: copybookDraft.source };
       return editingCopybookId
         ? apiPut<CopybookDef>(`/api/mainframe/copybooks/${editingCopybookId}`, payload)
@@ -282,7 +291,10 @@ export function MainframeFilesPage() {
   });
 
   const deleteCopybookMutation = useMutation({
-    mutationFn: (id: number) => apiFetch(`/api/mainframe/copybooks/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: number) => {
+      if (!canManage) throw new Error('Mainframe management permission is required');
+      return apiFetch(`/api/mainframe/copybooks/${id}`, { method: 'DELETE' });
+    },
     onSuccess: (_, id) => {
       notifications.show({ color: 'green', title: 'Copybook deleted', message: 'Copybook and field map were removed.' });
       if (editingCopybookId === id) setEditingCopybookId(null);
@@ -293,8 +305,9 @@ export function MainframeFilesPage() {
   });
 
   const saveMapMutation = useMutation({
-    mutationFn: () =>
-      apiPut<CopybookMask[]>(
+    mutationFn: () => {
+      if (!canManage) throw new Error('Mainframe management permission is required');
+      return apiPut<CopybookMask[]>(
         `/api/mainframe/copybooks/${effectiveMapCopybookId}/masks`,
         Object.entries(mapDrafts)
           .filter(([, draft]) => draft.function && draft.function !== 'NONE')
@@ -304,7 +317,8 @@ export function MainframeFilesPage() {
             param1: draft.param1 || null,
             param2: draft.param2 || null
           }))
-      ),
+      );
+    },
     onSuccess: (saved) => {
       notifications.show({ color: 'green', title: 'Field map saved', message: `${saved.length} masking rule(s) saved for this copybook.` });
       setMapDirty(false);
@@ -314,8 +328,9 @@ export function MainframeFilesPage() {
   });
 
   const launchJobMutation = useMutation({
-    mutationFn: () =>
-      apiPost('/api/mainframe/jobs', {
+    mutationFn: () => {
+      if (!canManage) throw new Error('Mainframe management permission is required');
+      return apiPost('/api/mainframe/jobs', {
         name: jobDraft.name,
         sourceConnectionId: numberOrNull(effectiveJobSourceId),
         targetConnectionId: numberOrNull(effectiveJobTargetId),
@@ -331,7 +346,8 @@ export function MainframeFilesPage() {
             targetConnectionId: file.targetConnectionId && file.targetConnectionId !== JOB_TARGET ? numberOrNull(file.targetConnectionId) : null,
             targetName: file.targetName || null
           }))
-      }),
+      });
+    },
     onSuccess: () => {
       notifications.show({ color: 'green', title: 'Mainframe job launched', message: 'Files will update as the backend worker processes them.' });
       void queryClient.invalidateQueries({ queryKey: keys.mainframe.jobs });
@@ -340,6 +356,7 @@ export function MainframeFilesPage() {
   });
 
   const testConnection = async (connection: MainframeConnection) => {
+    if (!canManage) return;
     setTestStates((current) => ({
       ...current,
       [connection.id]: {
@@ -449,6 +466,7 @@ export function MainframeFilesPage() {
   };
 
   const removeConnection = async (connection: MainframeConnection) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Delete mainframe connection',
       message: `Delete "${connection.name}"? Existing jobs that reference this endpoint may no longer be rerunnable.`,
@@ -459,6 +477,7 @@ export function MainframeFilesPage() {
   };
 
   const beginEditConnection = async (connection: MainframeConnection) => {
+    if (!canManage) return;
     if (connection.id === editingConnectionId) return;
     if (connectionDirty) {
       const discard = await confirm({
@@ -527,6 +546,7 @@ export function MainframeFilesPage() {
   };
 
   const removeCopybook = async (copybook: CopybookSummary) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Delete copybook',
       message: `Delete "${copybook.name}" and its masking field map? Mainframe jobs that reference it may no longer be rerunnable.`,
@@ -638,7 +658,7 @@ export function MainframeFilesPage() {
                     Cancel
                   </Button>
                 ) : null}
-                <Button loading={saveConnectionMutation.isPending} disabled={!connectionReady} onClick={() => saveConnectionMutation.mutate()}>
+                <Button loading={saveConnectionMutation.isPending} disabled={!canManage || !connectionReady} onClick={() => saveConnectionMutation.mutate()}>
                   {editingConnectionId ? 'Save changes' : 'Add connection'}
                 </Button>
               </Group>
@@ -656,6 +676,7 @@ export function MainframeFilesPage() {
               </Group>
               <ConnectionsTable
                 connections={connections}
+                canManage={canManage}
                 testStates={testStates}
                 onTest={testConnection}
                 onEdit={beginEditConnection}
@@ -698,7 +719,7 @@ export function MainframeFilesPage() {
                 <Button variant="default" onClick={() => void resetCopybookDraft()}>
                   Load sample
                 </Button>
-                <Button loading={saveCopybookMutation.isPending} disabled={!copybookReady} onClick={() => saveCopybookMutation.mutate()}>
+                <Button loading={saveCopybookMutation.isPending} disabled={!canManage || !copybookReady} onClick={() => saveCopybookMutation.mutate()}>
                   {editingCopybookId ? 'Update copybook' : 'Save copybook'}
                 </Button>
               </Group>
@@ -714,7 +735,7 @@ export function MainframeFilesPage() {
                 </div>
                 <Badge variant="light">{copybooks.length}</Badge>
               </Group>
-              <CopybookRegistry copybooks={copybooks} onEdit={(id) => void beginEditCopybook(id)} onMap={(id) => void selectMapCopybook(String(id))} onDelete={(copybook) => void removeCopybook(copybook)} />
+              <CopybookRegistry copybooks={copybooks} canManage={canManage} onEdit={(id) => void beginEditCopybook(id)} onMap={(id) => void selectMapCopybook(String(id))} onDelete={(copybook) => void removeCopybook(copybook)} />
             </Paper>
           </section>
 
@@ -733,12 +754,12 @@ export function MainframeFilesPage() {
                   value={effectiveMapCopybookId ? String(effectiveMapCopybookId) : null}
                   onChange={(value) => void selectMapCopybook(value)}
                 />
-                <Button size="xs" loading={saveMapMutation.isPending} disabled={!effectiveMapCopybookId || !mapFieldsQuery.data?.length || !mapDirty} onClick={() => saveMapMutation.mutate()}>
+                <Button size="xs" loading={saveMapMutation.isPending} disabled={!canManage || !effectiveMapCopybookId || !mapFieldsQuery.data?.length || !mapDirty} onClick={() => saveMapMutation.mutate()}>
                   Save field map
                 </Button>
               </Group>
             </Group>
-            <FieldMapTable fields={mapFieldsQuery.data || []} drafts={mapDrafts} functions={functions} scripts={scripts} updateDraft={updateMapDraft} />
+            <FieldMapTable fields={mapFieldsQuery.data || []} drafts={mapDrafts} functions={functions} scripts={scripts} editable={canManage} updateDraft={updateMapDraft} />
           </Paper>
         </Tabs.Panel>
 
@@ -769,7 +790,7 @@ export function MainframeFilesPage() {
               </Group>
               <JobFileEditor rows={jobFiles} copybookOptions={copybookOptions} targetOptions={targetOptions} update={updateJobFile} remove={removeJobFile} />
               <Group justify="flex-end" mt="md">
-                <Button leftSection={<IconPlayerPlay size={16} />} loading={launchJobMutation.isPending} disabled={!jobReady} onClick={() => launchJobMutation.mutate()}>
+                <Button leftSection={<IconPlayerPlay size={16} />} loading={launchJobMutation.isPending} disabled={!canManage || !jobReady} onClick={() => launchJobMutation.mutate()}>
                   Launch masking job
                 </Button>
               </Group>
@@ -818,12 +839,14 @@ export function MainframeFilesPage() {
 
 function ConnectionsTable({
   connections,
+  canManage,
   testStates,
   onTest,
   onEdit,
   onDelete
 }: {
   connections: MainframeConnection[];
+  canManage: boolean;
   testStates: Record<number, TestState>;
   onTest: (connection: MainframeConnection) => void;
   onEdit: (connection: MainframeConnection) => void;
@@ -871,7 +894,7 @@ function ConnectionsTable({
                   )}
                 </Table.Td>
                 <Table.Td>
-                  <Group gap={4} justify="flex-end">
+                  {canManage ? <Group gap={4} justify="flex-end">
                     <TinyButton loading={state?.status === 'testing'} onClick={() => onTest(connection)}>
                       Test
                     </TinyButton>
@@ -883,7 +906,7 @@ function ConnectionsTable({
                         <IconTrash size={16} />
                       </ActionIcon>
                     </Tooltip>
-                  </Group>
+                  </Group> : null}
                 </Table.Td>
               </Table.Tr>
             );
@@ -896,11 +919,13 @@ function ConnectionsTable({
 
 function CopybookRegistry({
   copybooks,
+  canManage,
   onEdit,
   onMap,
   onDelete
 }: {
   copybooks: CopybookSummary[];
+  canManage: boolean;
   onEdit: (id: number) => void;
   onMap: (id: number) => void;
   onDelete: (copybook: CopybookSummary) => void;
@@ -929,13 +954,13 @@ function CopybookRegistry({
               <Table.Td>{copybook.codePage || 'Cp037'}</Table.Td>
               <Table.Td>
                 <Group gap={4} justify="flex-end">
-                  <TinyButton onClick={() => onEdit(copybook.id)}>Edit</TinyButton>
+                  {canManage ? <TinyButton onClick={() => onEdit(copybook.id)}>Edit</TinyButton> : null}
                   <TinyButton onClick={() => onMap(copybook.id)}>Field map</TinyButton>
-                  <Tooltip label="Delete">
+                  {canManage ? <Tooltip label="Delete">
                     <ActionIcon variant="subtle" color="red" aria-label={`Delete ${copybook.name}`} onClick={() => onDelete(copybook)}>
                       <IconTrash size={16} />
                     </ActionIcon>
-                  </Tooltip>
+                  </Tooltip> : null}
                 </Group>
               </Table.Td>
             </Table.Tr>
@@ -951,12 +976,14 @@ function FieldMapTable({
   drafts,
   functions,
   scripts,
+  editable,
   updateDraft
 }: {
   fields: CopybookField[];
   drafts: Record<string, MaskDraft>;
   functions: string[];
   scripts: MaskingScript[];
+  editable: boolean;
   updateDraft: (path: string, patch: Partial<MaskDraft>) => void;
 }) {
   if (!fields.length) return <EmptyState title="No field map open" detail="Select a copybook to configure field-level masking." />;
@@ -992,16 +1019,17 @@ function FieldMapTable({
                 <Table.Td>
                   <Select
                     size="xs"
+                    disabled={!editable}
                     data={maskFunctionOptions(functions, true)}
                     value={draft.function}
                     onChange={(value) => updateDraft(field.path, { function: value || 'NONE', param1: '', param2: '' })}
                   />
                 </Table.Td>
                 <Table.Td>
-                  <ParamInput fn={draft.function} index={1} value={draft.param1} scripts={scripts} onChange={(value) => updateDraft(field.path, { param1: value })} />
+                  <ParamInput fn={draft.function} index={1} value={draft.param1} scripts={scripts} disabled={!editable} onChange={(value) => updateDraft(field.path, { param1: value })} />
                 </Table.Td>
                 <Table.Td>
-                  <ParamInput fn={draft.function} index={2} value={draft.param2} scripts={scripts} onChange={(value) => updateDraft(field.path, { param2: value })} />
+                  <ParamInput fn={draft.function} index={2} value={draft.param2} scripts={scripts} disabled={!editable} onChange={(value) => updateDraft(field.path, { param2: value })} />
                 </Table.Td>
               </Table.Tr>
             );

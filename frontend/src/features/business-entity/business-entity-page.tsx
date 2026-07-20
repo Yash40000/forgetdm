@@ -14,6 +14,7 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { useConfirm } from '@/components/confirm';
 import { QueryErrorBanner } from '@/components/query-error-banner';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import {
   useBlueprints,
   useBusinessEntities,
@@ -59,6 +60,9 @@ function stageIcon(stageId: string) {
 export function BusinessEntityPage() {
   const pageRef = useRef<HTMLElement | null>(null);
   const queryClient = useQueryClient();
+  const { can, ready } = usePermissions();
+  const canRead = can('datascope.read');
+  const canManage = can('datascope.manage');
   const { confirm, confirmElement } = useConfirm();
   const entitiesQuery = useBusinessEntities();
   const blueprintsQuery = useBlueprints();
@@ -131,7 +135,7 @@ export function BusinessEntityPage() {
   })();
 
   const removeEntity = async () => {
-    if (!detail?.entity?.id || removing) return;
+    if (!canManage || !detail?.entity?.id || removing) return;
     const ok = await confirm({
       title: 'Delete business entity',
       danger: true,
@@ -190,6 +194,9 @@ export function BusinessEntityPage() {
     setWorkspaceDirty(false);
     setWorkspaceOpened(false);
   };
+
+  if (!ready) return <main className="forge-page be-page-next"><Text c="dimmed">Checking Business Entity access...</Text></main>;
+  if (!canRead) return <main className="forge-page be-page-next"><Text fw={700}>Business Entities are not available for your role.</Text></main>;
 
   return (
     <main ref={pageRef} className="forge-page be-page-next">
@@ -283,9 +290,9 @@ export function BusinessEntityPage() {
                           <Button size="xs" variant="light" rightSection={<IconArrowRight size={15} />} onClick={() => openWorkspace(activeTab || 'model')}>
                             Open workspace
                           </Button>
-                          <Button size="xs" variant="subtle" color="red" loading={removing} onClick={() => void removeEntity()}>
+                          {canManage ? <Button size="xs" variant="subtle" color="red" loading={removing} onClick={() => void removeEntity()}>
                             Delete
-                          </Button>
+                          </Button> : null}
                         </Group>
                       </div>
 

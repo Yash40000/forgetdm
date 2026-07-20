@@ -8,6 +8,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useConfirm } from '@/components/confirm';
 import { apiFetch, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import type { LooseMap } from '../hooks';
 import type { BusinessEntityDetail } from '../types';
 import { statusDot, str, technicalInputProps } from '../utils';
@@ -18,6 +19,8 @@ import { statusDot, str, technicalInputProps } from '../utils';
  */
 export function IdentityPanel({ detail, identities }: { detail: BusinessEntityDetail; identities: LooseMap[] }) {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const { confirm, confirmElement } = useConfirm();
   const entityId = detail.entity.id!;
   const members = detail.members || [];
@@ -30,6 +33,7 @@ export function IdentityPanel({ detail, identities }: { detail: BusinessEntityDe
 
   const saveIdentity = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
       if (!form.canonicalKey.trim()) throw new Error('Enter the canonical key, e.g. CUST-10025.');
       return apiPost<LooseMap>(`/api/business-entities/${entityId}/identities`, {
         canonicalKey: form.canonicalKey.trim(),
@@ -60,6 +64,7 @@ export function IdentityPanel({ detail, identities }: { detail: BusinessEntityDe
 
   const resolve = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('Business Entity management permission is required.');
       if (!resolveForm.externalId.trim()) throw new Error('Enter the external id to resolve.');
       return apiPost<LooseMap>(`/api/business-entities/${entityId}/identities/resolve`, {
         memberId: resolveForm.memberId ? Number(resolveForm.memberId) : null,
@@ -74,6 +79,7 @@ export function IdentityPanel({ detail, identities }: { detail: BusinessEntityDe
   });
 
   const removeIdentity = async (identity: LooseMap) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Delete crosswalk',
       danger: true,
@@ -95,7 +101,7 @@ export function IdentityPanel({ detail, identities }: { detail: BusinessEntityDe
     <Stack gap="lg">
       {confirmElement}
 
-      <div>
+      {canManage ? <div>
         <Text fw={650} size="sm">
           Create or update a crosswalk
         </Text>
@@ -130,9 +136,9 @@ export function IdentityPanel({ detail, identities }: { detail: BusinessEntityDe
             Add member tables on the Model tab first — each member gets a link field here.
           </Text>
         )}
-      </div>
+      </div> : null}
 
-      <div>
+      {canManage ? <div>
         <Text fw={650} size="sm">
           Resolve any system key
         </Text>
@@ -171,7 +177,7 @@ export function IdentityPanel({ detail, identities }: { detail: BusinessEntityDe
             </Text>
           )
         ) : null}
-      </div>
+      </div> : null}
 
       <div>
         <Text fw={650} size="sm" mb={6}>
@@ -196,9 +202,9 @@ export function IdentityPanel({ detail, identities }: { detail: BusinessEntityDe
                     {identityLinks.map((link) => `${str(link.systemName || link.tableName, 'system')}: ${str(link.externalId)}`).join(' · ') || 'No system links'}
                   </Text>
                 </div>
-                <Button size="compact-xs" variant="subtle" color="red" onClick={() => void removeIdentity(identity)}>
+                {canManage ? <Button size="compact-xs" variant="subtle" color="red" onClick={() => void removeIdentity(identity)}>
                   Delete
-                </Button>
+                </Button> : null}
               </div>
             );
           })

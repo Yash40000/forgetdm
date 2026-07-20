@@ -6,7 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
-/** Workflows. Under /api/mappings → GET = mapping.read, mutations/run = mapping.manage (filter). */
+/** Workflows. Reads require mapping.read, definitions require mapping.manage, and execution requires mapping.run. */
 @RestController
 @RequestMapping("/api/mappings/workflows")
 public class WorkflowController {

@@ -12,6 +12,7 @@ import { useConfirm } from '@/components/confirm';
 import { NameInput } from '@/components/name-input';
 import { apiFetch, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import type { SyntheticPlan, SyntheticPlanSummary, SyntheticSavedJob, SyntheticJob } from '../types';
 import { downloadTextFile, formatRows, formatTime, safeInputValue, savedJobScript, SYNTHETIC_JOB_NAME_MIN_LENGTH } from '../utils';
 import { PlanSummaryCard } from './plan-summary-card';
@@ -25,6 +26,12 @@ type SavedJobsPanelProps = {
 export function SyntheticSavedJobsPanel({ jobs, onLoad, onRun }: SavedJobsPanelProps) {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canRead = can('synthetic.read');
+  const canRun = can('synthetic.run');
+  const canManage = can('synthetic.manage');
+  const canApprove = can('synthetic.approve');
+  const canExport = can('synthetic.export');
   const [confirmJob, setConfirmJob] = useState<SyntheticSavedJob | null>(null);
   const [confirmSummary, setConfirmSummary] = useState<SyntheticPlanSummary | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -56,7 +63,7 @@ export function SyntheticSavedJobsPanel({ jobs, onLoad, onRun }: SavedJobsPanelP
   };
 
   const openRunConfirm = async (job: SyntheticSavedJob) => {
-    if (preparingId) return;
+    if (!canRead || !canRun || preparingId) return;
     setPreparingId(job.id);
     try {
       const detail = job.plan ? job : await apiFetch<SyntheticSavedJob>(`/api/synthetic/saved-jobs/${encodeURIComponent(job.id)}`);
@@ -74,7 +81,7 @@ export function SyntheticSavedJobsPanel({ jobs, onLoad, onRun }: SavedJobsPanelP
   };
 
   const confirmRun = async () => {
-    if (!confirmJob?.plan) return;
+    if (!canRun || !confirmJob?.plan) return;
     setConfirmBusy(true);
     try {
       const started = await apiPost<SyntheticJob>(`/api/synthetic/saved-jobs/${encodeURIComponent(confirmJob.id)}/run`, {});
@@ -92,6 +99,7 @@ export function SyntheticSavedJobsPanel({ jobs, onLoad, onRun }: SavedJobsPanelP
   };
 
   const deleteJob = async (job: SyntheticSavedJob) => {
+    if (!canManage) return;
     const ok = await confirm({
       title: 'Delete saved synthetic job',
       message: `Delete "${job.name}"? The reusable design is removed, but existing run history is kept.`,
@@ -111,6 +119,7 @@ export function SyntheticSavedJobsPanel({ jobs, onLoad, onRun }: SavedJobsPanelP
   const submitApprovalAction = async () => {
     if (!approvalDraft) return;
     const { job, action, note } = approvalDraft;
+    if ((action === 'request' && !canManage) || (action !== 'request' && !canApprove)) return;
     if (action !== 'request' && !note.trim()) return;
     setApprovalBusy(true);
     try {
@@ -126,6 +135,7 @@ export function SyntheticSavedJobsPanel({ jobs, onLoad, onRun }: SavedJobsPanelP
   };
 
   const exportRunner = async (job: SyntheticSavedJob, kind: 'ps1' | 'sh') => {
+    if (!canExport) return;
     try {
       const detail = job.plan ? job : await apiFetch<SyntheticSavedJob>(`/api/synthetic/saved-jobs/${encodeURIComponent(job.id)}`);
       await apiPost(`/api/synthetic/saved-jobs/${encodeURIComponent(job.id)}/export`, { kind });
@@ -137,6 +147,7 @@ export function SyntheticSavedJobsPanel({ jobs, onLoad, onRun }: SavedJobsPanelP
   };
 
   const openEdit = async (job: SyntheticSavedJob) => {
+    if (!canManage) return;
     const detail = job.plan ? job : await apiFetch<SyntheticSavedJob>(`/api/synthetic/saved-jobs/${encodeURIComponent(job.id)}`);
     setEditJob(detail);
     setEditName(detail.name || '');
@@ -144,7 +155,7 @@ export function SyntheticSavedJobsPanel({ jobs, onLoad, onRun }: SavedJobsPanelP
   };
 
   const saveEdit = async () => {
-    if (!editJob?.plan) return;
+    if (!canManage || !editJob?.plan) return;
     try {
       await apiFetch(`/api/synthetic/saved-jobs/${encodeURIComponent(editJob.id)}`, {
         method: 'PUT',
@@ -200,30 +211,20 @@ export function SyntheticSavedJobsPanel({ jobs, onLoad, onRun }: SavedJobsPanelP
         header: 'Actions',
         cell: ({ row }) => (
           <Group gap="xs" wrap="nowrap">
-            <ActionIcon variant="light" title="Run with confirmation" aria-label={`Run ${row.original.name} with confirmation`} loading={preparingId === row.original.id} disabled={!!preparingId && preparingId !== row.original.id} onClick={() => openRunConfirm(row.original)}>
-              <IconPlayerPlay size={16} />
-            </ActionIcon>
+            {canRead && canRun ? (
+              <ActionIcon variant="light" title="Run with confirmation" aria-label={`Run ${row.original.name} with confirmation`} loading={preparingId === row.original.id} disabled={!!preparingId && preparingId !== row.original.id} onClick={() => openRunConfirm(row.original)}>
+                <IconPlayerPlay size={16} />
+              </ActionIcon>
+            ) : null}
             <ActionIcon variant="light" title="Load into designer" aria-label={`Load ${row.original.name} into designer`} onClick={() => loadJob(row.original)}>
               <IconUpload size={16} />
             </ActionIcon>
-            <ActionIcon variant="light" title="Request approval" aria-label={`Request approval for ${row.original.name}`} onClick={() => setApprovalDraft({ job: row.original, action: 'request', note: '' })}>
-              <IconRefresh size={16} />
-            </ActionIcon>
-            <ActionIcon color="green" variant="light" title="Approve" aria-label={`Approve ${row.original.name}`} onClick={() => setApprovalDraft({ job: row.original, action: 'approve', note: '' })}>
-              <IconCheck size={16} />
-            </ActionIcon>
-            <ActionIcon color="red" variant="light" title="Reject" aria-label={`Reject ${row.original.name}`} onClick={() => setApprovalDraft({ job: row.original, action: 'reject', note: '' })}>
-              <IconX size={16} />
-            </ActionIcon>
-            <ActionIcon variant="light" title="Download PowerShell runner" aria-label={`Download PowerShell runner for ${row.original.name}`} onClick={() => exportRunner(row.original, 'ps1')}>
-              <IconDownload size={16} />
-            </ActionIcon>
-            <ActionIcon variant="subtle" title="Edit name and description" aria-label={`Edit ${row.original.name}`} onClick={() => openEdit(row.original)}>
-              <IconEdit size={16} />
-            </ActionIcon>
-            <ActionIcon color="red" variant="subtle" title="Delete" aria-label={`Delete ${row.original.name}`} onClick={() => deleteJob(row.original)}>
-              <IconTrash size={16} />
-            </ActionIcon>
+            {canManage ? <ActionIcon variant="light" title="Request approval" aria-label={`Request approval for ${row.original.name}`} onClick={() => setApprovalDraft({ job: row.original, action: 'request', note: '' })}><IconRefresh size={16} /></ActionIcon> : null}
+            {canApprove ? <ActionIcon color="green" variant="light" title="Approve" aria-label={`Approve ${row.original.name}`} onClick={() => setApprovalDraft({ job: row.original, action: 'approve', note: '' })}><IconCheck size={16} /></ActionIcon> : null}
+            {canApprove ? <ActionIcon color="red" variant="light" title="Reject" aria-label={`Reject ${row.original.name}`} onClick={() => setApprovalDraft({ job: row.original, action: 'reject', note: '' })}><IconX size={16} /></ActionIcon> : null}
+            {canExport ? <ActionIcon variant="light" title="Download PowerShell runner" aria-label={`Download PowerShell runner for ${row.original.name}`} onClick={() => exportRunner(row.original, 'ps1')}><IconDownload size={16} /></ActionIcon> : null}
+            {canManage ? <ActionIcon variant="subtle" title="Edit name and description" aria-label={`Edit ${row.original.name}`} onClick={() => openEdit(row.original)}><IconEdit size={16} /></ActionIcon> : null}
+            {canManage ? <ActionIcon color="red" variant="subtle" title="Delete" aria-label={`Delete ${row.original.name}`} onClick={() => deleteJob(row.original)}><IconTrash size={16} /></ActionIcon> : null}
           </Group>
         )
       }
@@ -253,7 +254,7 @@ export function SyntheticSavedJobsPanel({ jobs, onLoad, onRun }: SavedJobsPanelP
               <Button variant="light" onClick={() => setConfirmJob(null)}>
                 Cancel
               </Button>
-              <Button leftSection={<IconPlayerPlay size={16} />} loading={confirmBusy} onClick={confirmRun}>
+              <Button leftSection={<IconPlayerPlay size={16} />} loading={confirmBusy} disabled={!canRun} onClick={confirmRun}>
                 Confirm and run
               </Button>
             </Group>
@@ -275,7 +276,7 @@ export function SyntheticSavedJobsPanel({ jobs, onLoad, onRun }: SavedJobsPanelP
             <Button variant="light" onClick={() => setEditJob(null)}>
               Cancel
             </Button>
-            <Button disabled={!editNameValid} onClick={saveEdit}>
+            <Button disabled={!canManage || !editNameValid} onClick={saveEdit}>
               Save
             </Button>
           </Group>
@@ -310,7 +311,7 @@ export function SyntheticSavedJobsPanel({ jobs, onLoad, onRun }: SavedJobsPanelP
             <Button
               color={approvalDraft?.action === 'reject' ? 'red' : 'blue'}
               loading={approvalBusy}
-              disabled={approvalDraft?.action !== 'request' && !approvalDraft?.note.trim()}
+              disabled={(approvalDraft?.action === 'request' ? !canManage : !canApprove) || (approvalDraft?.action !== 'request' && !approvalDraft?.note.trim())}
               onClick={() => void submitApprovalAction()}
             >
               {approvalDraft ? approvalActionLabel(approvalDraft.action) : 'Submit'}

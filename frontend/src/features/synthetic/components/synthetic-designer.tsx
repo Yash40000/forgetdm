@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
 import {
   Accordion,
   ActionIcon,
@@ -45,6 +46,7 @@ import {
 
 import { apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import { useUnsavedGuard } from '@/lib/use-unsaved-guard';
 import { NameInput } from '@/components/name-input';
 import type { DataColumn, DataSource } from '@/lib/types';
@@ -104,6 +106,12 @@ type ImportStatus = {
 
 export function SyntheticDesigner({ dataSources, generators, initialPlan, onGenerated }: SyntheticDesignerProps) {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('synthetic.manage');
+  const canProfile = can('synthetic.profile');
+  const canPreview = can('synthetic.read');
+  const canDirectRun = can('synthetic.direct.run');
+  const canDesign = canManage;
   const [draft, setDraft] = useState<SyntheticDraft>(() => (initialPlan ? draftFromPlan(initialPlan) : emptySyntheticDraft()));
   const [selectedSourceTables, setSelectedSourceTables] = useState<string[]>([]);
   const [sourceTableText, setSourceTableText] = useState('');
@@ -138,6 +146,7 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
   const saveNameTooShort = saveNameLength > 0 && saveNameLength < SYNTHETIC_JOB_NAME_MIN_LENGTH;
 
   const resetToNewRequest = () => {
+    if (!canManage) return;
     const emptyDraft = emptySyntheticDraft();
     setDraft(emptyDraft);
     setSavedFingerprint(planFingerprint(collectSyntheticPlan(emptyDraft)));
@@ -162,7 +171,10 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
   };
 
   const previewPlan = useMutation({
-    mutationFn: (nextPlan: SyntheticPlan) => apiPost<SyntheticPlanSummary>('/api/synthetic/plan-summary', nextPlan),
+    mutationFn: (nextPlan: SyntheticPlan) => {
+      if (!canPreview) throw new Error('Synthetic read permission is required.');
+      return apiPost<SyntheticPlanSummary>('/api/synthetic/plan-summary', nextPlan);
+    },
     onSuccess: (result) => {
       setSummary(result);
       setPreviewOpened(true);
@@ -172,7 +184,10 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
   });
 
   const startRun = useMutation({
-    mutationFn: (nextPlan: SyntheticPlan) => apiPost<SyntheticJob>('/api/synthetic/generate/start', nextPlan),
+    mutationFn: (nextPlan: SyntheticPlan) => {
+      if (!canDirectRun) throw new Error('Synthetic direct-run permission is required.');
+      return apiPost<SyntheticJob>('/api/synthetic/generate/start', nextPlan);
+    },
     onSuccess: async (job, launchedPlan) => {
       notifications.show({ color: 'green', title: 'Synthetic generation launched', message: job.id });
       onGenerated(job, launchedPlan);
@@ -183,12 +198,14 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
   });
 
   const saveJob = useMutation({
-    mutationFn: () =>
-      apiPost('/api/synthetic/saved-jobs', {
+    mutationFn: () => {
+      if (!canManage) throw new Error('Synthetic management permission is required.');
+      return apiPost('/api/synthetic/saved-jobs', {
         name: saveName.trim(),
         description: saveDescription.trim(),
         plan
-      }),
+      });
+    },
     onSuccess: async () => {
       const shouldReset = resetAfterSave;
       notifications.show({ color: 'green', title: 'Synthetic job saved', message: saveName.trim() });
@@ -208,6 +225,8 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
 
   const importTables = useMutation({
     mutationFn: async ({ tables, learn }: { tables: string[]; learn: boolean }) => {
+      if (!canDesign) throw new Error('Synthetic design permission is required.');
+      if (learn && !canProfile) throw new Error('Synthetic profiling permission is required.');
       if (!draft.sourceDataSourceId || !draft.sourceSchema.trim()) throw new Error('Type or browse a valid source DB and schema first.');
       const requestedTables = parseNameList(tables);
       if (!requestedTables.length) throw new Error('Type or browse at least one source table.');
@@ -274,6 +293,7 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
   };
 
   const launch = () => {
+    if (!canDirectRun) return;
     try {
       validate(plan);
       startRun.mutate(plan);
@@ -283,6 +303,7 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
   };
 
   const openSave = (startNewAfterSave = false) => {
+    if (!canManage) return;
     try {
       validate(plan);
       setSaveName(`${plan.dataset || 'synthetic'} job`);
@@ -304,6 +325,7 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
           summary={summary}
           setDraft={setDraft}
           onNewRequest={() => setNewRequestOpened(true)}
+          editable={canManage}
         />
 
         <BuildSetupBar
@@ -311,6 +333,7 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
           dataSources={dataSources}
           sourceSaved={sourceSetupSaved}
           outputSaved={outputSetupSaved}
+          editable={canManage}
           onOpenSource={() => {
             setSourceDraftSnapshot(draft);
             setSourceSetupOpened(true);
@@ -334,13 +357,13 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
             </Text>
           </div>
           <Group className="syn-launch-actions" gap="xs">
-            <Button variant="light" disabled={!setupLaunchReady} leftSection={<IconRefresh size={16} />} loading={previewPlan.isPending} onClick={() => previewPlan.mutate(plan)}>
+            <Button variant="light" disabled={!canPreview || !setupLaunchReady} leftSection={<IconRefresh size={16} />} loading={previewPlan.isPending} onClick={() => previewPlan.mutate(plan)}>
               Preview plan
             </Button>
-            <Button variant="light" disabled={!setupLaunchReady} leftSection={<IconDeviceFloppy size={16} />} onClick={() => openSave()}>
+            <Button variant="light" disabled={!canManage || !setupLaunchReady} leftSection={<IconDeviceFloppy size={16} />} onClick={() => openSave()}>
               Save job
             </Button>
-            <Button disabled={!setupLaunchReady} leftSection={<IconPlayerPlay size={16} />} loading={startRun.isPending} onClick={launch}>
+            <Button disabled={!canDirectRun || !setupLaunchReady} leftSection={<IconPlayerPlay size={16} />} loading={startRun.isPending} onClick={launch}>
               Generate
             </Button>
           </Group>
@@ -361,7 +384,7 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
             <PlanSummaryCard plan={plan} summary={summary} />
             <Group justify="flex-end">
               <Button variant="light" onClick={() => setPreviewOpened(false)}>Back to design</Button>
-              <Button leftSection={<IconPlayerPlay size={16} />} loading={startRun.isPending} onClick={launch}>Generate</Button>
+              <Button leftSection={<IconPlayerPlay size={16} />} loading={startRun.isPending} disabled={!canDirectRun} onClick={launch}>Generate</Button>
             </Group>
           </Stack>
         ) : null}
@@ -389,6 +412,7 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
             <Button
               variant="light"
               color="red"
+              disabled={!canDesign}
               onClick={() => {
                 resetToNewRequest();
                 notifications.show({ color: 'blue', title: 'New request ready', message: 'A clean synthetic design is open.' });
@@ -398,6 +422,7 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
             </Button>
             <Button
               leftSection={<IconDeviceFloppy size={16} />}
+              disabled={!canManage}
               onClick={() => {
                 setNewRequestOpened(false);
                 openSave(true);
@@ -431,19 +456,21 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
               </Group>
               <Text size="sm" c="dimmed">Import live metadata, then configure rows, generators, keys, and table relationships.</Text>
             </div>
-            <Button leftSection={<IconDatabaseImport size={16} />} onClick={() => setSourceImportOpened(true)}>
+            <Button leftSection={<IconDatabaseImport size={16} />} disabled={!canDesign} onClick={() => setSourceImportOpened(true)}>
               Add / import tables
             </Button>
           </Group>
 
-          <TableEditor draft={draft} setDraft={setDraft} generators={generators} allowBlankTable={false} />
+          <PermissionFieldset disabled={!canDesign}>
+            <TableEditor draft={draft} setDraft={setDraft} generators={generators} allowBlankTable={false} />
+          </PermissionFieldset>
 
           <Group className="syn-source-workspace-footer" justify="space-between" align="center">
             <Text size="xs" c="dimmed">Save keeps these table and generator changes in the current synthetic design.</Text>
             <Group gap="xs">
               <Button
                 variant="subtle"
-                color="red"
+                color={canManage ? 'red' : 'gray'}
                 disabled={importTables.isPending}
                 onClick={() => {
                   if (sourceDraftSnapshot) setDraft(() => sourceDraftSnapshot);
@@ -451,10 +478,10 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
                   setSourceSetupOpened(false);
                 }}
               >
-                Discard changes
+                {canManage ? 'Discard changes' : 'Close'}
               </Button>
               <Button
-                disabled={importTables.isPending}
+                disabled={!canDesign || importTables.isPending}
                 onClick={() => {
                   if (!draft.tables.length || draft.tables.some((table) => !table.name.trim() || !table.columns.length)) {
                     notifications.show({ color: 'red', title: 'Source setup is incomplete', message: 'Every source table needs a name and at least one field.' });
@@ -487,24 +514,27 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
         closeOnClickOutside={!importTables.isPending}
         closeOnEscape={!importTables.isPending}
       >
-        <SourceImportPanel
-          draft={draft}
-          setDraft={setDraft}
-          dataSources={dataSources}
-          sourceSchemasLoading={sourceSchemas.isFetching}
-          sourceSchemaOptions={schemaOptions(sourceSchemas.data)}
-          sourceTableOptions={tableOptions(sourceTables.data)}
-          sourceTablesLoading={sourceTables.isFetching}
-          sourceTablesError={sourceTables.error instanceof Error ? sourceTables.error.message : null}
-          selectedSourceTables={selectedSourceTables}
-          setSelectedSourceTables={setSelectedSourceTables}
-          sourceTableText={sourceTableText}
-          setSourceTableText={setSourceTableText}
-          onImport={(learn) => importTables.mutate({ tables: selectedSourceTables, learn })}
-          onImportAll={(learn) => importTables.mutate({ tables: tableOptions(sourceTables.data).map((row) => row.value), learn })}
-          busy={importTables.isPending}
-          importStatus={importStatus}
-        />
+        <PermissionFieldset disabled={!canDesign}>
+          <SourceImportPanel
+            draft={draft}
+            setDraft={setDraft}
+            dataSources={dataSources}
+            sourceSchemasLoading={sourceSchemas.isFetching}
+            sourceSchemaOptions={schemaOptions(sourceSchemas.data)}
+            sourceTableOptions={tableOptions(sourceTables.data)}
+            sourceTablesLoading={sourceTables.isFetching}
+            sourceTablesError={sourceTables.error instanceof Error ? sourceTables.error.message : null}
+            selectedSourceTables={selectedSourceTables}
+            setSelectedSourceTables={setSelectedSourceTables}
+            sourceTableText={sourceTableText}
+            setSourceTableText={setSourceTableText}
+            onImport={(learn) => importTables.mutate({ tables: selectedSourceTables, learn })}
+            onImportAll={(learn) => importTables.mutate({ tables: tableOptions(sourceTables.data).map((row) => row.value), learn })}
+            busy={importTables.isPending}
+            importStatus={importStatus}
+            canProfile={canProfile}
+          />
+        </PermissionFieldset>
       </Drawer>
 
       <Modal
@@ -522,29 +552,32 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
         closeOnEscape={false}
       >
         <Stack gap="md">
-          <OutputPanel
-            draft={draft}
-            setDraft={setDraft}
-            dataSources={dataSources}
-            targetSchemaOptions={schemaOptions(targetSchemas.data)}
-            targetSchemasLoading={targetSchemas.isFetching}
-          />
+          <PermissionFieldset disabled={!canDesign}>
+            <OutputPanel
+              draft={draft}
+              setDraft={setDraft}
+              dataSources={dataSources}
+              targetSchemaOptions={schemaOptions(targetSchemas.data)}
+              targetSchemasLoading={targetSchemas.isFetching}
+            />
+          </PermissionFieldset>
           <Group className="syn-output-modal-footer" justify="space-between" align="center">
             <Text size="xs" c="dimmed">Save this step to unlock enterprise targets and plan review.</Text>
             <Group gap="xs">
               <Button
                 variant="subtle"
-                color="red"
+                color={canManage ? 'red' : 'gray'}
                 onClick={() => {
                   if (outputDraftSnapshot) setDraft(() => outputDraftSnapshot);
                   setOutputDraftSnapshot(null);
                   setOutputSetupOpened(false);
                 }}
               >
-                Discard changes
+                {canManage ? 'Discard changes' : 'Close'}
               </Button>
               <Button
                 leftSection={<IconDeviceFloppy size={16} />}
+                disabled={!canDesign}
                 onClick={() => {
                   setOutputSetupSaved(true);
                   setOutputDraftSnapshot(null);
@@ -564,7 +597,9 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
         title="Enterprise target systems"
         fullScreen
       >
-        <EnterpriseTargetPanel draft={draft} setDraft={setDraft} dataSources={dataSources} />
+        <PermissionFieldset disabled={!canDesign}>
+          <EnterpriseTargetPanel draft={draft} setDraft={setDraft} dataSources={dataSources} />
+        </PermissionFieldset>
       </Modal>
 
       <Modal
@@ -576,6 +611,7 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
         title={resetAfterSave ? 'Save before starting a new request' : 'Save synthetic job'}
         size="md"
       >
+        <PermissionFieldset disabled={!canManage}>
         <Stack gap="sm">
           <NameInput
             label="Job name"
@@ -598,13 +634,22 @@ export function SyntheticDesigner({ dataSources, generators, initialPlan, onGene
             >
               Cancel
             </Button>
-            <Button loading={saveJob.isPending} disabled={saveNameLength < SYNTHETIC_JOB_NAME_MIN_LENGTH} onClick={() => saveJob.mutate()}>
+            <Button loading={saveJob.isPending} disabled={!canManage || saveNameLength < SYNTHETIC_JOB_NAME_MIN_LENGTH} onClick={() => saveJob.mutate()}>
               Save
             </Button>
           </Group>
         </Stack>
+        </PermissionFieldset>
       </Modal>
     </>
+  );
+}
+
+function PermissionFieldset({ disabled, children }: { disabled: boolean; children: ReactNode }) {
+  return (
+    <fieldset disabled={disabled} style={{ border: 0, margin: 0, minWidth: 0, padding: 0 }}>
+      {children}
+    </fieldset>
   );
 }
 
@@ -613,13 +658,15 @@ function DesignerHeader({
   plan,
   summary,
   setDraft,
-  onNewRequest
+  onNewRequest,
+  editable
 }: {
   draft: SyntheticDraft;
   plan: SyntheticPlan;
   summary: SyntheticPlanSummary | null;
   setDraft: (fn: (draft: SyntheticDraft) => SyntheticDraft) => void;
   onNewRequest: () => void;
+  editable: boolean;
 }) {
   const fkCount = plan.tables.reduce((total, table) => total + table.columns.filter((column) => column.fkTable).length, 0);
   return (
@@ -629,14 +676,13 @@ function DesignerHeader({
           <Text fw={850}>Request details</Text>
           <Text size="xs" c="dimmed">Name this dataset and choose the deterministic seed used across every generated table.</Text>
         </div>
-        <Button variant="light" size="compact-sm" leftSection={<IconPlus size={15} />} onClick={onNewRequest}>
-          New request
-        </Button>
+        {editable ? <Button variant="light" size="compact-sm" leftSection={<IconPlus size={15} />} onClick={onNewRequest}>New request</Button> : null}
       </Group>
       <SimpleGrid cols={{ base: 1, md: 4 }}>
         <TextInput
           label="Dataset"
           value={draft.dataset ?? ''}
+          disabled={!editable}
           onChange={(event) => {
             const value = safeInputValue(event);
             setDraft((current) => ({ ...current, dataset: value }));
@@ -647,6 +693,7 @@ function DesignerHeader({
           label="Seed"
           inputMode="numeric"
           value={String(draft.seed ?? '')}
+          disabled={!editable}
           onChange={(event) => {
             const value = safeInputValue(event);
             setDraft((current) => ({ ...current, seed: value }));
@@ -672,6 +719,7 @@ function BuildSetupBar({
   dataSources,
   sourceSaved,
   outputSaved,
+  editable,
   onOpenSource,
   onOpenOutput,
   onOpenTargets
@@ -680,6 +728,7 @@ function BuildSetupBar({
   dataSources: DataSource[];
   sourceSaved: boolean;
   outputSaved: boolean;
+  editable: boolean;
   onOpenSource: () => void;
   onOpenOutput: () => void;
   onOpenTargets: () => void;
@@ -702,7 +751,7 @@ function BuildSetupBar({
           <Text size="xs" c="dimmed">Open only the part of the plan you need to configure.</Text>
         </div>
         <Group gap={6}>
-          <Badge className="syn-build-editable-badge" variant="light" color="blue">Editable setup</Badge>
+          <Badge className="syn-build-editable-badge" variant="light" color="blue">{editable ? 'Editable setup' : 'Read only'}</Badge>
           <Badge variant="light" color={coreReady ? 'green' : 'yellow'}>
             {coreReady ? 'Core setup ready' : 'Setup incomplete'}
           </Badge>
@@ -716,7 +765,7 @@ function BuildSetupBar({
             <small>{sourceName}{draft.sourceSchema ? ` / ${draft.sourceSchema}` : ''}</small>
           </span>
           <Badge size="xs" variant="light" color={sourceReady ? 'green' : 'yellow'}>{sourceReady ? 'Saved' : 'Save source'}</Badge>
-          <span className="syn-build-edit-affordance"><IconEdit size={13} /> Edit</span>
+          <span className="syn-build-edit-affordance"><IconEdit size={13} /> {editable ? 'Edit' : 'View'}</span>
         </button>
         <button type="button" className="syn-build-setup-action" onClick={onOpenOutput} disabled={!sourceReady} title={!sourceReady ? 'Save Source tables first' : undefined}>
           <span className="syn-build-setup-icon" data-step="2"><IconAdjustments size={18} /></span>
@@ -727,7 +776,7 @@ function BuildSetupBar({
           <Badge size="xs" variant="light" color={outputReady ? 'green' : 'yellow'}>{outputReady ? 'Saved' : sourceReady ? 'Configure' : 'Locked'}</Badge>
           <span className="syn-build-edit-affordance">
             {sourceReady ? <IconEdit size={13} /> : <IconLock size={13} />}
-            {sourceReady ? 'Edit' : 'Locked'}
+            {sourceReady ? (editable ? 'Edit' : 'View') : 'Locked'}
           </span>
         </button>
         <button
@@ -745,7 +794,7 @@ function BuildSetupBar({
           <Badge size="xs" variant="light" color="blue">{draft.targetSystems.length ? `${draft.targetSystems.length} mapped` : 'Optional'}</Badge>
           <span className="syn-build-edit-affordance">
             {outputReady ? <IconEdit size={13} /> : <IconLock size={13} />}
-            {outputReady ? 'Edit' : 'Locked'}
+            {outputReady ? (editable ? 'Edit' : 'View') : 'Locked'}
           </span>
         </button>
       </div>
@@ -786,7 +835,8 @@ function SourceImportPanel({
   onImport,
   onImportAll,
   busy,
-  importStatus
+  importStatus,
+  canProfile
 }: {
   draft: SyntheticDraft;
   setDraft: (fn: (draft: SyntheticDraft) => SyntheticDraft) => void;
@@ -804,6 +854,7 @@ function SourceImportPanel({
   onImportAll: (learn: boolean) => void;
   busy: boolean;
   importStatus: ImportStatus | null;
+  canProfile: boolean;
 }) {
   const [sourceBrowseOpened, setSourceBrowseOpened] = useState(false);
   const [schemaBrowseOpened, setSchemaBrowseOpened] = useState(false);
@@ -996,7 +1047,7 @@ function SourceImportPanel({
                   multiline
                   w={300}
                 >
-                  <Button variant="light" disabled={importDisabled} onClick={() => onImport(true)}>
+                  <Button variant="light" disabled={!canProfile || importDisabled} onClick={() => onImport(true)}>
                     Add + learn from live data
                   </Button>
                 </Tooltip>
@@ -1020,7 +1071,7 @@ function SourceImportPanel({
                 </Button>
               </Tooltip>
               <Tooltip label="Adds every catalog table AND learns value distributions from live rows (slowest, most realistic)." withArrow>
-                <Button variant="subtle" disabled={!catalogCount || busy || Boolean(sourceInputError || schemaInputError)} onClick={() => onImportAll(true)}>
+                <Button variant="subtle" disabled={!canProfile || !catalogCount || busy || Boolean(sourceInputError || schemaInputError)} onClick={() => onImportAll(true)}>
                   Add all + learn
                 </Button>
               </Tooltip>

@@ -9,6 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useConfirm } from '@/components/confirm';
 import { apiFetch, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
+import { usePermissions } from '@/lib/use-permissions';
 import type { LooseMap } from '../hooks';
 import { num, str } from '../utils';
 
@@ -37,6 +38,8 @@ export function FlowStudio({
   onDirtyChange?: (dirty: boolean) => void;
 }) {
   const queryClient = useQueryClient();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const { confirm, confirmElement } = useConfirm();
   const [selectedFlowId, setSelectedFlowId] = useState<number | null>(null);
   const [draft, setDraft] = useState<FlowDraft | null>(null);
@@ -84,6 +87,7 @@ export function FlowStudio({
   const invalidate = () => queryClient.invalidateQueries({ queryKey: keys.businessEntity.flows(entityId) });
 
   const patchDraft = (patch: Partial<FlowDraft>) => {
+    if (!canManage) return;
     setDirty(true);
     setDraft((current) => (current ? { ...current, ...patch } : current));
   };
@@ -105,6 +109,7 @@ export function FlowStudio({
   };
 
   const save = async () => {
+    if (!canManage) return;
     if (!draft || busyAction) return;
     setBusyAction('save');
     try {
@@ -132,6 +137,7 @@ export function FlowStudio({
   };
 
   const act = async (action: 'validate' | 'publish') => {
+    if (!canManage) return;
     if (!draft?.id) {
       notifications.show({ color: 'yellow', title: 'Save first', message: 'Save the flow before validating or publishing.' });
       return;
@@ -159,6 +165,7 @@ export function FlowStudio({
   };
 
   const removeFlow = async () => {
+    if (!canManage) return;
     if (!draft?.id || busyAction) return;
     const ok = await confirm({ title: 'Delete flow', danger: true, okText: 'Delete', message: `Delete "${draft.name}"?` });
     if (!ok) return;
@@ -176,6 +183,7 @@ export function FlowStudio({
   };
 
   const debug = async () => {
+    if (!canManage) return;
     if (!draft?.id) {
       notifications.show({ color: 'yellow', title: 'Save first', message: 'Save the flow before running a dry-run.' });
       return;
@@ -202,6 +210,7 @@ export function FlowStudio({
   };
 
   const run = async () => {
+    if (!canManage) return;
     if (!draft?.id) return;
     if (dirty) {
       notifications.show({
@@ -232,6 +241,7 @@ export function FlowStudio({
   };
 
   const addStep = (type: string, label?: string, config?: LooseMap) => {
+    if (!canManage) return;
     setDirty(true);
     setDraft((current) => {
       if (!current) return current;
@@ -253,6 +263,7 @@ export function FlowStudio({
   };
 
   const patchNode = (key: string, patch: Partial<FlowNode>) => {
+    if (!canManage) return;
     setDirty(true);
     setDraft((current) =>
       current ? { ...current, nodes: current.nodes.map((node) => (node.key === key ? { ...node, ...patch } : node)) } : current
@@ -260,6 +271,7 @@ export function FlowStudio({
   };
 
   const removeNode = (key: string) => {
+    if (!canManage) return;
     setDirty(true);
     setDraft((current) =>
       current
@@ -304,11 +316,11 @@ export function FlowStudio({
         ) : (
           <Badge variant="light">unsaved starter flow</Badge>
         )}
-        <NameInput size="xs" label="Name" value={draft.name} onChange={(value) => patchDraft({ name: value })} w={200} />
-        <TextInput size="xs" label="Description" value={draft.description} onChange={(e) => patchDraft({ description: e.currentTarget.value })} w={240} />
-        <Select size="xs" label="Status" data={['DRAFT', 'ACTIVE', 'RETIRED']} value={draft.status} onChange={(value) => patchDraft({ status: value || 'DRAFT' })} w={110} />
-        {dirty ? <Badge color="yellow" variant="light">unsaved</Badge> : null}
-        <Button size="xs" loading={busyAction === 'save'} disabled={!!busyAction && busyAction !== 'save'} onClick={() => void save()}>
+        <NameInput size="xs" label="Name" disabled={!canManage} value={draft.name} onChange={(value) => patchDraft({ name: value })} w={200} />
+        <TextInput size="xs" label="Description" disabled={!canManage} value={draft.description} onChange={(e) => patchDraft({ description: e.currentTarget.value })} w={240} />
+        <Select size="xs" label="Status" disabled={!canManage} data={['DRAFT', 'ACTIVE', 'RETIRED']} value={draft.status} onChange={(value) => patchDraft({ status: value || 'DRAFT' })} w={110} />
+        {canManage && dirty ? <Badge color="yellow" variant="light">unsaved</Badge> : null}
+        {canManage ? <><Button size="xs" loading={busyAction === 'save'} disabled={!!busyAction && busyAction !== 'save'} onClick={() => void save()}>
           Save flow
         </Button>
         <Button size="xs" variant="light" loading={busyAction === 'validate'} disabled={!!busyAction && busyAction !== 'validate'} onClick={() => void act('validate')}>
@@ -321,7 +333,7 @@ export function FlowStudio({
           <Button size="xs" variant="subtle" color="red" loading={busyAction === 'delete'} disabled={!!busyAction && busyAction !== 'delete'} onClick={() => void removeFlow()}>
             Delete
           </Button>
-        ) : null}
+        ) : null}</> : null}
       </Group>
 
       {validation ? (
@@ -384,7 +396,7 @@ export function FlowStudio({
       </div>
 
       <Group align="flex-start" gap="lg" wrap="wrap">
-        <Stack gap={6} w={230}>
+        {canManage ? <Stack gap={6} w={230}>
           <Text size="xs" fw={650} tt="uppercase" c="dimmed">
             Add step
           </Text>
@@ -393,7 +405,7 @@ export function FlowStudio({
               {label}
             </Button>
           ))}
-        </Stack>
+        </Stack> : null}
 
         <Stack gap={6} style={{ flex: 1, minWidth: 260 }}>
           <Text size="xs" fw={650} tt="uppercase" c="dimmed">
@@ -401,16 +413,17 @@ export function FlowStudio({
           </Text>
           {selectedNode ? (
             <>
-              <TextInput size="xs" label="Label" value={selectedNode.label || ''} onChange={(e) => patchNode(selectedNode.key, { label: e.currentTarget.value })} />
+              <TextInput size="xs" label="Label" disabled={!canManage} value={selectedNode.label || ''} onChange={(e) => patchNode(selectedNode.key, { label: e.currentTarget.value })} />
               <NodeConfigEditor
                 key={selectedNode.key}
                 config={selectedNode.config || {}}
+                disabled={!canManage}
                 onDirty={() => setDirty(true)}
                 onValidChange={(config) => patchNode(selectedNode.key, { config })}
               />
               <Group gap="xs">
-                <Checkbox size="xs" label="Pause debugger here" checked={!!selectedNode.breakpoint} onChange={(e) => patchNode(selectedNode.key, { breakpoint: e.currentTarget.checked })} />
-                {!['START', 'END'].includes(String(selectedNode.type || '').toUpperCase()) ? (
+                <Checkbox size="xs" label="Pause debugger here" disabled={!canManage} checked={!!selectedNode.breakpoint} onChange={(e) => patchNode(selectedNode.key, { breakpoint: e.currentTarget.checked })} />
+                {canManage && !['START', 'END'].includes(String(selectedNode.type || '').toUpperCase()) ? (
                   <Button size="compact-xs" variant="subtle" color="red" onClick={() => removeNode(selectedNode.key)}>
                     Remove step
                   </Button>
@@ -428,7 +441,7 @@ export function FlowStudio({
           <Text size="xs" fw={650} tt="uppercase" c="dimmed">
             Run control
           </Text>
-          <Select
+          {canManage ? <><Select
             size="xs"
             label="Execution plan"
             placeholder="Pick an approved plan"
@@ -452,7 +465,7 @@ export function FlowStudio({
             <Button size="xs" loading={busyAction === 'run'} disabled={!!busyAction && busyAction !== 'run'} onClick={() => void run()}>
               Run approved
             </Button>
-          </Group>
+          </Group></> : null}
           {latestDebugRun ? (
             <Text size="xs" c="dimmed">
               Last run #{str(latestDebugRun.id)} · {str(latestDebugRun.status)} · {((latestDebugRun.events as LooseMap[]) || []).length} step event(s)
@@ -466,10 +479,12 @@ export function FlowStudio({
 
 function NodeConfigEditor({
   config,
+  disabled,
   onDirty,
   onValidChange
 }: {
   config: LooseMap;
+  disabled: boolean;
   onDirty: () => void;
   onValidChange: (config: LooseMap) => void;
 }) {
@@ -485,8 +500,10 @@ function NodeConfigEditor({
       autosize
       minRows={3}
       maxRows={10}
+      disabled={disabled}
       value={value}
       onChange={(event) => {
+        if (disabled) return;
         const next = event.currentTarget.value;
         setValue(next);
         onDirty();

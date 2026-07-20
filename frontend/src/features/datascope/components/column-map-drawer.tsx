@@ -25,6 +25,7 @@ import { apiPost, apiPut } from '@/lib/api';
 import { useConfirm } from '@/components/confirm';
 import { keys } from '@/lib/keys';
 import type { ColumnOverride, DataSetDefinition, DataSource, MaskingPolicy, TableProfile } from '@/lib/types';
+import { usePermissions } from '@/lib/use-permissions';
 import { useColumns, usePolicyRules } from '../hooks';
 import {
   actionPatchForRow,
@@ -68,6 +69,8 @@ export function ColumnMapDrawer({
 }) {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canManage = can('datascope.manage');
   const [rows, setRows] = useState<ColumnMapRow[]>([]);
   const [selectedPolicyId, setSelectedPolicyId] = useState('');
   const [bulkAction, setBulkAction] = useState<ColumnMapRow['action']>('USE_POLICY');
@@ -125,6 +128,7 @@ export function ColumnMapDrawer({
 
   const saveOverrides = useMutation({
     mutationFn: async (payload: ColumnOverride[]) => {
+      if (!canManage) throw new Error('DataScope management permission is required.');
       if (profile && selectedPolicyNumber !== (profile.policyId || null)) {
         await apiPost<TableProfile>(`/api/datasets/${blueprint.id}/profiles`, {
           ...profile,
@@ -149,6 +153,7 @@ export function ColumnMapDrawer({
 
   const previewMasking = useMutation({
     mutationFn: () => {
+      if (!canManage) throw new Error('DataScope management permission is required.');
       if (!profile) throw new Error('Choose a table first.');
       const columns = rows
         .map((row) => ({
@@ -190,6 +195,7 @@ export function ColumnMapDrawer({
   };
 
   const applyBulkAction = () => {
+    if (!canManage) return;
     if (bulkAction === 'LITERAL' && !bulkLiteral.trim()) {
       notifications.show({ color: 'red', title: 'Literal value required', message: 'Enter a literal before applying it to all columns.' });
       return;
@@ -200,6 +206,7 @@ export function ColumnMapDrawer({
   };
 
   const runAutoMap = () => {
+    if (!canManage) return;
     const next = autoMapRows(rows, sourceColumns);
     const unmapped = next.filter((row) => row.action === 'SUPPRESS').length;
     setRows(next);
@@ -212,7 +219,7 @@ export function ColumnMapDrawer({
   };
 
   const save = () => {
-    if (!profile) return;
+    if (!canManage || !profile) return;
     for (const row of rows) {
       if (row.action === 'LITERAL' && !row.literalValue.trim()) {
         notifications.show({ color: 'red', title: 'Literal value required', message: row.targetColumn });
@@ -288,8 +295,9 @@ export function ColumnMapDrawer({
                   label="Masking mode"
                   description="Choose no masking to copy already-masked/source values as-is."
                   data={policyOptions}
-                  value={selectedPolicyId}
-                  searchable
+                   value={selectedPolicyId}
+                   searchable
+                   disabled={!canManage}
                   onChange={(value) => {
                     setSelectedPolicyId(value || '');
                     setPreviewResult(null);
@@ -302,8 +310,9 @@ export function ColumnMapDrawer({
                     { value: 'LITERAL', label: 'Literal' },
                     { value: 'NULL_OUT', label: 'Null' },
                     { value: 'SUPPRESS', label: 'Unused' }
-                  ]}
-                  value={bulkAction}
+                   ]}
+                   value={bulkAction}
+                   disabled={!canManage}
                   onChange={(value) => setBulkAction((value || 'USE_POLICY') as ColumnMapRow['action'])}
                 />
                 <TextInput
@@ -311,20 +320,20 @@ export function ColumnMapDrawer({
                   label="Literal value"
                   placeholder="literal value"
                   value={bulkLiteral}
-                  disabled={bulkAction !== 'LITERAL'}
+                   disabled={!canManage || bulkAction !== 'LITERAL'}
                   onChange={(event) => setBulkLiteral(event.currentTarget.value)}
                 />
                 <Group align="flex-end" gap="xs">
-                  <Button variant="light" onClick={applyBulkAction}>
+                  <Button variant="light" disabled={!canManage} onClick={applyBulkAction}>
                     Apply to all
                   </Button>
-                  <Button variant="light" onClick={runAutoMap}>
+                  <Button variant="light" disabled={!canManage} onClick={runAutoMap}>
                     Auto map
                   </Button>
-                  <Button variant="light" loading={previewMasking.isPending} onClick={() => previewMasking.mutate()}>
+                  <Button variant="light" loading={previewMasking.isPending} disabled={!canManage} onClick={() => previewMasking.mutate()}>
                     Preview masking
                   </Button>
-                  <Button loading={saveOverrides.isPending} onClick={save}>
+                  <Button loading={saveOverrides.isPending} disabled={!canManage} onClick={save}>
                     Save
                   </Button>
                 </Group>
@@ -377,9 +386,10 @@ export function ColumnMapDrawer({
                             </td>
                             <td style={{ minWidth: 240 }}>
                               <Select
-                                data={sourceOptionsFor(row.sourceColumn)}
-                                value={row.sourceColumn || ''}
-                                searchable
+                                 data={sourceOptionsFor(row.sourceColumn)}
+                                 value={row.sourceColumn || ''}
+                                 searchable
+                                 disabled={!canManage}
                                 onChange={(value) => {
                                   const nextSource = value || '';
                                   const nextAction: ColumnMapRow['action'] =
@@ -405,8 +415,9 @@ export function ColumnMapDrawer({
                                   { value: 'LITERAL', label: 'Literal value' },
                                   { value: 'NULL_OUT', label: 'Null out' },
                                   { value: 'SUPPRESS', label: 'Unused' }
-                                ]}
-                                value={row.action}
+                                 ]}
+                                 value={row.action}
+                                 disabled={!canManage}
                                 onChange={(value) => {
                                   const action = (value || 'USE_POLICY') as ColumnMapRow['action'];
                                   updateColumnRow(idx, actionPatchForRow(row, idx, action, rows, sourceColumns), setRows);
@@ -418,7 +429,7 @@ export function ColumnMapDrawer({
                               <TextInput
                                 {...technicalInputProps}
                                 value={row.literalValue}
-                                disabled={row.action !== 'LITERAL'}
+                                disabled={!canManage || row.action !== 'LITERAL'}
                                 placeholder="literal"
                                 onChange={(event) => {
                                   updateColumnRow(idx, { literalValue: event.currentTarget.value }, setRows);
@@ -428,8 +439,9 @@ export function ColumnMapDrawer({
                             </td>
                             <td>
                               <Checkbox
-                                label="Conditional"
-                                checked={row.condEnabled}
+                                 label="Conditional"
+                                 checked={row.condEnabled}
+                                 disabled={!canManage}
                                 onChange={(event) => {
                                   updateColumnRow(idx, { condEnabled: event.currentTarget.checked }, setRows);
                                   setPreviewResult(null);
@@ -450,16 +462,18 @@ export function ColumnMapDrawer({
                                     {...technicalInputProps}
                                     label="Condition SQL"
                                     description="Use alias t for the source row, for example t.status = 'ACTIVE'."
-                                    placeholder="t.status = 'ACTIVE'"
-                                    value={row.condExpr}
+                                     placeholder="t.status = 'ACTIVE'"
+                                     value={row.condExpr}
+                                     disabled={!canManage}
                                     onChange={(event) => updateColumnRow(idx, { condExpr: event.currentTarget.value }, setRows)}
                                   />
                                   <TextInput
                                     {...technicalInputProps}
                                     label="Optional JOIN"
                                     description="Use when the condition needs another table."
-                                    placeholder="LEFT JOIN ref_table r ON r.id = t.ref_id"
-                                    value={row.condJoin}
+                                     placeholder="LEFT JOIN ref_table r ON r.id = t.ref_id"
+                                     value={row.condJoin}
+                                     disabled={!canManage}
                                     onChange={(event) => updateColumnRow(idx, { condJoin: event.currentTarget.value }, setRows)}
                                   />
                                 </div>

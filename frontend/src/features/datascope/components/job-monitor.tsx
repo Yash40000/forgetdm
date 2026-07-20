@@ -26,6 +26,7 @@ import { StatusPill } from '@/components/status-pill';
 import { apiFetch, apiPost } from '@/lib/api';
 import { keys } from '@/lib/keys';
 import type { ProvisionJob } from '@/lib/types';
+import { usePermissions } from '@/lib/use-permissions';
 import { useProvisionJobs } from '../hooks';
 
 type TableState = {
@@ -56,6 +57,9 @@ type ApprovalDraft = {
 export function ProvisionJobMonitor({ datasetId }: { datasetId: number }) {
   const queryClient = useQueryClient();
   const { confirm, confirmElement } = useConfirm();
+  const { can } = usePermissions();
+  const canRun = can('provision.run');
+  const canApprove = can('provision.approve');
   const jobsQuery = useProvisionJobs();
   const retentionQuery = useQuery({
     queryKey: keys.datascope.jobRetention,
@@ -76,7 +80,10 @@ export function ProvisionJobMonitor({ datasetId }: { datasetId: number }) {
   const refreshJobs = () => queryClient.invalidateQueries({ queryKey: keys.datascope.jobs });
 
   const cancelMutation = useMutation({
-    mutationFn: (id: number) => apiPost<ProvisionJob>(`/api/jobs/${id}/cancel`, {}),
+    mutationFn: (id: number) => {
+      if (!canRun) throw new Error('Provision run permission is required.');
+      return apiPost<ProvisionJob>(`/api/jobs/${id}/cancel`, {});
+    },
     onSuccess: (job) => {
       notifications.show({ color: 'blue', title: 'Cancel requested', message: `Job #${job.id} is ${job.status}.` });
       void refreshJobs();
@@ -85,8 +92,10 @@ export function ProvisionJobMonitor({ datasetId }: { datasetId: number }) {
   });
 
   const approvalMutation = useMutation({
-    mutationFn: ({ job, action, note }: ApprovalDraft) =>
-      apiPost<ProvisionJob>(`/api/jobs/${job.id}/approval/${action}`, { note: note.trim() }),
+    mutationFn: ({ job, action, note }: ApprovalDraft) => {
+      if (!canApprove) throw new Error('Provision approval permission is required.');
+      return apiPost<ProvisionJob>(`/api/jobs/${job.id}/approval/${action}`, { note: note.trim() });
+    },
     onSuccess: (job, variables) => {
       notifications.show({
         color: variables.action === 'approve' ? 'green' : 'yellow',
@@ -100,7 +109,10 @@ export function ProvisionJobMonitor({ datasetId }: { datasetId: number }) {
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (id: number) => apiFetch<void>(`/api/jobs/${id}`, { method: 'DELETE' }),
+    mutationFn: (id: number) => {
+      if (!canRun) throw new Error('Provision run permission is required.');
+      return apiFetch<void>(`/api/jobs/${id}`, { method: 'DELETE' });
+    },
     onSuccess: () => {
       notifications.show({ color: 'green', title: 'Run history deleted', message: 'The terminal job record was removed.' });
       void refreshJobs();
@@ -119,6 +131,7 @@ export function ProvisionJobMonitor({ datasetId }: { datasetId: number }) {
   });
 
   const cancelJob = async (job: ProvisionJob) => {
+    if (!canRun) return;
     const ok = await confirm({
       title: awaitingApproval(job.status) ? 'Withdraw provision request' : 'Cancel provision job',
       message: awaitingApproval(job.status)
@@ -131,6 +144,7 @@ export function ProvisionJobMonitor({ datasetId }: { datasetId: number }) {
   };
 
   const deleteJob = async (job: ProvisionJob) => {
+    if (!canRun) return;
     const ok = await confirm({
       title: 'Delete run history',
       message: `Delete terminal job #${job.id}, "${job.name}"? This removes its status and diagnostic evidence.`,
@@ -148,6 +162,7 @@ export function ProvisionJobMonitor({ datasetId }: { datasetId: number }) {
   };
 
   const submitApproval = () => {
+    if (!canApprove) return;
     if (!approvalDraft?.note.trim()) {
       notifications.show({ color: 'red', title: 'Signed reason required', message: 'Enter the approval note or rejection reason.' });
       return;
@@ -223,17 +238,17 @@ export function ProvisionJobMonitor({ datasetId }: { datasetId: number }) {
                         <Group gap={4} justify="flex-end" wrap="nowrap">
                           {awaitingApproval(job.status) ? (
                             <>
-                              <Tooltip label="Approve and run"><ActionIcon color="green" variant="light" aria-label={`Approve ${job.name}`} onClick={() => setApprovalDraft({ job, action: 'approve', note: '' })}><IconCheck size={16} /></ActionIcon></Tooltip>
-                              <Tooltip label="Reject"><ActionIcon color="red" variant="light" aria-label={`Reject ${job.name}`} onClick={() => setApprovalDraft({ job, action: 'reject', note: '' })}><IconX size={16} /></ActionIcon></Tooltip>
-                              <Tooltip label="Withdraw request"><ActionIcon color="gray" variant="subtle" aria-label={`Withdraw ${job.name}`} loading={cancelMutation.isPending && cancelMutation.variables === job.id} onClick={() => void cancelJob(job)}><IconPlayerStop size={16} /></ActionIcon></Tooltip>
+                              {canApprove ? <Tooltip label="Approve and run"><ActionIcon color="green" variant="light" aria-label={`Approve ${job.name}`} onClick={() => setApprovalDraft({ job, action: 'approve', note: '' })}><IconCheck size={16} /></ActionIcon></Tooltip> : null}
+                              {canApprove ? <Tooltip label="Reject"><ActionIcon color="red" variant="light" aria-label={`Reject ${job.name}`} onClick={() => setApprovalDraft({ job, action: 'reject', note: '' })}><IconX size={16} /></ActionIcon></Tooltip> : null}
+                              {canRun ? <Tooltip label="Withdraw request"><ActionIcon color="gray" variant="subtle" aria-label={`Withdraw ${job.name}`} loading={cancelMutation.isPending && cancelMutation.variables === job.id} onClick={() => void cancelJob(job)}><IconPlayerStop size={16} /></ActionIcon></Tooltip> : null}
                             </>
-                          ) : canCancel(job.status) ? (
+                          ) : canRun && canCancel(job.status) ? (
                             <Tooltip label="Cancel job"><ActionIcon color="red" variant="light" aria-label={`Cancel ${job.name}`} loading={cancelMutation.isPending && cancelMutation.variables === job.id} onClick={() => void cancelJob(job)}><IconPlayerStop size={16} /></ActionIcon></Tooltip>
                           ) : null}
                           {String(job.status).toUpperCase() === 'COMPLETED' ? (
                             <Tooltip label="Compare source and target sample"><ActionIcon color="blue" variant="subtle" aria-label={`Sample ${job.name}`} onClick={() => openSample(job)}><IconEye size={16} /></ActionIcon></Tooltip>
                           ) : null}
-                          {terminal ? (
+                          {canRun && terminal ? (
                             <Tooltip label="Delete history"><ActionIcon color="red" variant="subtle" aria-label={`Delete history for ${job.name}`} loading={deleteMutation.isPending && deleteMutation.variables === job.id} onClick={() => void deleteJob(job)}><IconTrash size={16} /></ActionIcon></Tooltip>
                           ) : null}
                         </Group>
@@ -267,11 +282,12 @@ export function ProvisionJobMonitor({ datasetId }: { datasetId: number }) {
             description="Required. Include the ticket, environment, or review evidence used for this decision."
             minRows={3}
             value={approvalDraft?.note || ''}
+            disabled={!canApprove}
             onChange={(event) => approvalDraft && setApprovalDraft({ ...approvalDraft, note: event.currentTarget.value })}
           />
           <Group justify="flex-end">
             <Button variant="subtle" onClick={() => setApprovalDraft(null)}>Cancel</Button>
-            <Button color={approvalDraft?.action === 'reject' ? 'red' : 'green'} loading={approvalMutation.isPending} disabled={!approvalDraft?.note.trim()} onClick={submitApproval}>
+            <Button color={approvalDraft?.action === 'reject' ? 'red' : 'green'} loading={approvalMutation.isPending} disabled={!canApprove || !approvalDraft?.note.trim()} onClick={submitApproval}>
               {approvalDraft?.action === 'reject' ? 'Reject job' : 'Approve and run'}
             </Button>
           </Group>
