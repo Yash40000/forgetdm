@@ -4,6 +4,9 @@ This directory contains the executable specifications for the ten stories curren
 
 ## Execution Rules
 
+- `status:ready` is queue eligibility, not execution approval. Before running a story, record its authorized scope in `STORY_EXECUTION_APPROVALS.json` and pass `assert-story-approved.ps1`; retain the generated entry-gate evidence with the story evidence.
+- The product owner delegated execution approval to the Codex test coordinator on 2026-07-19. The coordinator may approve a story to start after its entry criteria pass, but may not use that approval as final acceptance; a separate evidence review remains mandatory.
+- Approval for local test fixtures never authorizes production, customer data, paid services, external notifications, or an unscoped destructive action. Those scopes require a separate explicit approval.
 - `NOT RUN` means the specification exists but no pass claim has been made.
 - Record the immutable build commit, environment, database or driver versions, operator, timestamps, and issue number before execution.
 - Attach sanitized responses, screenshots, audit event IDs, database assertions, and logs to the linked issue.
@@ -18,7 +21,7 @@ This directory contains the executable specifications for the ten stories curren
 |---|---|---:|---:|---|
 | AUTH-001 | [Valid login, logout, and session identity](AUTH-001.md) | Authentication contract | 10 | COMPLETE - 10/10 pass on physical HTTP + HTTPS at `9f9ca02`; independently accepted |
 | AUTH-003 | [Expired-session recovery](AUTH-003.md) | Safe UI recovery | 8 | COMPLETE - 8/8 directly proven and independently accepted |
-| RBAC-001 | [Role and group permission matrix](RBAC-001.md) | Authorization coverage | 10 | 10/10 executed; 9 passed and 1 failed then fixed |
+| RBAC-001 | [Role and group permission matrix](RBAC-001.md) | Authorization coverage | 10 | COMPLETE - 10/10 pass at `6614e22`; 21/21 Edge cases; independently accepted |
 | RBAC-002 | [Cross-group isolation](RBAC-002.md) | Object-level isolation | 9 | Executed; S1 found, fixed, and reverified |
 | AUD-001 | [Material action audit](AUD-001.md) | Traceability and integrity | 10 | 6 pass / 2 partial / 2 not executed |
 | DSRC-001 | [Data-source lifecycle](DSRC-001.md) | Connector configuration | 9 | COMPLETE WITH HARD-PASS EXCEPTIONS - PostgreSQL, Oracle, MySQL, and H2 live; DB2, SQL Server, and Teradata not live-certified |

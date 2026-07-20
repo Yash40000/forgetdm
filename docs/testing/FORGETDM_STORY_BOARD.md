@@ -14,11 +14,12 @@ ForgeTDM product validation is managed as a continuous queue, not by sprint or r
 ## Queue Policy
 
 1. Keep no more than ten stories in `status:ready`.
-2. Move a selected story from `status:ready` to `status:in-progress` when execution starts.
-3. Move a failed story to `status:blocked` and link the defect, sanitized evidence, and affected build.
-4. Move a passing story to `status:done` only after regression and evidence review, then close it.
-5. Promote the next highest-risk dependency-ready story from `status:backlog` to `status:ready` so the Ready queue returns to ten.
-6. Never use a sprint date to imply release readiness. Readiness comes from passed gates and reviewed evidence.
+2. Treat `status:ready` as queue eligibility only. Execution starts only after `STORY_EXECUTION_APPROVALS.json` records the approver and allowed scope and `assert-story-approved.ps1` passes.
+3. Move an approved selected story from `status:ready` to `status:in-progress` when execution starts.
+4. Move a failed story to `status:blocked` and link the defect, sanitized evidence, and affected build.
+5. Move a passing story to `status:done` only after regression and evidence review, then close it.
+6. Promote the next highest-risk dependency-ready story from `status:backlog` to `status:ready` so the Ready queue returns to ten.
+7. Never use a sprint date to imply release readiness. Readiness comes from passed gates and reviewed evidence.
 
 ## Source of Truth
 

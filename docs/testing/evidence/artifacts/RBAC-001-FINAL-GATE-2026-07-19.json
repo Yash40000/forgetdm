@@ -1,0 +1,42 @@
+{
+  "storyId": "RBAC-001",
+  "status": "COMPLETE",
+  "reviewedImplementationCommit": "6614e22",
+  "requiredCases": {
+    "total": 10,
+    "passed": 10,
+    "failed": 0,
+    "hardPass": 0
+  },
+  "browser": {
+    "engine": "Microsoft Edge",
+    "expected": 21,
+    "unexpected": 0,
+    "skipped": 0,
+    "flaky": 0,
+    "jsonSha256": "A4C9565194053BD88279E30090701BAE2BD1584B80756C7A353978ACAE9AB25C",
+    "junitSha256": "DE34C2067AB81D57EAA3E5AA5B0C341149E479266D243F1368B7E084C539910F",
+    "lastRunSha256": "91D1C43004802CD49950D78EB11C8FA7D05DA8FFFFE219A8B13B2F561BC00903"
+  },
+  "regression": {
+    "maven": {
+      "tests": 370,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 1,
+      "skipDisposition": "intentional"
+    },
+    "frontendTypecheck": "PASS",
+    "frontendLint": "PASS",
+    "frontendProductionBuild": "PASS",
+    "gitDiffCheck": "PASS"
+  },
+  "independentReview": {
+    "status": "PASS",
+    "finding": "No concrete UI/API permission mismatch or evidence blocker found."
+  },
+  "defects": {
+    "DEF-0005": "CLOSED",
+    "DEF-0006": "CLOSED"
+  }
+}

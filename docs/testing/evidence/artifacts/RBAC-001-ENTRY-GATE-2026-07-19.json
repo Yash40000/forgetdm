@@ -1,0 +1,22 @@
+﻿{
+    "schemaVersion":  1,
+    "storyId":  "RBAC-001",
+    "decision":  "APPROVED",
+    "checkedAt":  "2026-07-19T16:18:10.6463687-04:00",
+    "approvalRecordedAt":  "2026-07-19T16:14:42-04:00",
+    "approvedBy":  "Codex test coordinator (product-owner delegated)",
+    "requestedScopes":  [
+                            "SOURCE_INSPECTION",
+                            "UNIT_TEST",
+                            "LOCAL_BROWSER",
+                            "LOCAL_TEST_DATABASE",
+                            "LOCAL_TEST_FIXTURE_MUTATION"
+                        ],
+    "storySpecification":  "D:\\forgetdm - Copy\\docs\\testing\\cases\\ready\\RBAC-001.md",
+    "conditions":  [
+                       "Use synthetic test identities and artifacts only.",
+                       "Do not contact external systems or paid services.",
+                       "Do not test against production or customer data.",
+                       "Retain sanitized evidence and independently review every green claim."
+                   ]
+}

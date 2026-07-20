@@ -3,7 +3,12 @@
 **Priority:** P0
 
 **Lane:** All
-**Execution status:** EXECUTED LIVE 2026-07-17 — 9/10 PASS; RBAC-001-04 originally FAIL → **fixed** (DEF-0005 CLOSED: permission layer + nav + 6 core pages gated, verified live). Full zero-mismatch across all pages tracked by DEF-0006 (LOW, OPEN). Evidence: `docs/testing/evidence/RBAC-001-EVIDENCE.md`.
+
+**Execution status:** COMPLETE - 10/10 PASS on 2026-07-19; independently reviewed and accepted.
+
+**Reviewed implementation:** `6614e22`
+
+**Evidence:** `docs/testing/evidence/RBAC-001-EVIDENCE.md`
 
 ## Objective
 
@@ -16,20 +21,25 @@ Prove that ADMIN, TDM_ARCHITECT, DATA_ENGINEER, TESTER, and AUDITOR permissions 
 
 ## Cases
 
-| Case | Type | Action | Expected result and evidence |
-|---|---|---|---|
-| RBAC-001-01 | Matrix | For every built-in role, compare `/api/auth/me` effective permissions with `RoleDefinition`. | Exact documented permission set is returned; duplicates and unknown permissions are absent. |
-| RBAC-001-02 | API positive | Call one read and one allowed write/run endpoint for every permission family. | Allowed operations succeed without requiring unrelated permissions. |
-| RBAC-001-03 | API negative | Call each forbidden write/run/admin endpoint directly, bypassing UI. | API returns `403`, changes no data, and records `ACCESS_DENIED`. |
-| RBAC-001-04 | UI | Navigate to each functional area and inspect actions for each role. | UI hides or disables forbidden actions while keeping allowed work visible; API remains authoritative. |
-| RBAC-001-05 | Groups | Assign a role only through a group, refresh identity, then remove the membership. | Permissions appear and disappear according to the documented refresh/session policy. |
-| RBAC-001-06 | Union | Assign two roles directly and through groups. | Effective permissions are the union, never an accidental intersection or privilege beyond either role. |
-| RBAC-001-07 | Admin | Exercise user/group create, update, deactivate, and delete as ADMIN and non-admin. | ADMIN succeeds via `admin.all`; every non-admin is denied `security.admin`. |
-| RBAC-001-08 | Auditor | Attempt create/update/delete/run as AUDITOR across all readable modules. | Read and evidence access succeeds; every mutation is denied. |
-| RBAC-001-09 | Default deny | Call an authenticated write API with no explicit route mapping. | Access requires `admin.all`; an ordinary role cannot inherit access by omission. |
-| RBAC-001-10 | State change | Deactivate a currently signed-in user. | New authentication is denied and existing access follows the documented revocation policy; no indefinite privilege remains. |
+| Case | Type | Action | Expected result and evidence | Final result |
+|---|---|---|---|---|
+| RBAC-001-01 | Matrix | For every built-in role, compare `/api/auth/me` effective permissions with `RoleDefinition`. | Exact documented permission set is returned; duplicates and unknown permissions are absent. | PASS |
+| RBAC-001-02 | API positive | Call one read and one allowed write/run endpoint for every permission family. | Allowed operations succeed without requiring unrelated permissions. | PASS |
+| RBAC-001-03 | API negative | Call each forbidden write/run/admin endpoint directly, bypassing UI. | API returns `403`, changes no data, and records `ACCESS_DENIED`. | PASS |
+| RBAC-001-04 | UI | Navigate to each functional area and inspect actions for each role. | UI hides or disables forbidden actions while keeping allowed work visible; API remains authoritative. | PASS |
+| RBAC-001-05 | Groups | Assign a role only through a group, refresh identity, then remove the membership. | Permissions appear and disappear according to the documented refresh/session policy. | PASS |
+| RBAC-001-06 | Union | Assign two roles directly and through groups. | Effective permissions are the union, never an accidental intersection or privilege beyond either role. | PASS |
+| RBAC-001-07 | Admin | Exercise user/group create, update, deactivate, and delete as ADMIN and non-admin. | ADMIN succeeds via `admin.all`; every non-admin is denied `security.admin`. | PASS |
+| RBAC-001-08 | Auditor | Attempt create/update/delete/run as AUDITOR across all readable modules. | Read and evidence access succeeds; every mutation is denied. | PASS |
+| RBAC-001-09 | Default deny | Call an authenticated write API with no explicit route mapping. | Access requires `admin.all`; an ordinary role cannot inherit access by omission. | PASS |
+| RBAC-001-10 | State change | Deactivate a currently signed-in user. | New authentication is denied and existing access follows the documented revocation policy; no indefinite privilege remains. | PASS |
 
 ## Automation and Exit
 
-- Generate a parameterized Spring authorization matrix from the route families in `AccessControlFilter` and the roles in `RoleDefinition`.
-- Pass requires zero UI/API mismatches and no undocumented privilege path.
+- `Rbac001ControllerInventoryTest` discovers the compiled controller surface and enforces the route contract.
+- `Rbac001RoutePermissionMatrixTest` versions the complete built-in role matrix and explicit permission exceptions.
+- `Rbac001SelfServicePermissionTest` separates request, approval, and catalog-administration permissions.
+- `frontend/e2e/rbac-001/feature-action-gating.spec.ts` provides 21 retained browser cases.
+- Pass requires zero UI/API mismatch, no undocumented privilege path, green regression, retained evidence, and independent review.
+
+All exit conditions are satisfied. Personal API-token management remains authenticated owner-scoped identity self-service by explicit contract.

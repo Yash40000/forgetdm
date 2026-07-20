@@ -60,4 +60,4 @@ Added a client-side permission layer and applied it. The backend stays authorita
 
 Verified both directions: as `admin` (via `admin.all` wildcard) every gated control and the full nav reappear.
 
-**Remaining coverage** — the same one-line `can(...)` pattern still needs applying to secondary controls on the remaining feature pages (synthetic designer, DataScope, business entities, mainframe, mapping designer, auto-provision, self-service, masking studio, unstructured, intelligence store). Tracked as **[DEF-0006](DEF-0006-extend-permission-gating-remaining-pages.md)** (LOW). The backend `AccessControlFilter` returns `403` for all of these regardless, so there is no security exposure in the interim — this is UI polish, and the exemplar page that surfaced RBAC-001-04 (Masking Policies) is fully gated and verified.
+**Remaining coverage resolved:** [DEF-0006](DEF-0006-extend-permission-gating-remaining-pages.md) completed permission-aware actions and handler guards across the remaining feature pages in `6614e22`. The final 21-case Edge suite and full regression passed, so RBAC-001-04 now has zero identified UI/API mismatch.

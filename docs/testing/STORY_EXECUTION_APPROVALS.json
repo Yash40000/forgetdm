@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "campaign": {
+    "name": "ForgeTDM product-readiness acceptance",
+    "authorizedBy": "Codex test coordinator, delegated by the product owner",
+    "authorizedAt": "2026-07-19T16:14:42-04:00",
+    "allowedScopes": [
+      "SOURCE_INSPECTION",
+      "UNIT_TEST",
+      "LOCAL_BROWSER",
+      "LOCAL_TEST_DATABASE",
+      "LOCAL_TEST_FIXTURE_MUTATION"
+    ],
+    "prohibitedScopes": [
+      "PRODUCTION",
+      "CUSTOMER_DATA",
+      "PAID_SERVICE",
+      "EXTERNAL_NOTIFICATION",
+      "UNSCOPED_DESTRUCTIVE_ACTION"
+    ],
+    "notes": "The product owner delegated story execution approval to the Codex test coordinator on 2026-07-19. Approval covers only ready-queue stories executed against local, non-production ForgeTDM fixtures. A separate explicit approval is required for every prohibited scope. Execution approval is not final acceptance; every green claim still requires independent evidence review."
+  },
+  "stories": {
+    "RBAC-001": {
+      "status": "APPROVED",
+      "approvedAt": "2026-07-19T16:14:42-04:00",
+      "approvedBy": "Codex test coordinator (product-owner delegated)",
+      "allowedScopes": [
+        "SOURCE_INSPECTION",
+        "UNIT_TEST",
+        "LOCAL_BROWSER",
+        "LOCAL_TEST_DATABASE",
+        "LOCAL_TEST_FIXTURE_MUTATION"
+      ],
+      "conditions": [
+        "Use synthetic test identities and artifacts only.",
+        "Do not contact external systems or paid services.",
+        "Do not test against production or customer data.",
+        "Retain sanitized evidence and independently review every green claim."
+      ]
+    }
+  }
+}

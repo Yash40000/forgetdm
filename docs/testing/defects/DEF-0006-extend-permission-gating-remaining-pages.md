@@ -1,29 +1,48 @@
-# DEF-0006 — Extend permission gating to the remaining feature pages
+# DEF-0006 - Extend Permission Gating to Remaining Feature Pages
 
 | Field | Value |
 |---|---|
 | Severity | LOW |
-| Status | **OPEN** |
-| Found by story | RBAC-001 — case RBAC-001-04 (follow-up to [DEF-0005](DEF-0005-ui-does-not-gate-actions-by-permission.md)) |
-| Component | `frontend/src/features/**` (remaining pages) |
+| Status | **CLOSED** |
+| Found by story | RBAC-001 - case RBAC-001-04 (follow-up to DEF-0005) |
+| Component | `frontend/src/features/**`, `AccessControlFilter` permission exceptions |
 | Reported | 2026-07-17 |
+| Fixed and verified | 2026-07-19 |
+| Fix commit | `6614e22` |
 
-## Summary
+## Original deviation
 
-[DEF-0005](DEF-0005-ui-does-not-gate-actions-by-permission.md) added the client permission layer (`usePermissions`/`<Can>`), gated all navigation, and gated the mutation controls on the core pages (Masking Policies, Data Sources, Validation, Virtualization, Masking Scripts, PII Discovery — all verified live). The same one-line `can(...)` pattern still needs to be applied to the write/run controls on the remaining pages so RBAC-001-04 reaches **zero UI/API mismatches** everywhere:
+The frontend permission layer initially covered navigation and six core pages, but secondary feature areas could still offer an action that the backend would reject. RBAC-001-04 requires zero UI/API mismatch, so the remaining pages blocked story completion even though the API already prevented privilege escalation.
 
-- Synthetic Data (designer: generate/run/save, saved-jobs)
-- DataScope (create blueprint, run, saved jobs)
-- Business Entities (create/model/govern/deliver actions)
-- Mainframe (Copybook Studio parse/load/mask, Mainframe Files, File Generator)
-- Mapping Designer + Auto Provision
-- Self-Service (request is `provision.run` — testers legitimately have it; gate the manage/approve controls)
-- Masking Studio, Unstructured Masking, Forge Data Store
+## Resolution
 
-## Impact
+Permission-aware rendering and handler guards now cover:
 
-**Low, no security exposure.** The backend `AccessControlFilter` returns `403` and logs `ACCESS_DENIED` for every forbidden call regardless of UI (verified in RBAC-001-03). This is UI correctness/polish only — a read-only user may still be *offered* an action on these pages that then fails with an error.
+- Synthetic design, profiling, direct run, saved-job run/manage/approve/export, job cancel, partition cancel, and partition retry.
+- DataScope create/map/manage, relationship, version, preview, provision, approval, cancellation, and saved-job controls.
+- Business Entity model, identity, freshness, flow, Micro-DB, package, governance, and delivery operations.
+- Mainframe copybook, file, connection, transfer, masking, and generation operations.
+- Mapping Designer, mapping run, and Auto Provision operations.
+- Self-Service request, approval, and catalog administration as separate permission families.
+- Masking policies/scripts, PII patterns, unstructured jobs/profiles, virtualization, validation, and Forge Data Store stewardship.
+- Automation using `integration.read`/`integration.manage` instead of role-name checks.
 
-## Recommended fix
+The closure pass also aligned action-specific backend contracts:
 
-For each page: `const { can } = usePermissions();` then wrap the create/run/delete controls in `can('<family>.manage' | '<family>.run')` (or the declarative `<Can permission="…">`). Permission families per route are defined in `io.forgetdm.security.AccessControlFilter.requiredPermission`.
+- Audit re-anchor requires `admin.all` in filter and service.
+- Synthetic partition cancel requires `synthetic.cancel`; retry requires `synthetic.run`.
+- Mapping run, retry, workflow run, load, and multi-load require `mapping.run`.
+
+## Verification
+
+- Microsoft Edge Playwright: 21/21 PASS, 0 skipped/flaky/unexpected.
+- Maven regression: 370 tests, 0 failures/errors, 1 intentional skip.
+- Frontend typecheck, lint, and production build: PASS.
+- Compiled controller inventory and exact role/route matrices: PASS.
+- Independent read-only acceptance review: PASS, no concrete UI/API mismatch found.
+
+Evidence: `docs/testing/evidence/RBAC-001-EVIDENCE.md` and the `RBAC-001-PLAYWRIGHT-FINAL-2026-07-19.*` artifacts.
+
+## Residual note
+
+Personal API-token create/revoke is intentionally authenticated owner-scoped identity self-service, not feature administration. The exception is explicit in the route inventory test and service ownership checks.

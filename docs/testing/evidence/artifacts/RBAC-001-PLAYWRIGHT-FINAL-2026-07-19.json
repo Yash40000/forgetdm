@@ -1,0 +1,1118 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "D:\\forgetdm - Copy\\frontend\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--config",
+      "playwright.rbac001.config.ts"
+    ],
+    "configFile": "D:\\forgetdm - Copy\\frontend\\playwright.rbac001.config.ts",
+    "rootDir": "D:/forgetdm - Copy/frontend/e2e/rbac-001",
+    "failOnFlakyTests": false,
+    "forbidOnly": true,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "D:/forgetdm - Copy/frontend/test-results/rbac-001/artifacts-verified-2026-07-19",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "",
+        "name": "",
+        "testDir": "D:/forgetdm - Copy/frontend/e2e/rbac-001",
+        "testIgnore": [],
+        "testMatch": [
+          "**/*.@(spec|test).?(c|m)[jt]s?(x)"
+        ],
+        "timeout": 75000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "test-results/rbac-001/results-verified-2026-07-19.json"
+        }
+      ],
+      [
+        "junit",
+        {
+          "outputFile": "test-results/rbac-001/junit-verified-2026-07-19.xml"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.61.1",
+    "workers": 1,
+    "webServer": {
+      "command": "npm.cmd run start -- --hostname 127.0.0.1 --port 3000",
+      "url": "http://127.0.0.1:3000",
+      "reuseExistingServer": true,
+      "timeout": 240000,
+      "env": {
+        "ALLUSERSPROFILE": "C:\\ProgramData",
+        "APPDATA": "C:\\Users\\yashp\\AppData\\Roaming",
+        "BROWSER_USE_AVAILABLE_BACKENDS": "chrome,iab",
+        "Cassandra_home": "C:\\Program Files\\apache-cassandra-4.1.1-bin\\apache-cassandra-4.1.1",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE": "Codex Desktop",
+        "CODEX_PERMISSION_PROFILE": ":workspace",
+        "CODEX_SANDBOX_NETWORK_DISABLED": "1",
+        "CODEX_SHELL": "1",
+        "CODEX_THREAD_ID": "019ec110-da8e-7e71-9a6d-2796f6539645",
+        "CommonProgramFiles": "C:\\Program Files\\Common Files",
+        "CommonProgramFiles(x86)": "C:\\Program Files (x86)\\Common Files",
+        "CommonProgramW6432": "C:\\Program Files\\Common Files",
+        "COMPUTERNAME": "DESKTOP-6AKMC2L",
+        "ComSpec": "C:\\WINDOWS\\system32\\cmd.exe",
+        "DISABLE_AUTO_UPDATE": "true",
+        "DriverData": "C:\\Windows\\System32\\Drivers\\DriverData",
+        "HOMEDRIVE": "C:",
+        "HOMEPATH": "\\Users\\yashp",
+        "INFA_TRUSTSTORE": "C:\\Informatica\\10.2.0\\clients\\shared\\security",
+        "JAVA_HOME": "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot",
+        "LOCALAPPDATA": "C:\\Users\\yashp\\AppData\\Local",
+        "LOGONSERVER": "\\\\DESKTOP-6AKMC2L",
+        "LOG_FORMAT": "json",
+        "M2": "C:\\Tools\\apache-maven-3.9.11\\bin",
+        "M2_HOME": "C:\\Tools\\apache-maven-3.9.11",
+        "MAVEN_HOME": "C:\\Tools\\apache-maven-3.9.16",
+        "NODE_REPL_TRUSTED_BROWSER_CLIENT_SHA256S": "461c4ba94b821ec805da79c8e8138fe510b1b3358609fc93da47387a2cf3fbf3,7ed52dae165c3bc22b6d24f282e2c1fbc87f6949fbbe037767a7418d8f517f01",
+        "NODE_REPL_TRUSTED_CODE_PATHS": "C:\\Users\\yashp\\.codex",
+        "NUMBER_OF_PROCESSORS": "8",
+        "OneDrive": "C:\\Users\\yashp\\OneDrive",
+        "OneDriveConsumer": "C:\\Users\\yashp\\OneDrive",
+        "OPENSSL_CONF": "C:\\Program Files\\PostgreSQL\\psqlODBC\\etc\\openssl.cnf",
+        "OS": "Windows_NT",
+        "Path": "C:\\Users\\yashp\\.codex\\tmp\\arg0\\codex-arg01SIbTu;C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot\\bin;C:\\Program Files\\nodejs\\;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Program Files\\EclipseAdoptium\\jdk-21.0.11.10-hotspot\\bin;C:\\Tools\\apache-maven-3.9.16\\bin;C:\\Users\\yashp\\AppData\\Roaming\\npm;C:\\Users\\yashp\\AppData\\Local\\Programs\\Ollama;C:\\Users\\yashp\\AppData\\Local\\OpenAI\\Codex\\bin\\ada252862d154cdd;C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.715.4045.0_x64__2p2nqsd0c76g0\\app\\resources",
+        "PATHEXT": ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL",
+        "PROCESSOR_ARCHITECTURE": "AMD64",
+        "PROCESSOR_IDENTIFIER": "AMD64 Family 23 Model 24 Stepping 1, AuthenticAMD",
+        "PROCESSOR_LEVEL": "23",
+        "PROCESSOR_REVISION": "1801",
+        "ProgramData": "C:\\ProgramData",
+        "ProgramFiles": "C:\\Program Files",
+        "ProgramFiles(x86)": "C:\\Program Files (x86)",
+        "ProgramW6432": "C:\\Program Files",
+        "PROMPT": "$P$G",
+        "PSModulePath": "C:\\Users\\yashp\\OneDrive\\Documents\\WindowsPowerShell\\Modules;C:\\Program Files\\WindowsPowerShell\\Modules;C:\\WINDOWS\\system32\\WindowsPowerShell\\v1.0\\Modules",
+        "PUBLIC": "C:\\Users\\Public",
+        "PYTHON_HOME": "C:\\Users\\yashp\\AppData\\Local\\Programs\\Python\\Python311",
+        "python_script": "C:\\Users\\yashp\\AppData\\Local\\Programs\\Python\\Python311\\Scripts",
+        "python_sys": "C:\\Users\\yashp\\AppData\\Local\\Programs\\Python\\Python311",
+        "RUST_LOG": "warn",
+        "SHELL": "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "SystemDrive": "C:",
+        "SystemRoot": "C:\\WINDOWS",
+        "TEMP": "C:\\Users\\yashp\\AppData\\Local\\Temp",
+        "TMP": "C:\\Users\\yashp\\AppData\\Local\\Temp",
+        "USERDOMAIN": "DESKTOP-6AKMC2L",
+        "USERDOMAIN_ROAMINGPROFILE": "DESKTOP-6AKMC2L",
+        "USERNAME": "yashp",
+        "USERPROFILE": "C:\\Users\\yashp",
+        "VBOX_HWVIRTEX_IGNORE_SVM_IN_USE": "1",
+        "windir": "C:\\WINDOWS",
+        "ZSH_TMUX_AUTOSTART": "false",
+        "ZSH_TMUX_AUTOSTARTED": "true",
+        "FORGETDM_API_BASE": "http://127.0.0.1:8099"
+      }
+    }
+  },
+  "suites": [
+    {
+      "title": "feature-action-gating.spec.ts",
+      "file": "feature-action-gating.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "RBAC-001 feature action gating",
+          "file": "feature-action-gating.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "direct protected URLs fail closed when the authenticated account lacks route permission",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2202,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:25.271Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-77428-ount-lacks-route-permission\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-77428-ount-lacks-route-permission\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-614c7ccb86c23b200225",
+              "file": "feature-action-gating.spec.ts",
+              "line": 4,
+              "column": 7
+            },
+            {
+              "title": "Auto Provision does not admit a user whose partial permission set cannot load a workspace slice",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1377,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:28.312Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-43152-nnot-load-a-workspace-slice\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-43152-nnot-load-a-workspace-slice\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-311059efd2305f4b4f57",
+              "file": "feature-action-gating.spec.ts",
+              "line": 15,
+              "column": 7
+            },
+            {
+              "title": "read-only synthetic access preserves inspection and disables generation mutations",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2017,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:29.810Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-f5762-sables-generation-mutations\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-f5762-sables-generation-mutations\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-8befd83742d59bfc8db9",
+              "file": "feature-action-gating.spec.ts",
+              "line": 21,
+              "column": 7
+            },
+            {
+              "title": "read-only DataScope access keeps the inventory but removes blueprint mutation entry points",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1272,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:31.966Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-c852f-print-mutation-entry-points\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-c852f-print-mutation-entry-points\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-ff81e79dbc278d95670a",
+              "file": "feature-action-gating.spec.ts",
+              "line": 30,
+              "column": 7
+            },
+            {
+              "title": "read-only business-entity access keeps the workspace and removes creation",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1280,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:33.431Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-5fb58-kspace-and-removes-creation\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-5fb58-kspace-and-removes-creation\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-31c51a62610fd5af58ef",
+              "file": "feature-action-gating.spec.ts",
+              "line": 38,
+              "column": 7
+            },
+            {
+              "title": "mapping reader can validate and preview but cannot persist, restore, upload, or delete",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1806,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:34.816Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-1e327-st-restore-upload-or-delete\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-1e327-st-restore-upload-or-delete\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-373a4dd1f54164fca764",
+              "file": "feature-action-gating.spec.ts",
+              "line": 46,
+              "column": 7
+            },
+            {
+              "title": "Auto Provision activates only the mapping slice available to an auditor",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1341,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:36.747Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-11afc-ice-available-to-an-auditor\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-11afc-ice-available-to-an-auditor\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-a5c46fd516e33afecfcb",
+              "file": "feature-action-gating.spec.ts",
+              "line": 56,
+              "column": 7
+            },
+            {
+              "title": "self-service reader cannot see approval or catalog administration controls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1380,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:38.196Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-591df-log-administration-controls\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-591df-log-administration-controls\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-5f63ff04e0f0acb7a080",
+              "file": "feature-action-gating.spec.ts",
+              "line": 66,
+              "column": 7
+            },
+            {
+              "title": "unstructured reader keeps preview/history but cannot run, save, cancel, or delete",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1356,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:39.738Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-51051-t-run-save-cancel-or-delete\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-51051-t-run-save-cancel-or-delete\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-ea34abedafaad32d3d23",
+              "file": "feature-action-gating.spec.ts",
+              "line": 75,
+              "column": 7
+            },
+            {
+              "title": "mainframe reader can inspect registries while every server action is withheld",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3207,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:41.201Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-50961-y-server-action-is-withheld\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-50961-y-server-action-is-withheld\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-141688de6a6465dee6b7",
+              "file": "feature-action-gating.spec.ts",
+              "line": 85,
+              "column": 7
+            },
+            {
+              "title": "Forge Data Store reader receives grounding evidence without stewardship actions",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1330,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:44.620Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-83ef9-without-stewardship-actions\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-83ef9-without-stewardship-actions\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-5a3465aef69d3a806162",
+              "file": "feature-action-gating.spec.ts",
+              "line": 104,
+              "column": 7
+            },
+            {
+              "title": "discovery reader can inspect findings and patterns without scan or stewardship actions",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2160,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:46.056Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-399e7-scan-or-stewardship-actions\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-399e7-scan-or-stewardship-actions\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-b6da84ba28320b766454",
+              "file": "feature-action-gating.spec.ts",
+              "line": 113,
+              "column": 7
+            },
+            {
+              "title": "data-source reader can browse inventory but cannot test or edit connections",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1386,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:48.420Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-e6d7b-ot-test-or-edit-connections\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-e6d7b-ot-test-or-edit-connections\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-b8042ecbd1b2f42e06d9",
+              "file": "feature-action-gating.spec.ts",
+              "line": 127,
+              "column": 7
+            },
+            {
+              "title": "policy reader sees rules as read-only and cannot create or delete policy content",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1659,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:49.920Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-9cc5f-te-or-delete-policy-content\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-9cc5f-te-or-delete-policy-content\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-507be59361a431d9f140",
+              "file": "feature-action-gating.spec.ts",
+              "line": 137,
+              "column": 7
+            },
+            {
+              "title": "masking-script reader can preview a saved script without stewardship actions",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1937,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:51.704Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-12957-without-stewardship-actions\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-12957-without-stewardship-actions\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-97eedf6e2e875fdeb66c",
+              "file": "feature-action-gating.spec.ts",
+              "line": 149,
+              "column": 7
+            },
+            {
+              "title": "virtualization reader cannot capture, provision, cancel, or delete resources",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1435,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:53.850Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-4864e--cancel-or-delete-resources\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-4864e--cancel-or-delete-resources\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-bf3610af71bc43e5423f",
+              "file": "feature-action-gating.spec.ts",
+              "line": 161,
+              "column": 7
+            },
+            {
+              "title": "validation reader sees failed evidence without run, diagnose, or apply-fix controls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1356,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:55.416Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-c8357-gnose-or-apply-fix-controls\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-c8357-gnose-or-apply-fix-controls\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-2eb70c6ef5a6717e6ac5",
+              "file": "feature-action-gating.spec.ts",
+              "line": 171,
+              "column": 7
+            },
+            {
+              "title": "authorized mapping manager and runner receive their exact controls",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2339,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:56.891Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-c77a2-eceive-their-exact-controls\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-c77a2-eceive-their-exact-controls\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-01b740e959b85b451a5a",
+              "file": "feature-action-gating.spec.ts",
+              "line": 181,
+              "column": 7
+            },
+            {
+              "title": "built-in Auditor can inspect Automation and Audit but cannot administer either area",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3604,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:36:59.372Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-0e254-nnot-administer-either-area\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-0e254-nnot-administer-either-area\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-984a9a4999a90fbde89a",
+              "file": "feature-action-gating.spec.ts",
+              "line": 192,
+              "column": 7
+            },
+            {
+              "title": "synthetic cancel permission exposes partition cancel without granting retry",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2516,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:37:03.181Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-42a9b-ncel-without-granting-retry\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-42a9b-ncel-without-granting-retry\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-f3ba8ea72334a3e6645e",
+              "file": "feature-action-gating.spec.ts",
+              "line": 211,
+              "column": 7
+            },
+            {
+              "title": "synthetic run permission exposes partition retry without granting cancel",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 75000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "",
+                  "projectName": "",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2424,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-07-19T23:37:05.942Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-eab7f-try-without-granting-cancel\\test-finished-1.png"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "D:\\forgetdm - Copy\\frontend\\test-results\\rbac-001\\artifacts-verified-2026-07-19\\feature-action-gating-RBAC-eab7f-try-without-granting-cancel\\trace.zip"
+                        }
+                      ]
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ad8bb07f4155947f66e4-71579e9c76781f327656",
+              "file": "feature-action-gating.spec.ts",
+              "line": 222,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-07-19T23:36:21.808Z",
+    "duration": 735532.267,
+    "expected": 21,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

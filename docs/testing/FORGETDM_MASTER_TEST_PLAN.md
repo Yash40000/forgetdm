@@ -395,6 +395,7 @@ evidence uses `docs/enterprise/connector-certification-evidence/TEMPLATE.md`.
 ### Entry
 
 - Requirements and supported scope are versioned.
+- The story is in the Ready queue and has a retained execution-approval record naming the approver, environment, permitted mutations, and excluded scopes. Ready status alone is not approval.
 - Release candidate build is immutable and deployable.
 - Migrations, fixtures, accounts, certificates, drivers, native clients, storage, and monitoring are ready.
 - Test data is synthetic or approved/sanitized, with expected outcomes defined.
