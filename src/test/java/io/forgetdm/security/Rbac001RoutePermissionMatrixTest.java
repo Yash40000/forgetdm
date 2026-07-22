@@ -125,6 +125,7 @@ class Rbac001RoutePermissionMatrixTest {
                 route("POST", "/api/self-service/v2/orders", "provision.run"),
                 route("POST", "/api/self-service/v2/orders/42/decision/approve", "provision.approve"),
                 route("GET", "/api/audit", "audit.read"),
+                route("GET", "/api/audit/verify", "admin.all"),
                 route("POST", "/api/audit/reanchor", "admin.all"),
                 route("GET", "/api/dashboard/summary", "dashboard.read"),
                 route("GET", "/api/datasources", "datasource.read"),

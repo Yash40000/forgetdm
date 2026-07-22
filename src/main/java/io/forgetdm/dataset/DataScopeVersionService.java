@@ -57,7 +57,7 @@ public class DataScopeVersionService {
 
     /** Assemble the full current blueprint as a snapshot object. */
     public Map<String, Object> snapshot(Long datasetId) {
-        DataSetDefinitionEntity def = datasets.get(datasetId);
+        DataSetDefinitionEntity def = datasets.assertAuthorizedReferences(datasetId, null);
         List<TableProfileEntity> profiles = datasets.listProfiles(datasetId);
         Map<String, Object> snap = new LinkedHashMap<>();
         snap.put("definition", def);
@@ -310,8 +310,10 @@ public class DataScopeVersionService {
     // ─── helpers ─────────────────────────────────────────────────────────────
 
     private DataSetVersionEntity find(Long versionId) {
-        return versions.findById(versionId)
+        DataSetVersionEntity version = versions.findById(versionId)
                 .orElseThrow(() -> ApiException.notFound("Version " + versionId + " not found"));
+        datasets.get(version.getDatasetId());
+        return version;
     }
 
     private JsonNode parseSnapshot(String snapshotJson) {

@@ -85,6 +85,7 @@ export type VirtOperation = {
 
 export type VirtPool = {
   poolPath?: string;
+  encryptedAtRest?: boolean;
   chunkCount?: number;
   storedBytes?: number;
   logicalBytes?: number;

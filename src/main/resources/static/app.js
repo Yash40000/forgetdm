@@ -2497,7 +2497,7 @@ function renderVirtPool(p) {
   const el = $('virt-pool-stats');
   if (!el) return;
   if (!p || !p.chunkCount) { el.textContent = 'pool: empty'; return; }
-  el.textContent = `pool: ${p.chunkCount} chunks · ${fmtBytes(p.storedBytes)} physical / ${fmtBytes(p.logicalBytes)} logical · ${p.dedupRatio}x dedup`;
+  el.textContent = `pool: ${p.chunkCount} chunks · ${fmtBytes(p.storedBytes)} physical / ${fmtBytes(p.logicalBytes)} logical · ${p.dedupRatio}x dedup · ${p.encryptedAtRest ? 'AES-256-GCM' : 'unencrypted'}`;
 }
 
 function fmtBytes(n) {

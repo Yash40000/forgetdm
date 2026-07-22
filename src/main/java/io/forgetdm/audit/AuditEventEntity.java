@@ -29,6 +29,13 @@ public class AuditEventEntity {
 
     private String metadata;  // optional JSON context (before/after, request id, etc.)
 
+    // Tenant scope is part of hash version 2 so changing event visibility is tamper-evident.
+    @Column(name = "owner_user_id") private Long ownerUserId;
+    @Column(name = "owner_username") private String ownerUsername;
+    @Column(name = "owner_group_id") private Long ownerGroupId;
+    @Column(name = "visibility") private String visibility = "GROUP";
+    @Column(name = "hash_version") private Integer hashVersion = 2;
+
     /** Tamper-evidence: hash of the previous event and the SHA-256 of this event over prev_hash. */
     @Column(name = "prev_hash") private String prevHash;
     private String hash;
@@ -62,6 +69,16 @@ public class AuditEventEntity {
     public void setDetail(String detail) { this.detail = detail; }
     public String getMetadata() { return metadata; }
     public void setMetadata(String metadata) { this.metadata = metadata; }
+    public Long getOwnerUserId() { return ownerUserId; }
+    public void setOwnerUserId(Long ownerUserId) { this.ownerUserId = ownerUserId; }
+    public String getOwnerUsername() { return ownerUsername; }
+    public void setOwnerUsername(String ownerUsername) { this.ownerUsername = ownerUsername; }
+    public Long getOwnerGroupId() { return ownerGroupId; }
+    public void setOwnerGroupId(Long ownerGroupId) { this.ownerGroupId = ownerGroupId; }
+    public String getVisibility() { return visibility; }
+    public void setVisibility(String visibility) { this.visibility = visibility; }
+    public Integer getHashVersion() { return hashVersion; }
+    public void setHashVersion(Integer hashVersion) { this.hashVersion = hashVersion; }
     public String getPrevHash() { return prevHash; }
     public void setPrevHash(String prevHash) { this.prevHash = prevHash; }
     public String getHash() { return hash; }

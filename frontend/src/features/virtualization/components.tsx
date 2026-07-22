@@ -85,9 +85,14 @@ export function EngineHealth({
             <Text size="xs" tt="uppercase" fw={800} c="dimmed">
               Storage pool
             </Text>
-            <Badge variant="light" color="blue">
-              {dedup}× dedup
-            </Badge>
+            <Group gap={6}>
+              <Badge variant="light" color={pool?.encryptedAtRest ? 'green' : 'yellow'}>
+                {pool?.encryptedAtRest ? 'AES-256-GCM' : 'unencrypted'}
+              </Badge>
+              <Badge variant="light" color="blue">
+                {dedup}× dedup
+              </Badge>
+            </Group>
           </Group>
           <Text size="xl" fw={850}>
             {formatBytes(stored)}

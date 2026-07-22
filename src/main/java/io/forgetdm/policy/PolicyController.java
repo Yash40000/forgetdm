@@ -7,6 +7,7 @@ import io.forgetdm.core.mask.MaskFunction;
 import io.forgetdm.core.mask.MaskingEngine;
 import io.forgetdm.provision.ValueListService;
 import io.forgetdm.security.AccessPrincipal;
+import io.forgetdm.security.GovernedReferenceGuard;
 import io.forgetdm.security.OwnershipGuard;
 import jakarta.transaction.Transactional;
 import org.springframework.web.bind.annotation.*;
@@ -26,27 +27,32 @@ public class PolicyController {
     private final AuditService audit;
     private final ValueListService valueLists;
     private final OwnershipGuard ownership;
+    private final GovernedReferenceGuard references;
 
     public PolicyController(MaskingPolicyRepository policies, MaskingRuleRepository rules,
                             MaskingEngine engine, AuditService audit, ValueListService valueLists,
-                            OwnershipGuard ownership) {
+                            OwnershipGuard ownership, GovernedReferenceGuard references) {
         this.policies = policies; this.rules = rules; this.engine = engine; this.audit = audit; this.valueLists = valueLists;
         this.ownership = ownership;
+        this.references = references;
     }
 
     /** Tenant-scoped: callers only see policies they own, their group owns, or that are SHARED. */
     @GetMapping public List<MaskingPolicyEntity> list(@RequestParam(required = false) Long dataSourceId,
                                                       @RequestParam(required = false) String schema) {
+        references.dataSource(dataSourceId);
         List<MaskingPolicyEntity> found = (dataSourceId != null && schema != null && !schema.isBlank())
                 ? policies.findByDataSourceIdAndSchemaName(dataSourceId, schema)
                 : policies.findAll();
         return found.stream()
                 .filter(p -> ownership.canSee(p.getOwnerUserId(), p.getOwnerGroupId(), p.getVisibility()))
+                .filter(p -> references.canSeeDataSource(p.getDataSourceId()))
                 .toList();
     }
 
     @PostMapping public MaskingPolicyEntity create(@RequestBody MaskingPolicyEntity p) {
         p.setName(PolicyNameRules.normalize(p.getName()));
+        references.dataSource(p.getDataSourceId());
         policies.findByNameIgnoreCase(p.getName()).ifPresent(existing -> {
             throw ApiException.conflict("A policy named '" + p.getName() + "' already exists");
         });
@@ -76,7 +82,10 @@ public class PolicyController {
             policy.setName(name);
         }
         if (body.getDescription() != null) policy.setDescription(body.getDescription());
-        if (body.getDataSourceId() != null) policy.setDataSourceId(body.getDataSourceId());
+        if (body.getDataSourceId() != null) {
+            references.dataSource(body.getDataSourceId());
+            policy.setDataSourceId(body.getDataSourceId());
+        }
         if (body.getSchemaName() != null) policy.setSchemaName(emptyToNull(body.getSchemaName()));
         if (body.getVisibility() != null && !body.getVisibility().isBlank()) {
             String visibility = body.getVisibility().trim().toUpperCase(Locale.ROOT);

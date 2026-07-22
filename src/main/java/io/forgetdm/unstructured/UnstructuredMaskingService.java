@@ -10,6 +10,7 @@ import io.forgetdm.core.mask.MaskingEngine;
 import io.forgetdm.core.util.PiiPatterns;
 import io.forgetdm.filevault.ManagedFileVault;
 import io.forgetdm.security.AccessContext;
+import io.forgetdm.security.OwnershipGuard;
 import jakarta.annotation.PreDestroy;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
@@ -61,6 +62,7 @@ public class UnstructuredMaskingService {
     private final MaskingEngine masking;
     private final ObjectMapper json;
     private final AuditService audit;
+    private final OwnershipGuard ownership;
     private final long maxUploadBytes;
     private final int maxExtractedChars;
     private final long retentionHours;
@@ -71,12 +73,12 @@ public class UnstructuredMaskingService {
 
     public UnstructuredMaskingService(UnstructuredProfileRepository profiles, UnstructuredJobRepository jobs,
                                       ManagedFileVault vault, MaskingEngine masking, ObjectMapper json,
-                                      AuditService audit,
+                                      AuditService audit, OwnershipGuard ownership,
                                       @Value("${forgetdm.file-vault.max-upload-bytes:104857600}") long maxUploadBytes,
                                       @Value("${forgetdm.file-vault.max-extracted-chars:25000000}") int maxExtractedChars,
                                       @Value("${forgetdm.file-vault.output-retention-hours:72}") long retentionHours) {
         this.profiles = profiles; this.jobs = jobs; this.vault = vault; this.masking = masking;
-        this.json = json; this.audit = audit; this.maxUploadBytes = maxUploadBytes;
+        this.json = json; this.audit = audit; this.ownership = ownership; this.maxUploadBytes = maxUploadBytes;
         this.maxExtractedChars = maxExtractedChars; this.retentionHours = retentionHours;
     }
 
@@ -84,13 +86,18 @@ public class UnstructuredMaskingService {
 
     public List<UnstructuredProfileEntity> listProfiles() {
         ensureDefaultProfile();
-        List<UnstructuredProfileEntity> out = profiles.findAll();
+        List<UnstructuredProfileEntity> out = new ArrayList<>(profiles.findAll().stream()
+                .filter(profile -> ownership.canSee(profile.getOwnerUserId(), profile.getOwnerGroupId(), profile.getVisibility()))
+                .toList());
         out.sort(Comparator.comparing(UnstructuredProfileEntity::getName, String.CASE_INSENSITIVE_ORDER));
         return out;
     }
 
     public UnstructuredProfileEntity getProfile(Long id) {
-        return profiles.findById(id).orElseThrow(() -> ApiException.notFound("Unstructured masking profile " + id + " not found"));
+        UnstructuredProfileEntity profile = findProfile(id);
+        ownership.assertCanSee("unstructured masking profile", id,
+                profile.getOwnerUserId(), profile.getOwnerGroupId(), profile.getVisibility());
+        return profile;
     }
 
     @Transactional
@@ -99,14 +106,26 @@ public class UnstructuredMaskingService {
         List<Rule> parsed = parseRules(input.getRulesJson());
         if (parsed.isEmpty()) throw ApiException.bad("Add at least one masking rule");
         validateRules(parsed);
-        UnstructuredProfileEntity target = input.getId() == null
-                ? profiles.findByNameIgnoreCase(input.getName().trim()).orElseGet(UnstructuredProfileEntity::new)
-                : getProfile(input.getId());
+        UnstructuredProfileEntity target;
+        if (input.getId() == null) {
+            target = profiles.findByNameIgnoreCase(input.getName().trim()).orElseGet(UnstructuredProfileEntity::new);
+            if (target.getId() != null) {
+                ownership.assertCanSee("unstructured masking profile", target.getId(),
+                        target.getOwnerUserId(), target.getOwnerGroupId(), target.getVisibility());
+            }
+        } else {
+            target = getProfile(input.getId());
+        }
         boolean update = target.getId() != null;
         target.setName(input.getName().trim()); target.setDescription(input.getDescription());
         target.setRulesJson(canonicalRules(parsed));
         target.setStatus(normalizeStatus(input.getStatus()));
-        target.setCreatedBy(target.getCreatedBy() == null ? actor() : target.getCreatedBy());
+        if (!update) {
+            target.setCreatedBy(actor());
+            stampProfileOwnership(target, input.getVisibility());
+        } else if (input.getVisibility() != null && !input.getVisibility().isBlank()) {
+            target.setVisibility(normalizeVisibility(input.getVisibility()));
+        }
         target.setUpdatedAt(Instant.now()); if (update) target.setVersionNo(target.getVersionNo() + 1);
         UnstructuredProfileEntity saved = profiles.save(target);
         audit.record(actor(), update ? "UNSTRUCTURED_PROFILE_UPDATED" : "UNSTRUCTURED_PROFILE_CREATED", "MASKING",
@@ -142,6 +161,7 @@ public class UnstructuredMaskingService {
         job.setOriginalFilename(safeFilename(file.getOriginalFilename())); job.setBytesRead(file.getSize());
         job.setSourceSha256(stored.sha256()); job.setSourceStorageKey(stored.storageKey());
         job.setSourceKeySalt(stored.keySalt()); job.setSourceIv(stored.iv()); job.setCreatedBy(actor());
+        stampJobOwnership(job);
         job.setMessage("Encrypted upload accepted; waiting for an available worker");
         job.setFindingsJson("{}");
         UnstructuredJobEntity saved = jobs.save(job);
@@ -164,23 +184,23 @@ public class UnstructuredMaskingService {
     }
 
     public List<UnstructuredJobEntity> listJobs() {
-        List<UnstructuredJobEntity> all = jobs.findTop100ByOrderByCreatedAtDesc();
-        return AccessContext.current().filter(p -> !p.hasPermission("unstructured.manage") && !p.roles().contains("AUDITOR"))
-                .map(p -> all.stream().filter(job -> p.username().equalsIgnoreCase(job.getCreatedBy())).toList()).orElse(all);
+        return jobs.findAll().stream()
+                .filter(job -> ownership.canSee(job.getOwnerUserId(), job.getOwnerGroupId(), job.getVisibility()))
+                .sorted(Comparator.comparing(UnstructuredJobEntity::getCreatedAt,
+                        Comparator.nullsFirst(Comparator.naturalOrder())).reversed())
+                .limit(100)
+                .toList();
     }
     public UnstructuredJobEntity getJob(Long id) {
-        UnstructuredJobEntity job = jobs.findById(id).orElseThrow(() -> ApiException.notFound("Unstructured masking job " + id + " not found"));
-        AccessContext.current().ifPresent(p -> {
-            if (!p.username().equalsIgnoreCase(job.getCreatedBy()) && !p.hasPermission("unstructured.manage") && !p.roles().contains("AUDITOR"))
-                throw ApiException.forbidden("This unstructured masking job belongs to another user");
-        });
+        UnstructuredJobEntity job = findJob(id);
+        ownership.assertCanSee("unstructured masking job", id,
+                job.getOwnerUserId(), job.getOwnerGroupId(), job.getVisibility());
         return job;
     }
 
     @Transactional
     public UnstructuredJobEntity cancel(Long id) {
         UnstructuredJobEntity job = getJob(id);
-        requirePayloadAccess(job);
         if (Set.of("COMPLETED", "FAILED", "CANCELED").contains(job.getStatus())) return job;
         job.setCancelRequested(true); job.setMessage("Cancellation requested; the current extraction stage will stop at its safe boundary");
         UnstructuredJobEntity saved = jobs.save(job);
@@ -191,7 +211,6 @@ public class UnstructuredMaskingService {
 
     public Download output(Long id) {
         UnstructuredJobEntity job = getJob(id);
-        requirePayloadAccess(job);
         if (!"COMPLETED".equals(job.getStatus()) || job.getOutputStorageKey() == null)
             throw ApiException.bad("This job has no completed masked output");
         return new Download(job.getOutputName(), contentType(job.getOutputName()),
@@ -202,7 +221,6 @@ public class UnstructuredMaskingService {
     @Transactional
     public void deleteJob(Long id) {
         UnstructuredJobEntity job = getJob(id);
-        requirePayloadAccess(job);
         if ("RUNNING".equals(job.getStatus()) || "QUEUED".equals(job.getStatus())) throw ApiException.bad("Cancel the job before deleting it");
         vault.delete(job.getSourceStorageKey()); vault.delete(job.getOutputStorageKey()); jobs.delete(job);
         audit.log(actor(), "UNSTRUCTURED_JOB_DELETED", "job=" + id);
@@ -210,16 +228,16 @@ public class UnstructuredMaskingService {
 
     private void process(Long id, String seed) {
         try {
-            UnstructuredJobEntity job = getJob(id);
+            UnstructuredJobEntity job = findJob(id);
             update(job, "RUNNING", "DETECT", 5, "Detecting content type without trusting the filename");
-            job = getJob(id);
+            job = findJob(id);
             audit.record(job.getCreatedBy(), "UNSTRUCTURED_JOB_STARTED", "MASKING", "UNSTRUCTURED_JOB", String.valueOf(id),
                     job.getOriginalFilename(), "SUCCESS", "Unstructured masking worker started", null);
-            UnstructuredProfileEntity profile = getProfile(job.getProfileId());
+            UnstructuredProfileEntity profile = findProfile(job.getProfileId());
             List<Rule> rules = parseRules(profile.getRulesJson());
             checkCanceled(id);
             String mediaType = detectMediaType(job);
-            job = getJob(id); job.setDetectedFormat(mediaType); jobs.save(job);
+            job = findJob(id); job.setDetectedFormat(mediaType); jobs.save(job);
             checkCanceled(id);
 
             update(job, "RUNNING", "EXTRACT", 18, "Reading text through a bounded, fail-closed format adapter");
@@ -228,7 +246,7 @@ public class UnstructuredMaskingService {
             update(job, "RUNNING", "WRITE", 86, "Writing only masked content to encrypted managed storage");
             ManagedFileVault.OutputHandle output = vault.createOutput();
             try (output) { output.stream().write(processed.bytes()); }
-            job = getJob(id); job.setOutputStorageKey(output.storageKey()); job.setOutputKeySalt(output.keySalt()); job.setOutputIv(output.iv());
+            job = findJob(id); job.setOutputStorageKey(output.storageKey()); job.setOutputKeySalt(output.keySalt()); job.setOutputIv(output.iv());
             job.setOutputSha256(output.sha256()); job.setOutputName(maskedName(job.getOriginalFilename(), processed.extension()));
             job.setOutputStrategy(processed.strategy()); job.setFindingsCount(processed.findings().values().stream().mapToLong(Long::longValue).sum());
             job.setFindingsJson(json.writeValueAsString(processed.findings())); job.setCharsProcessed(processed.charsProcessed());
@@ -237,7 +255,7 @@ public class UnstructuredMaskingService {
             audit.record(job.getCreatedBy(), "UNSTRUCTURED_JOB_COMPLETED", "MASKING", "UNSTRUCTURED_JOB", String.valueOf(id),
                     job.getOriginalFilename(), "SUCCESS", "findings=" + job.getFindingsCount() + " strategy=" + job.getOutputStrategy(), job.getFindingsJson());
         } catch (Canceled e) {
-            UnstructuredJobEntity job = getJob(id); job.setStatus("CANCELED"); job.setStage("CANCELED"); job.setMessage("Canceled; encrypted source and incomplete output were destroyed");
+            UnstructuredJobEntity job = findJob(id); job.setStatus("CANCELED"); job.setStage("CANCELED"); job.setMessage("Canceled; encrypted source and incomplete output were destroyed");
             job.setFinishedAt(Instant.now()); jobs.save(job); vault.delete(job.getSourceStorageKey()); vault.delete(job.getOutputStorageKey()); clearSource(job);
             audit.record(job.getCreatedBy(), "UNSTRUCTURED_JOB_CANCELED", "CANCEL", "UNSTRUCTURED_JOB", String.valueOf(id),
                     job.getOriginalFilename(), "SUCCESS", "Encrypted payloads destroyed", null);
@@ -463,7 +481,8 @@ public class UnstructuredMaskingService {
         if (profiles.count() > 0) return;
         UnstructuredProfileEntity profile = new UnstructuredProfileEntity(); profile.setName("Enterprise PII baseline");
         profile.setDescription("Format-aware deterministic masking for common personal, payment, banking, and network identifiers.");
-        profile.setStatus("ACTIVE"); profile.setCreatedBy("system"); profile.setRulesJson(canonicalRules(defaultRules())); profiles.save(profile);
+        profile.setStatus("ACTIVE"); profile.setCreatedBy("system"); profile.setRulesJson(canonicalRules(defaultRules()));
+        profile.setOwnerUsername("system"); profile.setVisibility(OwnershipGuard.SHARED); profiles.save(profile);
     }
 
     private static List<Rule> defaultRules() {
@@ -490,10 +509,10 @@ public class UnstructuredMaskingService {
     }
 
     private void update(UnstructuredJobEntity job, String status, String stage, int progress, String message) {
-        UnstructuredJobEntity current = getJob(job.getId()); current.setStatus(status); current.setStage(stage);
+        UnstructuredJobEntity current = findJob(job.getId()); current.setStatus(status); current.setStage(stage);
         current.setProgress(progress); current.setMessage(message); if (current.getStartedAt() == null) current.setStartedAt(Instant.now()); jobs.save(current);
     }
-    private void checkCanceled(Long id) { if (getJob(id).isCancelRequested()) throw new Canceled(); }
+    private void checkCanceled(Long id) { if (findJob(id).isCancelRequested()) throw new Canceled(); }
     private void clearSource(UnstructuredJobEntity job) { job.setSourceStorageKey(null); job.setSourceKeySalt(null); job.setSourceIv(null); jobs.save(job); }
 
     @Scheduled(cron = "0 17 * * * *")
@@ -516,6 +535,12 @@ public class UnstructuredMaskingService {
     private static boolean selectorMatches(String configured, String actual) { return configured == null || configured.isBlank() || actual.toLowerCase(Locale.ROOT).contains(configured.toLowerCase(Locale.ROOT)); }
     private static MaskFunction parseFunction(String value) { try { return MaskFunction.valueOf(value.toUpperCase(Locale.ROOT)); } catch (Exception e) { throw ApiException.bad("Unknown masking function: " + value); } }
     private static String normalizeStatus(String value) { String s = value == null ? "DRAFT" : value.toUpperCase(Locale.ROOT); if (!Set.of("DRAFT", "ACTIVE", "RETIRED").contains(s)) throw ApiException.bad("Profile status must be DRAFT, ACTIVE, or RETIRED"); return s; }
+    private static String normalizeVisibility(String value) {
+        String visibility = value == null ? "" : value.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of(OwnershipGuard.PRIVATE, OwnershipGuard.GROUP, OwnershipGuard.SHARED).contains(visibility))
+            throw ApiException.bad("Visibility must be PRIVATE, GROUP, or SHARED");
+        return visibility;
+    }
     private static boolean isJson(String media, String name) { return media.contains("json") || name.endsWith(".json"); }
     private static boolean isCsv(String media, String name) { return media.contains("csv") || media.contains("tab-separated") || name.endsWith(".csv") || name.endsWith(".tsv"); }
     private static boolean isXml(String media, String name) { return (media.contains("xml") && !media.contains("html")) || name.endsWith(".xml"); }
@@ -527,11 +552,30 @@ public class UnstructuredMaskingService {
     private static String blankToNull(String v) { return v == null || v.isBlank() ? null : v; }
     private static String safeError(Throwable e) { String s = e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage(); return s.length() > 4000 ? s.substring(0, 4000) : s; }
     private static String actor() { return AccessContext.current().map(p -> p.username()).orElse("system"); }
-    private static void requirePayloadAccess(UnstructuredJobEntity job) {
-        AccessContext.current().ifPresent(p -> {
-            if (!p.username().equalsIgnoreCase(job.getCreatedBy()) && !p.hasPermission("unstructured.manage"))
-                throw ApiException.forbidden("Only the job owner or an unstructured masking manager can access this output");
-        });
+
+    private UnstructuredProfileEntity findProfile(Long id) {
+        return profiles.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Unstructured masking profile " + id + " not found"));
+    }
+
+    private UnstructuredJobEntity findJob(Long id) {
+        return jobs.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Unstructured masking job " + id + " not found"));
+    }
+
+    private void stampProfileOwnership(UnstructuredProfileEntity profile, String requestedVisibility) {
+        profile.setOwnerUserId(ownership.defaultOwnerUserId());
+        profile.setOwnerUsername(ownership.defaultOwnerUsername());
+        profile.setOwnerGroupId(ownership.defaultOwnerGroupId());
+        profile.setVisibility(requestedVisibility == null || requestedVisibility.isBlank()
+                ? ownership.defaultVisibility() : normalizeVisibility(requestedVisibility));
+    }
+
+    private void stampJobOwnership(UnstructuredJobEntity job) {
+        job.setOwnerUserId(ownership.defaultOwnerUserId());
+        job.setOwnerUsername(ownership.defaultOwnerUsername());
+        job.setOwnerGroupId(ownership.defaultOwnerGroupId());
+        job.setVisibility(ownership.defaultVisibility());
     }
 
     public record Rule(String name, String piiType, String pattern, String function, String param1, String param2,

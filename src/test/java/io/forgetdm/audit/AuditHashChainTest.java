@@ -104,6 +104,36 @@ class AuditHashChainTest {
     }
 
     @Test
+    void legacyHashVersionIgnoresNewTenancyFields() {
+        AuditEventEntity e = event(1, "admin", "LOGIN_SUCCESS", "x",
+                Instant.parse("2026-07-18T10:00:00Z"));
+        e.setHashVersion(1);
+        String legacy = AuditHash.compute("prev", e);
+        e.setOwnerUserId(99L);
+        e.setOwnerUsername("changed-owner");
+        e.setOwnerGroupId(77L);
+        e.setVisibility("PRIVATE");
+        assertEquals(legacy, AuditHash.compute("prev", e),
+                "V70 must not invalidate historical version-1 ledger rows");
+    }
+
+    @Test
+    void versionTwoMakesTenancyTamperEvident() {
+        AuditEventEntity e = event(1, "admin", "LOGIN_SUCCESS", "x",
+                Instant.parse("2026-07-18T10:00:00Z"));
+        e.setHashVersion(2);
+        e.setOwnerUserId(1L);
+        e.setOwnerUsername("alpha");
+        e.setOwnerGroupId(10L);
+        e.setVisibility("GROUP");
+        String original = AuditHash.compute("prev", e);
+
+        e.setVisibility("SHARED");
+        assertNotEquals(original, AuditHash.compute("prev", e),
+                "changing audit visibility must break a version-2 event hash");
+    }
+
+    @Test
     void verificationReanchorsAfterHistoricalLinkBreakAndChecksLaterEvents() {
         Instant at = Instant.parse("2026-07-18T10:00:00Z");
         AuditEventEntity first = chainedEvent(1, "", at);

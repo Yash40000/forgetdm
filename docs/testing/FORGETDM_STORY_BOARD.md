@@ -21,6 +21,12 @@ ForgeTDM product validation is managed as a continuous queue, not by sprint or r
 6. Promote the next highest-risk dependency-ready story from `status:backlog` to `status:ready` so the Ready queue returns to ten.
 7. Never use a sprint date to imply release readiness. Readiness comes from passed gates and reviewed evidence.
 
+## Deferred Campaigns
+
+- `LEGAL-001` and `LEGAL-002` are deferred to a separate legal and diligence campaign as of
+  2026-07-20. Keep them out of engineering execution and do not count them as passed, failed, or
+  HARD-PASS until qualified legal reviewers provide retained evidence.
+
 ## Source of Truth
 
 - Master plan: [FORGETDM_MASTER_TEST_PLAN.md](FORGETDM_MASTER_TEST_PLAN.md)

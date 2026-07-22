@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 public interface AuditEventRepository extends JpaRepository<AuditEventEntity, Long> {
 
@@ -44,6 +45,39 @@ public interface AuditEventRepository extends JpaRepository<AuditEventEntity, Lo
                                   @Param("q") String q,
                                   Pageable pageable);
 
+    @Query("""
+            SELECT e FROM AuditEventEntity e
+            WHERE (:globalAccess = true
+                   OR e.visibility = 'SHARED'
+                   OR e.ownerUserId = :userId
+                   OR (e.visibility = 'GROUP' AND e.ownerGroupId IN :groupIds))
+              AND (:actor = '' OR LOWER(e.actor) = LOWER(:actor))
+              AND (:action = '' OR e.action = :action)
+              AND (:category = '' OR e.category = :category)
+              AND (:outcome = '' OR e.outcome = :outcome)
+              AND (:resourceType = '' OR e.resourceType = :resourceType)
+              AND e.createdAt >= :from
+              AND e.createdAt <= :to
+              AND (:q = ''
+                   OR LOWER(e.detail) LIKE LOWER(CONCAT('%', :q, '%'))
+                   OR LOWER(e.action) LIKE LOWER(CONCAT('%', :q, '%'))
+                   OR LOWER(e.resourceName) LIKE LOWER(CONCAT('%', :q, '%'))
+                   OR LOWER(e.actor) LIKE LOWER(CONCAT('%', :q, '%')))
+            ORDER BY e.id DESC
+            """)
+    Page<AuditEventEntity> searchScoped(@Param("globalAccess") boolean globalAccess,
+                                        @Param("userId") Long userId,
+                                        @Param("groupIds") Set<Long> groupIds,
+                                        @Param("actor") String actor,
+                                        @Param("action") String action,
+                                        @Param("category") String category,
+                                        @Param("outcome") String outcome,
+                                        @Param("resourceType") String resourceType,
+                                        @Param("from") Instant from,
+                                        @Param("to") Instant to,
+                                        @Param("q") String q,
+                                        Pageable pageable);
+
     @Query("SELECT DISTINCT e.action FROM AuditEventEntity e WHERE e.action IS NOT NULL ORDER BY e.action")
     List<String> distinctActions();
 
@@ -54,4 +88,40 @@ public interface AuditEventRepository extends JpaRepository<AuditEventEntity, Lo
     List<String> distinctActors();
 
     long countByOutcome(String outcome);
+
+    @Query("SELECT DISTINCT e.action FROM AuditEventEntity e WHERE e.action IS NOT NULL AND " +
+            "(:globalAccess = true OR e.visibility='SHARED' OR e.ownerUserId=:userId OR " +
+            "(e.visibility='GROUP' AND e.ownerGroupId IN :groupIds)) ORDER BY e.action")
+    List<String> distinctActionsScoped(@Param("globalAccess") boolean globalAccess,
+                                       @Param("userId") Long userId,
+                                       @Param("groupIds") Set<Long> groupIds);
+
+    @Query("SELECT DISTINCT e.category FROM AuditEventEntity e WHERE e.category IS NOT NULL AND " +
+            "(:globalAccess = true OR e.visibility='SHARED' OR e.ownerUserId=:userId OR " +
+            "(e.visibility='GROUP' AND e.ownerGroupId IN :groupIds)) ORDER BY e.category")
+    List<String> distinctCategoriesScoped(@Param("globalAccess") boolean globalAccess,
+                                          @Param("userId") Long userId,
+                                          @Param("groupIds") Set<Long> groupIds);
+
+    @Query("SELECT DISTINCT e.actor FROM AuditEventEntity e WHERE e.actor IS NOT NULL AND " +
+            "(:globalAccess = true OR e.visibility='SHARED' OR e.ownerUserId=:userId OR " +
+            "(e.visibility='GROUP' AND e.ownerGroupId IN :groupIds)) ORDER BY e.actor")
+    List<String> distinctActorsScoped(@Param("globalAccess") boolean globalAccess,
+                                      @Param("userId") Long userId,
+                                      @Param("groupIds") Set<Long> groupIds);
+
+    @Query("SELECT COUNT(e) FROM AuditEventEntity e WHERE " +
+            "(:globalAccess = true OR e.visibility='SHARED' OR e.ownerUserId=:userId OR " +
+            "(e.visibility='GROUP' AND e.ownerGroupId IN :groupIds))")
+    long countScoped(@Param("globalAccess") boolean globalAccess,
+                     @Param("userId") Long userId,
+                     @Param("groupIds") Set<Long> groupIds);
+
+    @Query("SELECT COUNT(e) FROM AuditEventEntity e WHERE e.outcome=:outcome AND " +
+            "(:globalAccess = true OR e.visibility='SHARED' OR e.ownerUserId=:userId OR " +
+            "(e.visibility='GROUP' AND e.ownerGroupId IN :groupIds))")
+    long countByOutcomeScoped(@Param("outcome") String outcome,
+                              @Param("globalAccess") boolean globalAccess,
+                              @Param("userId") Long userId,
+                              @Param("groupIds") Set<Long> groupIds);
 }

@@ -28,6 +28,13 @@ public class VirtualSnapshotEntity {
     @Column(name = "new_chunk_count") private int newChunkCount;
     @Column(name = "logical_bytes") private long logicalBytes;
     @Column(name = "stored_bytes") private long storedBytes;
+    @Column(name = "cdc_capture_id") private Long cdcCaptureId;
+    @Column(name = "cdc_base_snapshot_id") private Long cdcBaseSnapshotId;
+    @Column(name = "cdc_from_position") private String cdcFromPosition;
+    @Column(name = "cdc_through_position") private String cdcThroughPosition;
+    @Column(name = "cdc_through_change_id") private Long cdcThroughChangeId;
+    @Column(name = "cdc_through_ts") private Instant cdcThroughTs;
+    @Column(name = "cdc_changes_applied") private long cdcChangesApplied;
     @Column(name = "created_at") private Instant createdAt = Instant.now();
 
     public Long getId() { return id; }
@@ -69,6 +76,20 @@ public class VirtualSnapshotEntity {
     public void setLogicalBytes(long logicalBytes) { this.logicalBytes = logicalBytes; }
     public long getStoredBytes() { return storedBytes; }
     public void setStoredBytes(long storedBytes) { this.storedBytes = storedBytes; }
+    public Long getCdcCaptureId() { return cdcCaptureId; }
+    public void setCdcCaptureId(Long cdcCaptureId) { this.cdcCaptureId = cdcCaptureId; }
+    public Long getCdcBaseSnapshotId() { return cdcBaseSnapshotId; }
+    public void setCdcBaseSnapshotId(Long cdcBaseSnapshotId) { this.cdcBaseSnapshotId = cdcBaseSnapshotId; }
+    public String getCdcFromPosition() { return cdcFromPosition; }
+    public void setCdcFromPosition(String cdcFromPosition) { this.cdcFromPosition = cdcFromPosition; }
+    public String getCdcThroughPosition() { return cdcThroughPosition; }
+    public void setCdcThroughPosition(String cdcThroughPosition) { this.cdcThroughPosition = cdcThroughPosition; }
+    public Long getCdcThroughChangeId() { return cdcThroughChangeId; }
+    public void setCdcThroughChangeId(Long cdcThroughChangeId) { this.cdcThroughChangeId = cdcThroughChangeId; }
+    public Instant getCdcThroughTs() { return cdcThroughTs; }
+    public void setCdcThroughTs(Instant cdcThroughTs) { this.cdcThroughTs = cdcThroughTs; }
+    public long getCdcChangesApplied() { return cdcChangesApplied; }
+    public void setCdcChangesApplied(long cdcChangesApplied) { this.cdcChangesApplied = cdcChangesApplied; }
     public Instant getCreatedAt() { return createdAt; }
     public void setCreatedAt(Instant createdAt) { this.createdAt = createdAt; }
 }

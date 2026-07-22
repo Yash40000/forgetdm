@@ -5,7 +5,9 @@ import io.forgetdm.dataset.DataSetDefinitionEntity;
 import io.forgetdm.dataset.DataSetDefinitionRepository;
 import io.forgetdm.dataset.DataSetService;
 import io.forgetdm.dataset.TableProfileEntity;
+import io.forgetdm.datasource.DataSourceEntity;
 import io.forgetdm.datasource.DataSourceRepository;
+import io.forgetdm.security.OwnershipGuard;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -51,9 +53,11 @@ class BusinessEntityServiceTest {
         when(dataSetService.customPkMap(7L)).thenReturn(Map.of("customers", "customer_id", "accounts", "account_id"));
         when(datasets.existsById(7L)).thenReturn(true);
         when(datasets.findById(7L)).thenReturn(Optional.of(ds));
-        when(dataSources.existsById(10L)).thenReturn(true);
-        when(dataSources.existsById(20L)).thenReturn(true);
-        when(dataSources.findAllById(any())).thenReturn(List.of());
+        DataSourceEntity source = source(10L, "source");
+        DataSourceEntity finance = source(20L, "finance");
+        when(dataSources.findById(10L)).thenReturn(Optional.of(source));
+        when(dataSources.findById(20L)).thenReturn(Optional.of(finance));
+        when(dataSources.findAllById(any())).thenReturn(List.of(source, finance));
         when(defs.findByName(any())).thenReturn(Optional.empty());
         when(defs.findById(1L)).thenAnswer(inv -> Optional.ofNullable(savedDef.get()));
         when(defs.save(any())).thenAnswer(inv -> {
@@ -72,7 +76,8 @@ class BusinessEntityServiceTest {
         });
         when(members.findByEntityIdOrderByOrdinalNoAscIdAsc(1L)).thenAnswer(inv -> savedMembers.get());
 
-        BusinessEntityService service = new BusinessEntityService(defs, members, datasets, dataSetService, dataSources, audit);
+        BusinessEntityService service = new BusinessEntityService(defs, members, datasets, dataSetService, dataSources,
+                audit, new OwnershipGuard(audit));
         BusinessEntityService.BusinessEntityDetail detail = service.createFromDataset(7L,
                 new BusinessEntityService.FromDatasetRequest("Customer 360", "Retail customer graph", "Retail Banking"));
 
@@ -102,5 +107,13 @@ class BusinessEntityServiceTest {
         p.setSourceSchemaName(schema);
         p.setIncluded(included);
         return p;
+    }
+
+    private static DataSourceEntity source(Long id, String name) {
+        DataSourceEntity source = new DataSourceEntity();
+        source.setId(id);
+        source.setName(name);
+        source.setVisibility(OwnershipGuard.SHARED);
+        return source;
     }
 }

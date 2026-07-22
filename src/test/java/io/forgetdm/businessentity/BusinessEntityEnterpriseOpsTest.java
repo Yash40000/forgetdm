@@ -1,11 +1,14 @@
 package io.forgetdm.businessentity;
 
 import io.forgetdm.audit.AuditService;
+import io.forgetdm.common.ApiException;
 import io.forgetdm.datasource.ConnectionFactory;
 import io.forgetdm.datasource.DataSourceEntity;
 import io.forgetdm.datasource.DataSourceService;
+import io.forgetdm.security.GovernedReferenceGuard;
 import io.forgetdm.virtualization.VirtualizationService;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.sql.Connection;
@@ -99,7 +102,7 @@ class BusinessEntityEnterpriseOpsTest {
 
         BusinessEntityReservationService service = new BusinessEntityReservationService(
                 entities, reservations, reservationMembers, snapshots, dataSources, new ConnectionFactory(), audit,
-                mock(BusinessEntityCapsuleService.class));
+                mock(BusinessEntityCapsuleService.class), mock(GovernedReferenceGuard.class));
         BusinessEntityReservationService.ReservationDetail first = service.reserve(1L,
                 new BusinessEntityReservationService.ReservationRequest("cycle", null, "qa1", null,
                         "testing", "UAT", "status = 'ACTIVE'", 1, 24, "BLOCK", null, null, null, null));
@@ -112,6 +115,82 @@ class BusinessEntityEnterpriseOpsTest {
                         "testing", "UAT", "status = 'ACTIVE'", 1, 24, "BLOCK", null, null, null, null)));
         assertTrue(conflict.getMessage().contains("already reserved"));
         assertEquals(Instant.class, first.reservation().getExpiresAt().getClass());
+    }
+
+    @Test
+    void deniesBetaSnapshotRawIdBeforeMemberReadOrRollback() {
+        BusinessEntityService entities = mock(BusinessEntityService.class);
+        BusinessEntitySnapshotRepository snapshots = mock(BusinessEntitySnapshotRepository.class);
+        BusinessEntitySnapshotMemberRepository members = mock(BusinessEntitySnapshotMemberRepository.class);
+        VirtualizationService virtualization = mock(VirtualizationService.class);
+        BusinessEntitySnapshotEntity beta = new BusinessEntitySnapshotEntity();
+        beta.setId(77L);
+        beta.setEntityId(2L);
+        beta.setStatus("AVAILABLE");
+        when(snapshots.findById(77L)).thenReturn(Optional.of(beta));
+        when(entities.getDetail(2L)).thenThrow(new ApiException(HttpStatus.FORBIDDEN, "BETA entity"));
+        BusinessEntitySnapshotService service = new BusinessEntitySnapshotService(
+                entities, snapshots, members, mock(DataSourceService.class), new ConnectionFactory(),
+                virtualization, mock(AuditService.class));
+
+        assertThrows(ApiException.class, () -> service.detail(77L));
+        assertThrows(ApiException.class, () -> service.rollback(77L, null));
+
+        verify(members, never()).findBySnapshotIdOrderByIdAsc(anyLong());
+        verifyNoInteractions(virtualization);
+        verify(snapshots, never()).save(any());
+    }
+
+    @Test
+    void deniesBetaReservationRawIdBeforeReadOrReleaseMutation() {
+        BusinessEntityService entities = mock(BusinessEntityService.class);
+        BusinessEntityReservationRepository reservations = mock(BusinessEntityReservationRepository.class);
+        BusinessEntityReservationMemberRepository members = mock(BusinessEntityReservationMemberRepository.class);
+        BusinessEntityReservationEntity beta = new BusinessEntityReservationEntity();
+        beta.setId(55L);
+        beta.setEntityId(2L);
+        beta.setStatus("ACTIVE");
+        when(reservations.findById(55L)).thenReturn(Optional.of(beta));
+        when(entities.getDetail(2L)).thenThrow(new ApiException(HttpStatus.FORBIDDEN, "BETA entity"));
+        BusinessEntityReservationService service = new BusinessEntityReservationService(
+                entities, reservations, members, mock(BusinessEntitySnapshotRepository.class),
+                mock(DataSourceService.class), new ConnectionFactory(), mock(AuditService.class),
+                mock(BusinessEntityCapsuleService.class), mock(GovernedReferenceGuard.class));
+
+        assertThrows(ApiException.class, () -> service.detail(55L));
+        assertThrows(ApiException.class, () -> service.release(55L));
+
+        verify(members, never()).findByReservationIdOrderByIdAsc(anyLong());
+        verify(reservations, never()).save(any());
+        assertEquals("ACTIVE", beta.getStatus());
+    }
+
+    @Test
+    void validatesCapsulePolicyBeforeReservationPersistence() {
+        BusinessEntityService entities = mock(BusinessEntityService.class);
+        BusinessEntityReservationRepository reservations = mock(BusinessEntityReservationRepository.class);
+        BusinessEntityReservationMemberRepository members = mock(BusinessEntityReservationMemberRepository.class);
+        GovernedReferenceGuard references = mock(GovernedReferenceGuard.class);
+        BusinessEntityCapsuleService capsules = mock(BusinessEntityCapsuleService.class);
+        BusinessEntityDefinitionEntity definition = entity("Alpha entity");
+        definition.setRootTable("customers");
+        definition.setBusinessKeyColumns("customer_id");
+        BusinessEntityMemberEntity root = member(11L, 101L, null, "customers", "customer_id");
+        when(entities.getDetail(1L)).thenReturn(new BusinessEntityService.BusinessEntityDetail(
+                definition, List.of(root), null, java.util.Map.of()));
+        doThrow(new ApiException(HttpStatus.FORBIDDEN, "BETA policy")).when(references).policy(900L);
+        BusinessEntityReservationService service = new BusinessEntityReservationService(
+                entities, reservations, members, mock(BusinessEntitySnapshotRepository.class),
+                mock(DataSourceService.class), new ConnectionFactory(), mock(AuditService.class), capsules, references);
+
+        assertThrows(ApiException.class, () -> service.reserve(1L,
+                new BusinessEntityReservationService.ReservationRequest("blocked", null, "spoof", "BETA",
+                        "test", "UAT", null, 1, 24, "BLOCK",
+                        List.of(java.util.Map.of("customer_id", 100L)), null, true, 900L)));
+
+        verify(reservations, never()).save(any());
+        verify(members, never()).saveAll(any());
+        verifyNoInteractions(capsules);
     }
 
     private static BusinessEntityDefinitionEntity entity(String name) {

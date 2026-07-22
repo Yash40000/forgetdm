@@ -1,0 +1,21 @@
+﻿{
+    "schemaVersion":  1,
+    "storyId":  "RBAC-002",
+    "decision":  "APPROVED",
+    "checkedAt":  "2026-07-21T18:06:15.6538916-04:00",
+    "approvalRecordedAt":  "2026-07-20T00:00:00-04:00",
+    "approvedBy":  "Codex test coordinator (product-owner delegated)",
+    "requestedScopes":  [
+                            "SOURCE_INSPECTION",
+                            "UNIT_TEST",
+                            "LOCAL_TEST_DATABASE"
+                        ],
+    "storySpecification":  "D:\\forgetdm - Copy\\docs\\testing\\cases\\ready\\RBAC-002.md",
+    "conditions":  [
+                       "Use synthetic ALPHA/BETA identities and artifacts only.",
+                       "Do not contact external systems or paid services.",
+                       "Do not test against production or customer data.",
+                       "Retain sanitized evidence and independently review every green claim.",
+                       "LEGAL-001 and LEGAL-002 remain deferred to a separate qualified legal review."
+                   ]
+}

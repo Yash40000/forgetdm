@@ -195,8 +195,7 @@ public class BusinessEntitySyncService {
         Long dataSourceId = num(member.get("dataSourceId"));
         if (dataSourceId == null) return unknown(out, "No data source is configured for this member.");
         try {
-            DataSourceEntity ds = dataSources.findById(dataSourceId)
-                    .orElseThrow(() -> ApiException.notFound("Data source " + dataSourceId + " not found"));
+            DataSourceEntity ds = entities.requireAuthorizedDataSource(dataSourceId);
             Object value = readSourceWatermark(ds, member, watermarkColumn);
             Instant sourceTime = toInstant(value);
             out.put("sourceWatermark", value == null ? null : String.valueOf(value));
@@ -214,6 +213,8 @@ public class BusinessEntitySyncService {
                 out.put("message", "Source watermark is older than SLA by " + (lagSeconds - maxLag) + " seconds.");
             }
             return out;
+        } catch (ApiException e) {
+            throw e;
         } catch (Exception e) {
             out.put("status", "FAILED");
             out.put("message", e.getMessage());
@@ -264,6 +265,16 @@ public class BusinessEntitySyncService {
             member = detail.members().stream()
                     .filter(m -> Objects.equals(m.getId(), req.memberId()))
                     .findFirst().orElseThrow(() -> ApiException.bad("Business Entity member not found: " + req.memberId()));
+            assertMemberCoordinates(member, req);
+        } else {
+            member = detail.members().stream()
+                    .filter(m -> req.dataSourceId() == null || Objects.equals(m.getDataSourceId(), req.dataSourceId()))
+                    .filter(m -> blank(req.systemName()) == null || same(m.getSystemName(), req.systemName()))
+                    .filter(m -> blank(req.schemaName()) == null || same(m.getSchemaName(), req.schemaName()))
+                    .filter(m -> blank(req.tableName()) == null || same(m.getTableName(), req.tableName()))
+                    .filter(m -> blank(req.logicalRole()) == null || same(m.getLogicalRole(), req.logicalRole()))
+                    .findFirst().orElseThrow(() -> ApiException.bad(
+                            "Sync policy member must reference a member of this Business Entity."));
         }
         String table = required(firstNonBlank(req.tableName(), member == null ? null : member.getTableName()), "Sync member table");
         jdbc.update("""
@@ -282,6 +293,23 @@ public class BusinessEntitySyncService {
                 req.maxLagSeconds() == null ? defaultLag : Math.max(1, req.maxLagSeconds()),
                 upperDefault(req.syncMode(), "POLLING"),
                 blank(req.queryFilter()), ts(Instant.now()));
+    }
+
+    private void assertMemberCoordinates(BusinessEntityMemberEntity member, SyncMemberRequest request) {
+        if (request.dataSourceId() != null && !Objects.equals(request.dataSourceId(), member.getDataSourceId())) {
+            throw ApiException.bad("Sync policy data source does not match the selected Business Entity member.");
+        }
+        assertSameMemberValue("system", request.systemName(), member.getSystemName());
+        assertSameMemberValue("schema", request.schemaName(), member.getSchemaName());
+        assertSameMemberValue("table", request.tableName(), member.getTableName());
+        assertSameMemberValue("logical role", request.logicalRole(), member.getLogicalRole());
+        assertSameMemberValue("key columns", request.keyColumns(), member.getKeyColumns());
+    }
+
+    private void assertSameMemberValue(String label, String supplied, String expected) {
+        if (blank(supplied) != null && !same(supplied, expected)) {
+            throw ApiException.bad("Sync policy " + label + " does not match the selected Business Entity member.");
+        }
     }
 
     private List<SyncMemberRequest> defaultMemberPolicies(BusinessEntityService.BusinessEntityDetail detail,
@@ -335,7 +363,9 @@ public class BusinessEntitySyncService {
     }
 
     private Map<String, Object> rawPolicy(Long id) {
-        return one(policySelect() + " WHERE p.id = ?", id);
+        Map<String, Object> policy = one(policySelect() + " WHERE p.id = ?", id);
+        entities.getDetail(num(policy.get("entityId")));
+        return policy;
     }
 
     private String policySelect() {
@@ -435,6 +465,10 @@ public class BusinessEntitySyncService {
         if (value == null) return null;
         String clean = value.trim();
         return clean.isEmpty() ? null : clean;
+    }
+    private static boolean same(String left, String right) {
+        return Objects.equals(blank(left) == null ? "" : blank(left).toLowerCase(Locale.ROOT),
+                blank(right) == null ? "" : blank(right).toLowerCase(Locale.ROOT));
     }
     private static String currentUsername() {
         return AccessContext.current().map(p -> p.username()).orElse("system");

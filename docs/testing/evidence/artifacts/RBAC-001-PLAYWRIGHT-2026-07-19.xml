@@ -1,0 +1,166 @@
+<testsuites id="" name="" tests="18" failures="0" skipped="0" errors="0" time="53.671628000000005">
+<testsuite name="feature-action-gating.spec.ts" timestamp="2026-07-19T22:58:25.764Z" hostname="" tests="18" failures="0" skipped="0" time="46.264" errors="0">
+<testcase name="RBAC-001 feature action gating › direct protected URLs fail closed when the authenticated account lacks route permission" classname="feature-action-gating.spec.ts" time="3.047">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-77428-ount-lacks-route-permission\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-77428-ount-lacks-route-permission\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › Auto Provision does not admit a user whose partial permission set cannot load a workspace slice" classname="feature-action-gating.spec.ts" time="1.516">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-43152-nnot-load-a-workspace-slice\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-43152-nnot-load-a-workspace-slice\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › read-only synthetic access preserves inspection and disables generation mutations" classname="feature-action-gating.spec.ts" time="2.505">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-f5762-sables-generation-mutations\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-f5762-sables-generation-mutations\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › read-only DataScope access keeps the inventory but removes blueprint mutation entry points" classname="feature-action-gating.spec.ts" time="1.837">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-c852f-print-mutation-entry-points\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-c852f-print-mutation-entry-points\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › read-only business-entity access keeps the workspace and removes creation" classname="feature-action-gating.spec.ts" time="1.672">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-5fb58-kspace-and-removes-creation\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-5fb58-kspace-and-removes-creation\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › mapping reader can validate and preview but cannot persist, restore, upload, or delete" classname="feature-action-gating.spec.ts" time="2.371">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-1e327-st-restore-upload-or-delete\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-1e327-st-restore-upload-or-delete\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › Auto Provision activates only the mapping slice available to an auditor" classname="feature-action-gating.spec.ts" time="1.882">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-11afc-ice-available-to-an-auditor\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-11afc-ice-available-to-an-auditor\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › self-service reader cannot see approval or catalog administration controls" classname="feature-action-gating.spec.ts" time="1.997">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-591df-log-administration-controls\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-591df-log-administration-controls\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › unstructured reader keeps preview/history but cannot run, save, cancel, or delete" classname="feature-action-gating.spec.ts" time="1.997">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-51051-t-run-save-cancel-or-delete\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-51051-t-run-save-cancel-or-delete\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › mainframe reader can inspect registries while every server action is withheld" classname="feature-action-gating.spec.ts" time="5.083">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-50961-y-server-action-is-withheld\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-50961-y-server-action-is-withheld\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › Forge Data Store reader receives grounding evidence without stewardship actions" classname="feature-action-gating.spec.ts" time="2.662">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-83ef9-without-stewardship-actions\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-83ef9-without-stewardship-actions\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › discovery reader can inspect findings and patterns without scan or stewardship actions" classname="feature-action-gating.spec.ts" time="3.572">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-399e7-scan-or-stewardship-actions\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-399e7-scan-or-stewardship-actions\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › data-source reader can browse inventory but cannot test or edit connections" classname="feature-action-gating.spec.ts" time="2.151">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-e6d7b-ot-test-or-edit-connections\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-e6d7b-ot-test-or-edit-connections\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › policy reader sees rules as read-only and cannot create or delete policy content" classname="feature-action-gating.spec.ts" time="2.631">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-9cc5f-te-or-delete-policy-content\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-9cc5f-te-or-delete-policy-content\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › masking-script reader can preview a saved script without stewardship actions" classname="feature-action-gating.spec.ts" time="2.813">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-12957-without-stewardship-actions\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-12957-without-stewardship-actions\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › virtualization reader cannot capture, provision, cancel, or delete resources" classname="feature-action-gating.spec.ts" time="2.416">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-4864e--cancel-or-delete-resources\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-4864e--cancel-or-delete-resources\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › validation reader sees failed evidence without run, diagnose, or apply-fix controls" classname="feature-action-gating.spec.ts" time="2.51">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-c8357-gnose-or-apply-fix-controls\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-c8357-gnose-or-apply-fix-controls\trace.zip]]
+]]>
+</system-out>
+</testcase>
+<testcase name="RBAC-001 feature action gating › authorized mapping manager and runner receive their exact controls" classname="feature-action-gating.spec.ts" time="3.602">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-c77a2-eceive-their-exact-controls\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts-full\feature-action-gating-RBAC-c77a2-eceive-their-exact-controls\trace.zip]]
+]]>
+</system-out>
+</testcase>
+</testsuite>
+</testsuites>

@@ -1,6 +1,7 @@
 package io.forgetdm.businessentity;
 
 import io.forgetdm.audit.AuditService;
+import io.forgetdm.common.ApiException;
 import io.forgetdm.datasource.ConnectionFactory;
 import io.forgetdm.datasource.DataSourceEntity;
 import io.forgetdm.datasource.DataSourceRepository;
@@ -8,6 +9,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.http.HttpStatus;
 
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -54,6 +56,7 @@ class BusinessEntitySyncServiceTest {
         ds.setRole("SOURCE");
         ds.setJdbcUrl("jdbc:h2:mem:be_sync_source;DB_CLOSE_DELAY=-1;MODE=PostgreSQL;DATABASE_TO_LOWER=TRUE");
         when(dataSources.findById(101L)).thenReturn(Optional.of(ds));
+        when(entities.requireAuthorizedDataSource(101L)).thenReturn(ds);
     }
 
     @Test
@@ -92,6 +95,70 @@ class BusinessEntitySyncServiceTest {
         Instant parsed = BusinessEntitySyncService.toInstant("2026-07-13 13:55:00.038");
         assertEquals(LocalDateTime.of(2026, 7, 13, 13, 55, 0, 38_000_000)
                 .atZone(ZoneId.systemDefault()).toInstant(), parsed);
+    }
+
+    @Test
+    void deniesBetaPolicyRawIdsBeforeMutationConnectionOrRunEvidence() {
+        jdbc.update("""
+                INSERT INTO be_sync_policies(id, entity_id, name, sync_mode, status, max_lag_seconds,
+                    sync_strategy, auto_refresh_enabled, notes)
+                VALUES (200, 2, 'Beta freshness', 'POLLING', 'ACTIVE', 900, 'FRESHNESS_CHECK', TRUE, 'beta')
+                """);
+        jdbc.update("""
+                INSERT INTO be_sync_policy_members(id, policy_id, entity_id, data_source_id, table_name,
+                    watermark_column, sync_mode, last_status)
+                VALUES (201, 200, 2, 101, 'customers', 'updated_at', 'POLLING', 'NEVER_CHECKED')
+                """);
+        when(entities.getDetail(2L)).thenThrow(new ApiException(HttpStatus.FORBIDDEN, "BETA entity"));
+
+        assertThrows(ApiException.class, () -> service.getPolicy(200L));
+        assertThrows(ApiException.class, () -> service.checkFreshness(200L));
+        assertThrows(ApiException.class, () -> service.heartbeat(200L,
+                new BusinessEntitySyncService.HeartbeatRequest(201L, Instant.now().toString(), "FRESH", "spoof")));
+        assertThrows(ApiException.class, () -> service.listRuns(200L));
+        assertThrows(ApiException.class, () -> service.deletePolicy(200L));
+
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM be_sync_policies WHERE id = 200", Integer.class));
+        assertEquals("NEVER_CHECKED", jdbc.queryForObject(
+                "SELECT last_status FROM be_sync_policy_members WHERE id = 201", String.class));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM be_sync_runs WHERE entity_id = 2", Integer.class));
+        verify(entities, never()).requireAuthorizedDataSource(anyLong());
+    }
+
+    @Test
+    void rejectsPhysicalCoordinateOverrideForSelectedSyncMember() {
+        BusinessEntitySyncService.SyncMemberRequest spoofed = new BusinessEntitySyncService.SyncMemberRequest(
+                null, 11L, "Core Postgres", 999L, null, "customers", "customer", "customer_id",
+                "updated_at", 900, "POLLING", null);
+
+        ApiException ex = assertThrows(ApiException.class, () -> service.savePolicy(1L,
+                new BusinessEntitySyncService.SyncPolicyRequest(null, "Spoofed freshness", "POLLING",
+                        "ACTIVE", 900, null, "FRESHNESS_CHECK", true, "test", List.of(spoofed))));
+        assertTrue(ex.getMessage().contains("data source"));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM be_sync_policy_members", Integer.class));
+    }
+
+    @Test
+    void propagatesReferencedDataSourceDenialWithoutWritingFreshnessEvidence() {
+        jdbc.update("""
+                INSERT INTO be_sync_policies(id, entity_id, name, sync_mode, status, max_lag_seconds,
+                    sync_strategy, auto_refresh_enabled, notes)
+                VALUES (300, 1, 'Tampered source', 'POLLING', 'ACTIVE', 900, 'FRESHNESS_CHECK', TRUE, 'test')
+                """);
+        jdbc.update("""
+                INSERT INTO be_sync_policy_members(id, policy_id, entity_id, member_id, data_source_id,
+                    table_name, watermark_column, sync_mode, last_status)
+                VALUES (301, 300, 1, 11, 999, 'customers', 'updated_at', 'POLLING', 'NEVER_CHECKED')
+                """);
+        when(entities.requireAuthorizedDataSource(999L))
+                .thenThrow(new ApiException(HttpStatus.FORBIDDEN, "BETA data source"));
+
+        assertThrows(ApiException.class, () -> service.checkFreshness(300L));
+
+        assertEquals("NEVER_CHECKED", jdbc.queryForObject(
+                "SELECT last_status FROM be_sync_policy_members WHERE id = 301", String.class));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM be_sync_runs WHERE policy_id = 300", Integer.class));
     }
 
     private BusinessEntitySyncService.SyncPolicyRequest request(int lagSeconds) {

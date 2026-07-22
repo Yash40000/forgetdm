@@ -58,6 +58,18 @@ public class AccessControlFilter extends OncePerRequestFilter {
             return;
         }
 
+        String additionalPermission = requiredAdditionalPermission(request.getMethod(), path);
+        if (additionalPermission != null && !p.hasPermission(additionalPermission)) {
+            String detail = request.getMethod() + " " + path + " also requires " + additionalPermission;
+            audit.record(p.username(), "ACCESS_DENIED", "SECURITY", "api-request", null, path,
+                    "FAILURE", detail,
+                    "{\"correlationId\":\"" + correlationId + "\",\"method\":\""
+                            + request.getMethod() + "\",\"path\":\"" + json(path) + "\"}");
+            writeJson(response, HttpServletResponse.SC_FORBIDDEN,
+                    "You do not have permission: " + additionalPermission);
+            return;
+        }
+
         try {
             // Stash the caller's token too, so in-process self-calls (AI assistant tools) authenticate as this user.
             AccessContext.set(p, access.tokenFromRequest(request).orElse(null));
@@ -90,7 +102,8 @@ public class AccessControlFilter extends OncePerRequestFilter {
             if (path.contains("/templates/")) return "datascope.manage";
             return read ? "provision.read" : "provision.run";
         }
-        if ("POST".equals(m) && path.equals("/api/audit/reanchor")) return "admin.all";
+        if (path.equals("/api/audit/verify") ||
+                ("POST".equals(m) && path.equals("/api/audit/reanchor"))) return "admin.all";
         if (path.startsWith("/api/audit")) return "audit.read";
         if (path.startsWith("/api/dashboard")) return "dashboard.read";
         if (path.startsWith("/api/datasources")) return read ? "datasource.read" : "datasource.manage";
@@ -117,11 +130,20 @@ public class AccessControlFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/reservations")) return read ? "reservation.read" : "reservation.manage";
         if (path.startsWith("/api/validation")) return read ? "validation.read" : "validation.run";
         if (path.startsWith("/api/virtualization")) return read ? "virtualization.read" : "virtualization.manage";
+        if (path.startsWith("/api/cdc")) return read ? "virtualization.read" : "virtualization.manage";
+        if (path.startsWith("/api/sync")) return read ? "virtualization.read" : "virtualization.manage";
         if (path.startsWith("/api/mainframe") || path.startsWith("/api/copybook")) return read ? "mainframe.read" : "mainframe.manage";
         if (path.startsWith("/api/agent/data-store") && !read) return "assistant.manage";
         if (path.startsWith("/api/agent/runs/") && path.endsWith("/approve-plan")) return "provision.approve";
         if (path.startsWith("/api/ai") || path.startsWith("/api/agent")) return "assistant.use";
         return read ? "dashboard.read" : "admin.all";
+    }
+
+    String requiredAdditionalPermission(String method, String path) {
+        if ("POST".equalsIgnoreCase(method) && path.equals("/api/validation/apply-fix")) {
+            return "policy.manage";
+        }
+        return null;
     }
 
     private String syntheticPermission(String method, String path) {

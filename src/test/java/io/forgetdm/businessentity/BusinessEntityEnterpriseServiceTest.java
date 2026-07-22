@@ -1,6 +1,7 @@
 package io.forgetdm.businessentity;
 
 import io.forgetdm.audit.AuditService;
+import io.forgetdm.common.ApiException;
 import io.forgetdm.dataset.DataSetDefinitionEntity;
 import io.forgetdm.dataset.DataSetDefinitionRepository;
 import io.forgetdm.datasource.DataSourceEntity;
@@ -11,10 +12,12 @@ import io.forgetdm.provision.SyntheticGenService;
 import io.forgetdm.provision.loader.NativeLoadRegistry;
 import io.forgetdm.security.AccessContext;
 import io.forgetdm.security.AccessPrincipal;
+import io.forgetdm.security.GovernedReferenceGuard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.http.HttpStatus;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.util.Optional;
@@ -37,6 +40,7 @@ class BusinessEntityEnterpriseServiceTest {
     private SyntheticGenService synthetic;
     private NativeLoadRegistry loaders;
     private BusinessEntityCapsuleService capsules;
+    private GovernedReferenceGuard references;
     private BusinessEntityEnterpriseService service;
 
     @BeforeEach
@@ -51,8 +55,9 @@ class BusinessEntityEnterpriseServiceTest {
         synthetic = mock(SyntheticGenService.class);
         loaders = new NativeLoadRegistry();
         capsules = mock(BusinessEntityCapsuleService.class);
+        references = mock(GovernedReferenceGuard.class);
         service = new BusinessEntityEnterpriseService(jdbc, entities, dataSources, audit, provisioning, datasets, synthetic, loaders,
-                capsules, new io.forgetdm.config.ForgeProps());
+                capsules, new io.forgetdm.config.ForgeProps(), references);
 
         BusinessEntityDefinitionEntity entity = new BusinessEntityDefinitionEntity();
         entity.setId(1L);
@@ -119,6 +124,55 @@ class BusinessEntityEnterpriseServiceTest {
     }
 
     @Test
+    void deniesBetaGovernancePlanPackageAndVersionIdsBeforeAnySideEffect() {
+        jdbc.update("""
+                INSERT INTO be_governance_requests(id, entity_id, object_type, object_id, action, requested_by,
+                    reviewer, status, risk_level, risk_json, evidence_json)
+                VALUES (701, 2, 'BUSINESS_ENTITY', 2, 'RUN', 'beta-maker', 'beta-checker', 'PENDING',
+                    'HIGH', '{}', '{}')
+                """);
+        jdbc.update("""
+                INSERT INTO be_entity_execution_plans(id, entity_id, name, operation_type, mode, status,
+                    plan_json, validation_json, loader_strategy_json)
+                VALUES (702, 2, 'Beta plan', 'SUBSET_MASK', 'PLAN_ONLY', 'APPROVED', '{}', '{}', '[]')
+                """);
+        jdbc.update("""
+                INSERT INTO be_operational_packages(id, entity_id, execution_plan_id, package_type, name, status,
+                    manifest_json, shell_script, health_check_json, promotion_json)
+                VALUES (703, 2, 702, 'SCHEDULER_RUNNER', 'Beta package', 'READY', '{}', 'blocked', '{}', '{}')
+                """);
+        jdbc.update("""
+                INSERT INTO be_operational_package_versions(id, package_id, entity_id, version_number, status,
+                    artifact_hash, manifest_json, shell_script, health_check_json, promotion_json,
+                    immutable_manifest_json, retention_policy)
+                VALUES (704, 703, 2, 1, 'IMMUTABLE', 'beta-hash', '{}', 'blocked', '{}', '{}', '{}', 'STANDARD')
+                """);
+        when(entities.getDetail(2L)).thenThrow(new ApiException(HttpStatus.FORBIDDEN, "BETA entity"));
+
+        assertThrows(ApiException.class, () -> service.approveGovernanceRequest(701L,
+                new BusinessEntityEnterpriseService.DecisionRequest("alpha-checker", "blocked", "blocked")));
+        assertThrows(ApiException.class, () -> service.launchExecutionPlan(702L,
+                new BusinessEntityEnterpriseService.LaunchRequest(null, null, null, null,
+                        "REPLACE", "DELETE", null, null, null, "SINGLE", null, null)));
+        assertThrows(ApiException.class, () -> service.getOperationalPackage(703L));
+        assertThrows(ApiException.class, () -> service.listPackageVersions(703L));
+        assertThrows(ApiException.class, () -> service.createPackageVersion(703L,
+                new BusinessEntityEnterpriseService.PackageVersionRequest("STANDARD", 30, "blocked")));
+        assertThrows(ApiException.class, () -> service.promotePackageVersion(703L,
+                new BusinessEntityEnterpriseService.PromotionRequest(704L, "DEV", "QA", "alpha", "blocked")));
+
+        assertEquals("PENDING", jdbc.queryForObject(
+                "SELECT status FROM be_governance_requests WHERE id = 701", String.class));
+        assertEquals(1, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM be_operational_package_versions WHERE package_id = 703", Integer.class));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM be_operational_package_promotions WHERE package_id = 703", Integer.class));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM be_execution_plan_runs WHERE entity_id = 2", Integer.class));
+        verifyNoInteractions(provisioning, synthetic);
+    }
+
+    @Test
     void governanceAndPackageAuditsAreStructuredAttributedAndSecretFree() {
         Map<String, Object> release = asUser("maker1", () -> service.createGovernanceRequest(1L,
                 new BusinessEntityEnterpriseService.GovernanceRequestRequest(
@@ -136,13 +190,6 @@ class BusinessEntityEnterpriseServiceTest {
                 new BusinessEntityEnterpriseService.DecisionRequest(
                         "checker1", "private rejection rationale", "private-rejection-signature")));
 
-        Map<String, Object> promoteApproval = asUser("maker1", () -> service.createGovernanceRequest(1L,
-                new BusinessEntityEnterpriseService.GovernanceRequestRequest(
-                        "OPERATIONAL_PACKAGE", 1L, "PROMOTE", "checker1", "HIGH", "promote to QA")));
-        long promoteApprovalId = ((Number) promoteApproval.get("id")).longValue();
-        asUser("checker1", () -> service.approveGovernanceRequest(promoteApprovalId,
-                new BusinessEntityEnterpriseService.DecisionRequest("checker1", "promotion approved", "promotion-signature")));
-
         Map<String, Object> plan = asUser("maker1", () -> service.createExecutionPlan(1L,
                 new BusinessEntityEnterpriseService.ExecutionPlanRequest(
                         "Audited release", "SUBSET_MASK", "DEV", "QA", "PLAN_ONLY", null, null, null)));
@@ -150,6 +197,12 @@ class BusinessEntityEnterpriseServiceTest {
                 new BusinessEntityEnterpriseService.OperationalPackageRequest(
                         "Audited package", ((Number) plan.get("id")).longValue(), "SCHEDULER_RUNNER", "QA")));
         long packageId = ((Number) pkg.get("id")).longValue();
+        Map<String, Object> promoteApproval = asUser("maker1", () -> service.createGovernanceRequest(1L,
+                new BusinessEntityEnterpriseService.GovernanceRequestRequest(
+                        "OPERATIONAL_PACKAGE", packageId, "PROMOTE", "checker1", "HIGH", "promote to QA")));
+        long promoteApprovalId = ((Number) promoteApproval.get("id")).longValue();
+        asUser("checker1", () -> service.approveGovernanceRequest(promoteApprovalId,
+                new BusinessEntityEnterpriseService.DecisionRequest("checker1", "promotion approved", "promotion-signature")));
         Map<String, Object> version = asUser("maker1", () -> service.createPackageVersion(packageId,
                 new BusinessEntityEnterpriseService.PackageVersionRequest(
                         "STANDARD_7_YEAR", 2555, "private version note")));
@@ -344,6 +397,41 @@ class BusinessEntityEnterpriseServiceTest {
         Integer parentRows = jdbc.queryForObject("SELECT COUNT(*) FROM be_execution_plan_runs WHERE engine = 'DATASCOPE_FANOUT'",
                 Integer.class);
         assertEquals(1, parentRows);
+    }
+
+    @Test
+    void preflightsEveryFanOutSliceBeforeSubmittingTheFirstJob() {
+        approveRun();
+        BusinessEntityDefinitionEntity entity = new BusinessEntityDefinitionEntity();
+        entity.setId(1L);
+        entity.setName("Customer 360");
+        entity.setPrimaryDatasetId(201L);
+        BusinessEntityMemberEntity core = member(11L, 101L, "customers", "customer_id", "customer");
+        core.setDatasetId(201L);
+        BusinessEntityMemberEntity cards = member(12L, 103L, "cards", "card_id", "card");
+        cards.setDatasetId(202L);
+        when(entities.getDetail(1L)).thenReturn(new BusinessEntityService.BusinessEntityDetail(
+                entity, List.of(core, cards), null, Map.of(101L, "core", 103L, "cards")));
+        when(dataSources.findAllById(any())).thenReturn(List.of(source(101L, "POSTGRES"), source(103L, "ORACLE")));
+        DataSetDefinitionEntity cardDataset = dataset(202L, 103L, 104L, "Cards Scope");
+        cardDataset.setPolicyId(999L);
+        when(datasets.findById(202L)).thenReturn(Optional.of(cardDataset));
+        when(dataSources.findById(104L)).thenReturn(Optional.of(source(104L, "ORACLE")));
+        doThrow(new ApiException(HttpStatus.FORBIDDEN, "BETA policy")).when(references).policy(999L);
+
+        Map<String, Object> plan = service.createExecutionPlan(1L,
+                new BusinessEntityEnterpriseService.ExecutionPlanRequest("Preflight all slices", "SUBSET_MASK",
+                        "PROD", "UAT", "APPROVED_RUN_READY", null, null, null));
+
+        assertThrows(ApiException.class, () -> service.launchExecutionPlan(
+                ((Number) plan.get("id")).longValue(),
+                new BusinessEntityEnterpriseService.LaunchRequest(null, null, null, "seed1",
+                        "REPLACE", "DELETE", 100, null, 99L, "SINGLE", null, null)));
+
+        verifyNoInteractions(provisioning);
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT COUNT(*) FROM be_execution_plan_runs WHERE execution_plan_id = ?",
+                Integer.class, plan.get("id")));
     }
 
     @Test

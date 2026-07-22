@@ -6,7 +6,10 @@ import io.forgetdm.datasource.DataSourceEntity;
 import io.forgetdm.datasource.DataSourceService;
 import io.forgetdm.query.QueryService;
 import io.forgetdm.datasource.ConnectionFactory;
+import io.forgetdm.security.OwnershipGuard;
 import org.junit.jupiter.api.Test;
+
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -16,10 +19,11 @@ class MappingValidationTest {
         DataSourceService sources = mock(DataSourceService.class);
         when(sources.get(9L)).thenReturn(new DataSourceEntity());
         MappingFileAssetRepository assets = mock(MappingFileAssetRepository.class);
-        when(assets.existsById(4L)).thenReturn(true);
+        when(assets.findById(4L)).thenReturn(Optional.of(sharedAsset(4L)));
+        AuditService audit = mock(AuditService.class);
         MappingService service = new MappingService(mock(MappingRepository.class), mock(QueryService.class), sources,
-                mock(ConnectionFactory.class), mock(AuditService.class), new ObjectMapper(),
-                mock(MappingVersionRepository.class), assets);
+                mock(ConnectionFactory.class), audit, new ObjectMapper(),
+                mock(MappingVersionRepository.class), assets, new OwnershipGuard(audit));
         ObjectMapper json = new ObjectMapper();
 
         var valid = service.validateSpec(json.readTree("""
@@ -40,7 +44,7 @@ class MappingValidationTest {
 
     @Test void requiresCatalogFunctionsToBeReviewedAndAcceptsConfiguredAggregate() throws Exception {
         MappingFileAssetRepository assets = mock(MappingFileAssetRepository.class);
-        when(assets.existsById(4L)).thenReturn(true);
+        when(assets.findById(4L)).thenReturn(Optional.of(sharedAsset(4L)));
         MappingService service = service(mock(DataSourceService.class), assets);
         ObjectMapper json = new ObjectMapper();
 
@@ -64,7 +68,7 @@ class MappingValidationTest {
 
     @Test void blocksUnsafeTransformFragmentsAndInvalidJoinTopology() throws Exception {
         MappingFileAssetRepository assets = mock(MappingFileAssetRepository.class);
-        when(assets.existsById(anyLong())).thenReturn(true);
+        when(assets.findById(anyLong())).thenAnswer(call -> Optional.of(sharedAsset(call.getArgument(0))));
         MappingService service = service(mock(DataSourceService.class), assets);
         ObjectMapper json = new ObjectMapper();
 
@@ -87,8 +91,16 @@ class MappingValidationTest {
     }
 
     private static MappingService service(DataSourceService sources, MappingFileAssetRepository assets) {
+        AuditService audit = mock(AuditService.class);
         return new MappingService(mock(MappingRepository.class), mock(QueryService.class), sources,
-                mock(ConnectionFactory.class), mock(AuditService.class), new ObjectMapper(),
-                mock(MappingVersionRepository.class), assets);
+                mock(ConnectionFactory.class), audit, new ObjectMapper(),
+                mock(MappingVersionRepository.class), assets, new OwnershipGuard(audit));
+    }
+
+    private static MappingFileAssetEntity sharedAsset(Long id) {
+        MappingFileAssetEntity asset = new MappingFileAssetEntity();
+        org.springframework.test.util.ReflectionTestUtils.setField(asset, "id", id);
+        asset.setVisibility(OwnershipGuard.SHARED);
+        return asset;
     }
 }

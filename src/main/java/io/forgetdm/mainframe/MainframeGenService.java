@@ -9,6 +9,7 @@ import io.forgetdm.core.copybook.RecordValue;
 import io.forgetdm.core.copybook.codec.Ebcdic;
 import io.forgetdm.mainframe.transport.TransportFactory;
 import io.forgetdm.provision.SyntheticGenService;
+import io.forgetdm.security.OwnershipGuard;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -32,11 +33,13 @@ public class MainframeGenService {
     private final TransportFactory transports;
     private final SyntheticGenService synth;
     private final AuditService audit;
+    private final OwnershipGuard ownership;
 
     public MainframeGenService(CopybookDefRepository copybooks, MainframeConnectionRepository connections,
-                              TransportFactory transports, SyntheticGenService synth, AuditService audit) {
+                              TransportFactory transports, SyntheticGenService synth, AuditService audit,
+                              OwnershipGuard ownership) {
         this.copybooks = copybooks; this.connections = connections;
-        this.transports = transports; this.synth = synth; this.audit = audit;
+        this.transports = transports; this.synth = synth; this.audit = audit; this.ownership = ownership;
     }
 
     public record GenFileColumn(String field, String generator, String param1, String param2) {}
@@ -44,8 +47,12 @@ public class MainframeGenService {
                              List<GenFileColumn> columns, String output, Long targetConnectionId, String targetName) {}
 
     public Map<String, Object> generateFile(GenFileReq req) {
-        CopybookDefEntity def = copybooks.findById(req.copybookId() == null ? -1L : req.copybookId())
-                .orElseThrow(() -> ApiException.bad("Select a copybook"));
+        CopybookDefEntity def = copybook(req.copybookId());
+        boolean deliver = "TARGET".equalsIgnoreCase(req.output());
+        if (deliver && req.targetConnectionId() == null)
+            throw ApiException.bad("Pick a target LPAR for delivery");
+        MainframeConnectionEntity target = req.targetConnectionId() == null
+                ? null : connection(req.targetConnectionId());
         Copybook cb = CopybookSupport.parse(def.getSource());
         Field record = cb.primaryRecord();
         int len = record.length();
@@ -99,10 +106,8 @@ public class MainframeGenService {
         result.put("postName", base + ".dat");
         result.put("postBase64", Base64.getEncoder().encodeToString(ebcdic));
 
-        if ("TARGET".equalsIgnoreCase(req.output())) {
-            if (req.targetConnectionId() == null) throw ApiException.bad("Pick a target LPAR for delivery");
-            MainframeConnectionEntity conn = connections.findById(req.targetConnectionId())
-                    .orElseThrow(() -> ApiException.bad("Target LPAR not found"));
+        if (deliver) {
+            MainframeConnectionEntity conn = target;
             String name = (req.targetName() != null && !req.targetName().isBlank()) ? req.targetName() : (base + ".dat");
             transports.forConnection(conn).put(conn, name, ebcdic, recfm, len);
             result.put("delivered", Map.of("connection", conn.getName(), "name", name, "bytes", ebcdic.length));
@@ -115,6 +120,22 @@ public class MainframeGenService {
                     "{\"format\":\"" + recfm + "\",\"rows\":" + rows.size() + ",\"bytes\":" + ebcdic.length + "}");
         }
         return result;
+    }
+
+    private CopybookDefEntity copybook(Long id) {
+        CopybookDefEntity def = copybooks.findById(id == null ? -1L : id)
+                .orElseThrow(() -> ApiException.bad("Select a copybook"));
+        MainframeOwnership.assertCanSee(ownership, "mainframe copybook", def.getId(), def.getOwnerUserId(),
+                def.getOwnerGroupId(), def.getVisibility());
+        return def;
+    }
+
+    private MainframeConnectionEntity connection(Long id) {
+        MainframeConnectionEntity connection = connections.findById(id)
+                .orElseThrow(() -> ApiException.bad("Target LPAR not found"));
+        MainframeOwnership.assertCanSee(ownership, "mainframe connection", connection.getId(),
+                connection.getOwnerUserId(), connection.getOwnerGroupId(), connection.getVisibility());
+        return connection;
     }
 
     /**

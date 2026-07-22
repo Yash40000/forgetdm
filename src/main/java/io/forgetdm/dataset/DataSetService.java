@@ -9,6 +9,7 @@ import io.forgetdm.discovery.ClassificationEntity;
 import io.forgetdm.discovery.ClassificationRepository;
 import io.forgetdm.policy.MaskingRuleEntity;
 import io.forgetdm.policy.MaskingRuleRepository;
+import io.forgetdm.security.GovernedReferenceGuard;
 import io.forgetdm.subset.SubsetService;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
@@ -46,6 +47,7 @@ public class DataSetService {
     private final ClassificationRepository classifications;
     private final MaskingRuleRepository    maskingRules;
     private final io.forgetdm.security.OwnershipGuard ownership;
+    private final GovernedReferenceGuard references;
 
     public DataSetService(DataSetDefinitionRepository defs,
                           TableProfileRepository profiles,
@@ -59,13 +61,15 @@ public class DataSetService {
                           AuditService audit,
                           ClassificationRepository classifications,
                           MaskingRuleRepository maskingRules,
-                          io.forgetdm.security.OwnershipGuard ownership) {
+                          io.forgetdm.security.OwnershipGuard ownership,
+                          GovernedReferenceGuard references) {
         this.defs = defs; this.profiles = profiles; this.overrides = overrides;
         this.userPks = userPks; this.userRels = userRels; this.traversalRules = traversalRules;
         this.subsets = subsets; this.dataSources = dataSources;
         this.connections = connections; this.audit = audit;
         this.classifications = classifications; this.maskingRules = maskingRules;
         this.ownership = ownership;
+        this.references = references;
     }
 
     // ─── DTO for relationship discovery ─────────────────────────────────────
@@ -112,6 +116,7 @@ public class DataSetService {
         String name = validateBlueprintName(req.getName());
         if (req.getDataSourceId() == null)
             throw ApiException.bad("dataSourceId is required");
+        assertDefinitionReferences(req);
         defs.findByName(name).ifPresent(d -> {
             throw ApiException.bad("DataScope '" + name + "' already exists");
         });
@@ -149,6 +154,7 @@ public class DataSetService {
         if (req.getDriverFilter() != null) existing.setDriverFilter(blankToNull(req.getDriverFilter()));
         existing.setGlobalQ1(req.isGlobalQ1());
         existing.setGlobalQ2(req.isGlobalQ2());
+        assertDefinitionReferences(existing);
         existing.setUpdatedAt(Instant.now());
         DataSetDefinitionEntity saved = defs.save(existing);
         audit.record(currentActor(), "DATASET_UPDATED", "DATASCOPE", "dataset",
@@ -159,6 +165,7 @@ public class DataSetService {
 
     public DataSetDefinitionEntity updatePolicy(Long id, Long policyId) {
         DataSetDefinitionEntity existing = get(id);
+        references.policy(policyId);
         existing.setPolicyId(policyId);
         existing.setUpdatedAt(Instant.now());
         DataSetDefinitionEntity saved = defs.save(existing);
@@ -185,6 +192,7 @@ public class DataSetService {
         existing.setDriverFilter(s.getDriverFilter());
         existing.setGlobalQ1(s.isGlobalQ1());
         existing.setGlobalQ2(s.isGlobalQ2());
+        assertDefinitionReferences(existing);
         existing.setUpdatedAt(Instant.now());
         return defs.save(existing);
     }
@@ -244,7 +252,10 @@ public class DataSetService {
     @Transactional
     public List<TableProfileEntity> saveProfiles(Long datasetId, List<TableProfileEntity> incoming) {
         DataSetDefinitionEntity definition = get(datasetId);
-        for (TableProfileEntity p : incoming) validateProfile(p);
+        for (TableProfileEntity p : incoming) {
+            validateProfile(p);
+            assertProfileReferences(definition, p);
+        }
         validatePhysicalSourceTables(definition, incoming);
 
         profiles.deleteByDatasetId(datasetId);
@@ -263,6 +274,7 @@ public class DataSetService {
     public TableProfileEntity saveProfile(Long datasetId, TableProfileEntity p) {
         DataSetDefinitionEntity definition = get(datasetId);
         validateProfile(p);
+        assertProfileReferences(definition, p);
         validatePhysicalSourceTables(definition, List.of(p));
         p.setDatasetId(datasetId);
         profiles.findByDatasetIdAndTableName(datasetId, p.getTableName())
@@ -273,6 +285,7 @@ public class DataSetService {
 
     @Transactional
     public void deleteProfile(Long datasetId, String tableName) {
+        get(datasetId);
         profiles.findByDatasetIdAndTableName(datasetId, tableName)
                 .ifPresent(p -> profiles.deleteById(p.getId()));
     }
@@ -311,7 +324,12 @@ public class DataSetService {
     }
 
     @Transactional
-    public void deleteOverride(Long id) { overrides.deleteById(id); }
+    public void deleteOverride(Long id) {
+        ColumnOverrideEntity existing = overrides.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Column override " + id + " not found"));
+        get(existing.getDatasetId());
+        overrides.deleteById(id);
+    }
 
     // ─── User-defined PKs ───────────────────────────────────────────────────
 
@@ -350,7 +368,12 @@ public class DataSetService {
     }
 
     @Transactional
-    public void deleteCustomPk(Long pkId) { userPks.deleteById(pkId); }
+    public void deleteCustomPk(Long pkId) {
+        UserDefinedPkEntity existing = userPks.findById(pkId)
+                .orElseThrow(() -> ApiException.notFound("Custom primary key " + pkId + " not found"));
+        get(existing.getDatasetId());
+        userPks.deleteById(pkId);
+    }
 
     // ─── User-defined Relationships ─────────────────────────────────────────
 
@@ -374,6 +397,7 @@ public class DataSetService {
     public UserDefinedRelationshipEntity updateUserRel(Long relId, UserDefinedRelationshipEntity r) {
         UserDefinedRelationshipEntity existing = userRels.findById(relId)
                 .orElseThrow(() -> ApiException.notFound("Relationship " + relId + " not found"));
+        get(existing.getDatasetId());
         validateUserRel(r);
         existing.setRelName(r.getRelName());
         existing.setParentTable(r.getParentTable());
@@ -386,12 +410,13 @@ public class DataSetService {
 
     @Transactional
     public void deleteUserRel(Long relId) {
+        UserDefinedRelationshipEntity relationship = userRels.findById(relId)
+                .orElseThrow(() -> ApiException.notFound("Relationship " + relId + " not found"));
+        get(relationship.getDatasetId());
         // cascade: remove any traversal rules that reference this user rel
-        userRels.findById(relId).ifPresent(r -> {
-            traversalRules.findByDatasetId(r.getDatasetId()).stream()
-                    .filter(tr -> "USER".equals(tr.getRelSource()) && relId.equals(tr.getRelRefId()))
-                    .forEach(tr -> traversalRules.deleteById(tr.getId()));
-        });
+        traversalRules.findByDatasetId(relationship.getDatasetId()).stream()
+                .filter(tr -> "USER".equals(tr.getRelSource()) && relId.equals(tr.getRelRefId()))
+                .forEach(tr -> traversalRules.deleteById(tr.getId()));
         userRels.deleteById(relId);
     }
 
@@ -528,7 +553,7 @@ public class DataSetService {
     // ─── Plan Preview ───────────────────────────────────────────────────────
 
     public SubsetService.SubsetPlan previewPlan(Long datasetId, int maxDriverRows) {
-        DataSetDefinitionEntity def = get(datasetId);
+        DataSetDefinitionEntity def = assertAuthorizedReferences(datasetId, null);
         if (def.getDriverTable() == null || def.getDriverTable().isBlank())
             throw ApiException.bad("DataScope has no driver table set");
 
@@ -554,7 +579,7 @@ public class DataSetService {
      * defaultPolicyId overrides the blueprint's linked policy (the Provision tab lets users pick one ad hoc).
      */
     public Map<String, Object> piiCoverage(Long datasetId, Long defaultPolicyId) {
-        DataSetDefinitionEntity def = get(datasetId);
+        DataSetDefinitionEntity def = assertAuthorizedReferences(datasetId, defaultPolicyId);
         Long effectiveDefaultPolicy = defaultPolicyId != null ? defaultPolicyId : def.getPolicyId();
         List<TableProfileEntity> included = profiles.findByDatasetId(datasetId).stream()
                 .filter(TableProfileEntity::isIncluded).toList();
@@ -866,6 +891,37 @@ public class DataSetService {
     }
 
     // ─── Validation helpers ─────────────────────────────────────────────────
+
+    /**
+     * Re-authorize the complete transitive reference set before previewing or queueing work.
+     * Stored blueprints created before this guard may still contain stale or cross-tenant ids, so
+     * runtime callers must not rely solely on validation performed when the blueprint was saved.
+     */
+    public DataSetDefinitionEntity assertAuthorizedReferences(Long datasetId, Long overridePolicyId) {
+        DataSetDefinitionEntity definition = get(datasetId);
+        assertDefinitionReferences(definition);
+        for (TableProfileEntity profile : profiles.findByDatasetId(datasetId)) {
+            assertProfileReferences(definition, profile);
+        }
+        references.policy(overridePolicyId);
+        return definition;
+    }
+
+    private void assertDefinitionReferences(DataSetDefinitionEntity definition) {
+        if (definition.getDataSourceId() == null) throw ApiException.bad("dataSourceId is required");
+        dataSources.getSourceCapable(definition.getDataSourceId());
+        if (definition.getTargetDataSourceId() != null) {
+            dataSources.getTargetCapable(definition.getTargetDataSourceId());
+        }
+        references.policy(definition.getPolicyId());
+    }
+
+    private void assertProfileReferences(DataSetDefinitionEntity definition, TableProfileEntity profile) {
+        Long sourceId = profile.getSourceDataSourceId() != null
+                ? profile.getSourceDataSourceId() : definition.getDataSourceId();
+        dataSources.getSourceCapable(sourceId);
+        references.policy(profile.getPolicyId());
+    }
 
     private static void validateProfile(TableProfileEntity p) {
         if (p.getTableName() == null || p.getTableName().isBlank())

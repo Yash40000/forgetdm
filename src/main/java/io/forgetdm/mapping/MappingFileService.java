@@ -6,6 +6,7 @@ import io.forgetdm.audit.AuditService;
 import io.forgetdm.common.ApiException;
 import io.forgetdm.filevault.ManagedFileVault;
 import io.forgetdm.security.AccessContext;
+import io.forgetdm.security.OwnershipGuard;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVRecord;
@@ -34,19 +35,27 @@ public class MappingFileService {
     private final ManagedFileVault vault;
     private final ObjectMapper json;
     private final AuditService audit;
+    private final OwnershipGuard ownership;
     private final long maxUploadBytes;
 
     public MappingFileService(MappingFileAssetRepository repo, ManagedFileVault vault, ObjectMapper json,
-                              AuditService audit,
+                              AuditService audit, OwnershipGuard ownership,
                               @Value("${forgetdm.file-vault.max-upload-bytes:104857600}") long maxUploadBytes) {
-        this.repo = repo; this.vault = vault; this.json = json; this.audit = audit;
+        this.repo = repo; this.vault = vault; this.json = json; this.audit = audit; this.ownership = ownership;
         this.maxUploadBytes = maxUploadBytes;
     }
 
-    public List<MappingFileAssetEntity> list() { return repo.findAllByOrderByCreatedAtDesc(); }
+    public List<MappingFileAssetEntity> list() {
+        return repo.findAllByOrderByCreatedAtDesc().stream()
+                .filter(this::canSee)
+                .toList();
+    }
 
     public MappingFileAssetEntity get(Long id) {
-        return repo.findById(id).orElseThrow(() -> ApiException.notFound("Mapping file asset " + id + " not found"));
+        MappingFileAssetEntity asset = repo.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Mapping file asset " + id + " not found"));
+        assertCanSee(asset);
+        return asset;
     }
 
     public MappingFileAssetEntity upload(MultipartFile file, String name, String requestedFormat,
@@ -77,6 +86,10 @@ public class MappingFileService {
         try { asset.setOptionsJson(json.writeValueAsString(Map.of("delimiter", actualDelimiter, "header", header))); }
         catch (Exception e) { asset.setOptionsJson("{}"); }
         asset.setCreatedBy(actor());
+        asset.setOwnerUserId(ownership.defaultOwnerUserId());
+        asset.setOwnerUsername(ownership.defaultOwnerUsername());
+        asset.setOwnerGroupId(ownership.defaultOwnerGroupId());
+        asset.setVisibility(ownership.defaultVisibility());
         try {
             List<Map<String, Object>> rows = readRows(asset, 200);
             asset.setSchemaJson(json.writeValueAsString(inferSchema(rows)));
@@ -103,6 +116,7 @@ public class MappingFileService {
     }
 
     public List<Map<String, Object>> readRows(MappingFileAssetEntity asset, int maxRows) {
+        assertCanSee(asset);
         try (InputStream in = vault.open(asset.getStorageKey(), asset.getKeySalt(), asset.getPayloadIv())) {
             return switch (asset.getFormat()) {
                 case "CSV", "TSV" -> readDelimited(in, asset, maxRows);
@@ -120,6 +134,7 @@ public class MappingFileService {
 
     /** Stream delimited and JSONL assets without retaining rows in heap. Structured JSON/XML remain bounded. */
     public long streamRows(MappingFileAssetEntity asset, long maxRows, RowHandler handler) {
+        assertCanSee(asset);
         try (InputStream in = vault.open(asset.getStorageKey(), asset.getKeySalt(), asset.getPayloadIv())) {
             if ("CSV".equals(asset.getFormat()) || "TSV".equals(asset.getFormat()))
                 return streamDelimited(in, asset, maxRows, handler);
@@ -172,6 +187,16 @@ public class MappingFileService {
         vault.delete(asset.getStorageKey());
         repo.delete(asset);
         audit.log(actor(), "MAPPING_FILE_DELETED", asset.getName() + " id=" + id);
+    }
+
+    private boolean canSee(MappingFileAssetEntity asset) {
+        return ownership.canSee(asset.getOwnerUserId(), asset.getOwnerGroupId(), asset.getVisibility());
+    }
+
+    private void assertCanSee(MappingFileAssetEntity asset) {
+        if (asset == null) throw ApiException.notFound("Mapping file asset not found");
+        ownership.assertCanSee("mapping file asset", asset.getId(), asset.getOwnerUserId(),
+                asset.getOwnerGroupId(), asset.getVisibility());
     }
 
     private List<Map<String, Object>> readDelimited(InputStream in, MappingFileAssetEntity asset, int maxRows) throws Exception {

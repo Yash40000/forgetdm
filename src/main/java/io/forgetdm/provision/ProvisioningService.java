@@ -74,6 +74,8 @@ public class ProvisioningService {
     private final io.forgetdm.ri.RiRegistryService riRegistry;
     private final DbMaskPushdown dbPushdown;
     private final io.forgetdm.security.AccessControlService access;
+    private final io.forgetdm.security.OwnershipGuard ownership;
+    private final io.forgetdm.security.GovernedReferenceGuard references;
     private final ObjectMapper json = new ObjectMapper();
     private final ConcurrentMap<Long, Future<?>> runningJobs = new ConcurrentHashMap<>();
     /** One in-flight provisioning job per target (dataSource + schema) — prevents concurrent loads from
@@ -117,11 +119,15 @@ public class ProvisioningService {
                                MaskingEngine engine, SubsetService subsets, DataSetService datasets,
                                AuditService audit, ForgeProps props, ExecutorService provisioningExecutor,
                                io.forgetdm.ri.RiRegistryService riRegistry, DbMaskPushdown dbPushdown,
-                               io.forgetdm.security.AccessControlService access) {
+                               io.forgetdm.security.AccessControlService access,
+                               io.forgetdm.security.OwnershipGuard ownership,
+                               io.forgetdm.security.GovernedReferenceGuard references) {
         this.jobs = jobs; this.rules = rules; this.dataSources = dataSources;
         this.connections = connections; this.engine = engine; this.subsets = subsets;
         this.datasets = datasets; this.audit = audit; this.props = props; this.executor = provisioningExecutor;
         this.riRegistry = riRegistry; this.dbPushdown = dbPushdown; this.access = access;
+        this.ownership = ownership;
+        this.references = references;
     }
 
     @PostConstruct
@@ -147,9 +153,14 @@ public class ProvisioningService {
     public ProvisionJobEntity submit(ProvisionJobEntity job) {
         if (!Set.of("MASK_COPY", "SUBSET_MASK", "SYNTHETIC_LOAD").contains(job.getJobType()))
             throw ApiException.bad("jobType must be MASK_COPY, SUBSET_MASK or SYNTHETIC_LOAD");
+        validateGovernedReferences(job);
         validateDataSourceCapabilities(job);
-        job.setCreatedBy(io.forgetdm.security.AccessContext.current()
-                .map(io.forgetdm.security.AccessPrincipal::username).orElse("system"));
+        String ownerUsername = ownership.defaultOwnerUsername();
+        job.setCreatedBy(ownerUsername == null ? "system" : ownerUsername);
+        job.setOwnerUserId(ownership.defaultOwnerUserId());
+        job.setOwnerUsername(ownerUsername);
+        job.setOwnerGroupId(ownership.defaultOwnerGroupId());
+        job.setVisibility(ownership.defaultVisibility());
         enforceGovernance(job);   // hard block: unmasked PROD copy
         if (approvalRequired(job)) {
             job.setStatus("AWAITING_APPROVAL");
@@ -241,6 +252,8 @@ public class ProvisioningService {
         requireSameTenantAsCreator(p, job);
         if (note == null || note.isBlank())
             throw ApiException.bad("Approval note / e-signature reason is required.");
+        validateGovernedReferences(job);
+        validateDataSourceCapabilities(job);
         job.setApprovalStatus("APPROVED");
         job.setApprovedAt(Instant.now());
         job.setApprovedBy(p.username());
@@ -348,13 +361,29 @@ public class ProvisioningService {
     }
 
     public List<ProvisionJobEntity> list() {
-        List<ProvisionJobEntity> all = jobs.findAll();
+        List<ProvisionJobEntity> all = new ArrayList<>(jobs.findAll().stream()
+                .filter(job -> ownership.canSee(
+                        job.getOwnerUserId(), job.getOwnerGroupId(), job.getVisibility()))
+                .toList());
         all.sort(Comparator.comparing(ProvisionJobEntity::getId).reversed());
         return all;
     }
 
+    /** Resolve every indirect id while the request principal is still present, before async handoff. */
+    private void validateGovernedReferences(ProvisionJobEntity job) {
+        if (job.getDatasetId() != null) {
+            datasets.assertAuthorizedReferences(job.getDatasetId(), job.getPolicyId());
+        } else {
+            references.policy(job.getPolicyId());
+        }
+    }
+
     public ProvisionJobEntity get(Long id) {
-        return jobs.findById(id).orElseThrow(() -> ApiException.notFound("Job " + id + " not found"));
+        ProvisionJobEntity job = jobs.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Job " + id + " not found"));
+        ownership.assertCanSee("provision job", id,
+                job.getOwnerUserId(), job.getOwnerGroupId(), job.getVisibility());
+        return job;
     }
 
     public void delete(Long id) {

@@ -6,6 +6,7 @@ import io.forgetdm.core.copybook.RecordValue;
 import io.forgetdm.core.copybook.codec.Ebcdic;
 import io.forgetdm.mainframe.transport.TransportFactory;
 import io.forgetdm.provision.SyntheticGenService;
+import io.forgetdm.security.OwnershipGuard;
 import org.junit.jupiter.api.Test;
 
 import java.util.Base64;
@@ -47,7 +48,7 @@ class MainframeGenServiceTest {
         when(synth.generateRows(any(), eq(1L), eq(42L))).thenReturn(List.of(generated));
 
         MainframeGenService service = new MainframeGenService(copybooks, connections, transports, synth,
-                mock(io.forgetdm.audit.AuditService.class));
+                mock(io.forgetdm.audit.AuditService.class), mock(OwnershipGuard.class));
         MainframeGenService.GenFileReq request = new MainframeGenService.GenFileReq(
                 7L, "Cp037", "FB", 42L, 1L,
                 List.of(

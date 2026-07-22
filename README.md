@@ -14,6 +14,8 @@ Spring Boot 3 application with a PostgreSQL config database and an embedded web 
 
 ## Capability map
 
+Detailed masking explanation: [How Masking Works in ForgeTDM](docs/HOW_MASKING_WORKS.md).
+
 | Capability | How ForgeTDM does it |
 |---|---|
 | **PII discovery** | Dual-signal scan: column-name regex (60%) + sampled-value regex & Luhn analysis (40%) → confidence-scored review queue → one-click policy generation |
@@ -31,7 +33,7 @@ Spring Boot 3 application with a PostgreSQL config database and an embedded web 
 | **Provisioning** | Async job engine: MASK_COPY, SUBSET_MASK, SYNTHETIC_LOAD. Extract → mask in flight → batched inserts with live progress |
 | **Reservation** | Find & Reserve: locks matching rows per tester with TTL + conflict prevention + scheduled expiry |
 | **Validation** | Post-mask evidence: LEAK (masked == live source), FORMAT (Luhn/regex contracts), RI (consistent mapping across tables), DOMAIN (deliverable emails) → PASS/WARN/FAIL reports |
-| **Virtualization** | Delphix-style logical TimeFlow engine: content-addressed storage pool (SHA-256 chunks, gzip, dedup), incremental snapshots that store only changed blocks, TimeFlow lineage with branching, bookmarks, refresh/rewind, thin VDB provisioning into embedded H2 or real target DBs |
+| **Virtualization** | Delphix-style logical TimeFlow engine: content-addressed storage pool (SHA-256 chunks, compression, optional AES-256-GCM encryption, dedup), incremental snapshots that store only changed blocks, TimeFlow lineage with branching, bookmarks, refresh/rewind, thin VDB provisioning into embedded H2 or real target DBs |
 | **Audit** | Every consequential action recorded |
 
 ## Virtualization: the TimeFlow engine
@@ -40,7 +42,7 @@ Modeled on the Delphix architecture, one level up from the block device:
 
 | Delphix concept | ForgeTDM analog |
 |---|---|
-| Dedicated storage pool (ZFS) | `ChunkStore`: pool directory of gzip-compressed chunks keyed by SHA-256 of content |
+| Dedicated storage pool (ZFS) | `ChunkStore`: pool directory of SHA-256-addressed, compressed chunks with optional authenticated AES-256-GCM encryption |
 | Backup/log ingestion per DB type | JDBC ingestion from any registered source (Postgres, Oracle, DB2, SQL Server, H2), rows streamed in PK order |
 | Block/page-level indexing | Snapshot manifest: per-table ordered list of row-batch chunk hashes |
 | Dedup + compression | Content addressing — identical row batches across snapshots are stored once; all chunks gzip'd |

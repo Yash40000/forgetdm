@@ -5,6 +5,7 @@ import io.forgetdm.core.copybook.Copybook;
 import io.forgetdm.core.copybook.Field;
 import io.forgetdm.mainframe.transport.TransportFactory;
 import io.forgetdm.security.AccessContext;
+import io.forgetdm.security.OwnershipGuard;
 import org.springframework.web.bind.annotation.*;
 
 import java.time.Instant;
@@ -29,14 +30,16 @@ public class MainframeController {
     private final TransportFactory transports;
     private final MainframeMaskingService masking;
     private final MainframeGenService fileGen;
+    private final OwnershipGuard ownership;
 
     public MainframeController(MainframeConnectionRepository connections, CopybookDefRepository copybooks,
                               CopybookMaskRepository masks, MainframeJobRepository jobs,
                               MainframeJobFileRepository jobFiles, TransportFactory transports,
-                              MainframeMaskingService masking, MainframeGenService fileGen) {
+                              MainframeMaskingService masking, MainframeGenService fileGen,
+                              OwnershipGuard ownership) {
         this.connections = connections; this.copybooks = copybooks; this.masks = masks;
         this.jobs = jobs; this.jobFiles = jobFiles; this.transports = transports; this.masking = masking;
-        this.fileGen = fileGen;
+        this.fileGen = fileGen; this.ownership = ownership;
     }
 
     /** Generate synthetic records to a copybook layout, encode to EBCDIC, deliver or download. */
@@ -50,6 +53,8 @@ public class MainframeController {
     @GetMapping("/connections")
     public List<MainframeConnectionEntity> listConnections() {
         List<MainframeConnectionEntity> all = connections.findAll();
+        all.removeIf(c -> !MainframeOwnership.canSee(ownership, c.getOwnerUserId(),
+                c.getOwnerGroupId(), c.getVisibility()));
         all.sort(Comparator.comparing(MainframeConnectionEntity::getName, String.CASE_INSENSITIVE_ORDER));
         return all;
     }
@@ -68,6 +73,7 @@ public class MainframeController {
             throw ApiException.bad("ZOWE connection needs a host");
         if (c.getCodePage() == null || c.getCodePage().isBlank()) c.setCodePage("Cp037");
         c.setId(null);
+        stamp(c);
         return connections.save(c);
     }
 
@@ -102,6 +108,7 @@ public class MainframeController {
 
     @DeleteMapping("/connections/{id}")
     public Map<String, Object> deleteConnection(@PathVariable Long id) {
+        conn(id);
         connections.deleteById(id);
         return Map.of("deleted", id);
     }
@@ -136,6 +143,8 @@ public class MainframeController {
     @GetMapping("/copybooks")
     public List<Map<String, Object>> listCopybooks() {
         List<CopybookDefEntity> all = copybooks.findAll();
+        all.removeIf(d -> !MainframeOwnership.canSee(ownership, d.getOwnerUserId(),
+                d.getOwnerGroupId(), d.getVisibility()));
         all.sort(Comparator.comparing(CopybookDefEntity::getName, String.CASE_INSENSITIVE_ORDER));
         List<Map<String, Object>> out = new ArrayList<>();
         for (CopybookDefEntity d : all) {
@@ -158,6 +167,7 @@ public class MainframeController {
         CopybookDefEntity d = new CopybookDefEntity();
         d.setName(req.name().trim());
         applyCopybook(d, req);
+        stamp(d);
         return copybooks.save(d);
     }
 
@@ -182,6 +192,7 @@ public class MainframeController {
 
     @DeleteMapping("/copybooks/{id}")
     public Map<String, Object> deleteCopybook(@PathVariable Long id) {
+        copybook(id);
         masks.deleteByCopybookId(id);
         copybooks.deleteById(id);
         return Map.of("deleted", id);
@@ -196,6 +207,7 @@ public class MainframeController {
 
     @GetMapping("/copybooks/{id}/masks")
     public List<CopybookMaskEntity> copybookMasks(@PathVariable Long id) {
+        copybook(id);
         return masks.findByCopybookId(id);
     }
 
@@ -230,13 +242,15 @@ public class MainframeController {
     @GetMapping("/jobs")
     public List<MainframeJobEntity> listJobs() {
         List<MainframeJobEntity> all = jobs.findAll();
+        all.removeIf(j -> !MainframeOwnership.canSee(ownership, j.getOwnerUserId(),
+                j.getOwnerGroupId(), j.getVisibility()));
         all.sort(Comparator.comparing(MainframeJobEntity::getId).reversed());
         return all;
     }
 
     @GetMapping("/jobs/{id}")
     public Map<String, Object> getJob(@PathVariable Long id) {
-        MainframeJobEntity job = jobs.findById(id).orElseThrow(() -> ApiException.notFound("Job " + id + " not found"));
+        MainframeJobEntity job = job(id);
         return Map.of("job", job, "files", jobFiles.findByJobIdOrderByOrdinalAsc(id));
     }
 
@@ -247,20 +261,30 @@ public class MainframeController {
         if (req.targetConnectionId() == null) throw ApiException.bad("target connection required");
         if (req.files() == null || req.files().isEmpty()) throw ApiException.bad("add at least one file");
 
+        // Resolve every caller-supplied object id before creating any job or child rows.
+        conn(req.sourceConnectionId());
+        conn(req.targetConnectionId());
+        for (JobFileReq f : req.files()) {
+            if (f == null || f.sourceName() == null || f.sourceName().isBlank())
+                throw ApiException.bad("each file needs a source name");
+            if (f.copybookId() == null) throw ApiException.bad("each file needs a copybook");
+            copybook(f.copybookId());
+            if (f.targetConnectionId() != null) conn(f.targetConnectionId());
+        }
+
         MainframeJobEntity job = new MainframeJobEntity();
         job.setName(req.name().trim());
         job.setSourceConnectionId(req.sourceConnectionId());
         job.setTargetConnectionId(req.targetConnectionId());
         job.setMaskingSeed(blankToNull(req.maskingSeed()));
         job.setCreatedBy(AccessContext.current().map(p -> p.username()).orElse("system"));
+        stamp(job);
         job.setStatus("PENDING");
         job.setFilesTotal(req.files().size());
         job = jobs.save(job);
 
         int ord = 0;
         for (JobFileReq f : req.files()) {
-            if (f.sourceName() == null || f.sourceName().isBlank()) throw ApiException.bad("each file needs a source name");
-            if (f.copybookId() == null) throw ApiException.bad("each file needs a copybook");
             MainframeJobFileEntity e = new MainframeJobFileEntity();
             e.setJobId(job.getId());
             e.setSourceName(f.sourceName().trim());
@@ -293,11 +317,48 @@ public class MainframeController {
     // =============================================================== helpers
 
     private MainframeConnectionEntity conn(Long id) {
-        return connections.findById(id).orElseThrow(() -> ApiException.notFound("Connection " + id + " not found"));
+        MainframeConnectionEntity connection = connections.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Connection " + id + " not found"));
+        MainframeOwnership.assertCanSee(ownership, "mainframe connection", id, connection.getOwnerUserId(),
+                connection.getOwnerGroupId(), connection.getVisibility());
+        return connection;
     }
 
     private CopybookDefEntity copybook(Long id) {
-        return copybooks.findById(id).orElseThrow(() -> ApiException.notFound("Copybook " + id + " not found"));
+        CopybookDefEntity copybook = copybooks.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Copybook " + id + " not found"));
+        MainframeOwnership.assertCanSee(ownership, "mainframe copybook", id, copybook.getOwnerUserId(),
+                copybook.getOwnerGroupId(), copybook.getVisibility());
+        return copybook;
+    }
+
+    private MainframeJobEntity job(Long id) {
+        MainframeJobEntity job = jobs.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Job " + id + " not found"));
+        MainframeOwnership.assertCanSee(ownership, "mainframe job", id, job.getOwnerUserId(),
+                job.getOwnerGroupId(), job.getVisibility());
+        return job;
+    }
+
+    private void stamp(MainframeConnectionEntity entity) {
+        entity.setOwnerUserId(ownership.defaultOwnerUserId());
+        entity.setOwnerUsername(ownership.defaultOwnerUsername());
+        entity.setOwnerGroupId(ownership.defaultOwnerGroupId());
+        entity.setVisibility(ownership.defaultVisibility());
+    }
+
+    private void stamp(CopybookDefEntity entity) {
+        entity.setOwnerUserId(ownership.defaultOwnerUserId());
+        entity.setOwnerUsername(ownership.defaultOwnerUsername());
+        entity.setOwnerGroupId(ownership.defaultOwnerGroupId());
+        entity.setVisibility(ownership.defaultVisibility());
+    }
+
+    private void stamp(MainframeJobEntity entity) {
+        entity.setOwnerUserId(ownership.defaultOwnerUserId());
+        entity.setOwnerUsername(ownership.defaultOwnerUsername());
+        entity.setOwnerGroupId(ownership.defaultOwnerGroupId());
+        entity.setVisibility(ownership.defaultVisibility());
     }
 
     private static String blankToNull(String s) { return s == null || s.isBlank() ? null : s; }

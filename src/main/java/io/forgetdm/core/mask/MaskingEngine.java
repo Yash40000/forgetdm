@@ -1,5 +1,6 @@
 package io.forgetdm.core.mask;
 
+import io.forgetdm.core.temenos.TemenosCodec;
 import io.forgetdm.core.util.Determinism;
 import io.forgetdm.core.util.Luhn;
 import io.forgetdm.core.util.SeedLists;
@@ -95,6 +96,18 @@ public class MaskingEngine {
         if (fn == MaskFunction.SCRIPT) return script(salt, value, param1, param2, ctx);
         if (value == null || value.isEmpty()) return value;
 
+        // Temenos T24 multi-value fields store nested arrays in one column, delimited by VM (253) /
+        // SVM (252) / FM (254). Parse the structure and mask each sub-value in place, re-injecting the
+        // exact marks so field and sub-value counts never shift (RFP §3.2.1). Every mask function is
+        // thereby structure-aware for free; a value with no marks is a single leaf (unchanged path).
+        if (TemenosCodec.hasMarkers(value)) {
+            return TemenosCodec.mapLeaves(value, leaf -> maskScalar(fn, salt, leaf, param1, param2, ctx));
+        }
+        return maskScalar(fn, salt, value, param1, param2, ctx);
+    }
+
+    /** Mask a single scalar leaf value (no Temenos structure). */
+    private String maskScalar(MaskFunction fn, String salt, String value, String param1, String param2, MaskContext ctx) {
         switch (fn) {
             case FIRST_NAME: return applyCase(pick("first_names.txt", salt, value), caseMode(param1, param2));
             case LAST_NAME:  return applyCase(pick("last_names.txt", salt, value), caseMode(param1, param2));

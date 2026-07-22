@@ -8,6 +8,7 @@ import io.forgetdm.common.ApiException;
 import io.forgetdm.core.mask.MaskFunction;
 import io.forgetdm.policy.MaskingRuleEntity;
 import io.forgetdm.policy.MaskingRuleRepository;
+import io.forgetdm.security.OwnershipGuard;
 import org.springframework.stereotype.Service;
 
 import java.util.Arrays;
@@ -23,21 +24,22 @@ import java.util.stream.Collectors;
 @Service
 public class ValidationAdvisor {
 
-    private final ValidationReportRepository reports;
+    private final ValidationService validation;
     private final MaskingRuleRepository rules;
     private final AiAssistantService ai;
     private final AuditService audit;
+    private final OwnershipGuard ownership;
     private final ObjectMapper json = new ObjectMapper();
 
-    public ValidationAdvisor(ValidationReportRepository reports, MaskingRuleRepository rules,
-                             AiAssistantService ai, AuditService audit) {
-        this.reports = reports; this.rules = rules; this.ai = ai; this.audit = audit;
+    public ValidationAdvisor(ValidationService validation, MaskingRuleRepository rules,
+                             AiAssistantService ai, AuditService audit, OwnershipGuard ownership) {
+        this.validation = validation; this.rules = rules; this.ai = ai; this.audit = audit;
+        this.ownership = ownership;
     }
 
     /** Explain each failed finding and propose a fix. Returns {reportId, policyId, result, remedies:[...]}. */
     public Map<String, Object> diagnose(Long reportId) {
-        ValidationReportEntity rep = reports.findById(reportId)
-                .orElseThrow(() -> ApiException.notFound("Validation report " + reportId + " not found"));
+        ValidationReportEntity rep = validation.getReport(reportId);
         if (!ai.ready())
             throw ApiException.bad("Self-healing validation needs an AI provider — set one up (see AI_COPILOT_SETUP.txt).");
 
@@ -55,7 +57,7 @@ public class ValidationAdvisor {
         String user = "Result: " + rep.getResult() + "\nFindings JSON:\n" + rep.getFindingsJson();
 
         JsonNode node = parseLoose(ai.complete(sys, user, null, null, true));
-        audit.log("system", "VALIDATION_DIAGNOSED", "report=" + reportId);
+        audit.log(currentActor(), "VALIDATION_DIAGNOSED", "report=" + reportId);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("reportId", reportId);
@@ -69,6 +71,7 @@ public class ValidationAdvisor {
     public Map<String, Object> applyFix(Long policyId, String table, String column,
                                         String function, String param1, String param2) {
         if (policyId == null) throw ApiException.bad("policyId is required to apply a fix");
+        validation.requireVisiblePolicy(policyId);
         if (table == null || column == null) throw ApiException.bad("table and column are required");
         if (function == null || function.isBlank()) throw ApiException.bad("A suggested masking function is required");
         String fn = function.trim().toUpperCase();
@@ -85,7 +88,7 @@ public class ValidationAdvisor {
         if (param1 != null) rule.setParam1(param1.isBlank() ? null : param1);
         if (param2 != null) rule.setParam2(param2.isBlank() ? null : param2);
         rules.save(rule);
-        audit.log("system", "VALIDATION_FIX_APPLIED", policyId + " " + table + "." + column + " " + before + " -> " + fn);
+        audit.log(currentActor(), "VALIDATION_FIX_APPLIED", policyId + " " + table + "." + column + " " + before + " -> " + fn);
 
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("ok", true);
@@ -106,5 +109,9 @@ public class ValidationAdvisor {
         if (a >= 0 && b > a) t = t.substring(a, b + 1);
         try { return json.readTree(t); }
         catch (Exception e) { throw ApiException.bad("The AI did not return valid JSON; try again."); }
+    }
+
+    private String currentActor() {
+        return ownership.defaultOwnerUsername() == null ? "system" : ownership.defaultOwnerUsername();
     }
 }

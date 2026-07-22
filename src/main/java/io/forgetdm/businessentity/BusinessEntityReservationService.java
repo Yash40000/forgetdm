@@ -8,6 +8,7 @@ import io.forgetdm.datasource.ConnectionFactory;
 import io.forgetdm.datasource.DataSourceEntity;
 import io.forgetdm.datasource.DataSourceService;
 import io.forgetdm.security.AccessContext;
+import io.forgetdm.security.GovernedReferenceGuard;
 import io.forgetdm.subset.SubsetService;
 import jakarta.transaction.Transactional;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -30,6 +31,7 @@ public class BusinessEntityReservationService {
     private final ConnectionFactory connections;
     private final AuditService audit;
     private final BusinessEntityCapsuleService capsules;
+    private final GovernedReferenceGuard references;
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
 
     public BusinessEntityReservationService(BusinessEntityService entities,
@@ -39,7 +41,8 @@ public class BusinessEntityReservationService {
                                             DataSourceService dataSources,
                                             ConnectionFactory connections,
                                             AuditService audit,
-                                            BusinessEntityCapsuleService capsules) {
+                                            BusinessEntityCapsuleService capsules,
+                                            GovernedReferenceGuard references) {
         this.entities = entities;
         this.reservations = reservations;
         this.reservationMembers = reservationMembers;
@@ -48,6 +51,7 @@ public class BusinessEntityReservationService {
         this.connections = connections;
         this.audit = audit;
         this.capsules = capsules;
+        this.references = references;
     }
 
     public record ReservationRequest(String name, Long snapshotId, String reservedBy, String ownerGroup,
@@ -59,6 +63,7 @@ public class BusinessEntityReservationService {
                                     List<BusinessEntityReservationMemberEntity> members) {}
 
     public List<BusinessEntityReservationEntity> list(Long entityId) {
+        entities.getDetail(entityId);
         return reservations.findByEntityIdOrderByCreatedAtDesc(entityId);
     }
 
@@ -76,8 +81,16 @@ public class BusinessEntityReservationService {
         if (!"BLOCK".equals(conflictPolicy)) throw ApiException.bad("Only BLOCK conflict policy is supported for entity reservations.");
         String criteria = blankToNull(request == null ? null : request.criteria());
         if (criteria != null) SubsetService.guardFilter(criteria);
-        if (request != null && request.snapshotId() != null && !snapshots.existsById(request.snapshotId())) {
-            throw ApiException.bad("Business Entity snapshot not found: " + request.snapshotId());
+        if (request != null && request.snapshotId() != null) {
+            BusinessEntitySnapshotEntity snapshot = snapshots.findById(request.snapshotId())
+                    .orElseThrow(() -> ApiException.bad("Business Entity snapshot not found: " + request.snapshotId()));
+            entities.getDetail(snapshot.getEntityId());
+            if (!Objects.equals(snapshot.getEntityId(), entityId)) {
+                throw ApiException.bad("Snapshot does not belong to this Business Entity.");
+            }
+        }
+        if (request != null && Boolean.TRUE.equals(request.materializeCapsules())) {
+            references.policy(request.capsulePolicyId());
         }
 
         BusinessEntityMemberEntity root = rootMember(detail);
@@ -96,8 +109,8 @@ public class BusinessEntityReservationService {
         r.setEntityId(entityId);
         r.setSnapshotId(request == null ? null : request.snapshotId());
         r.setName(blankToNull(request == null ? null : request.name()));
-        r.setReservedBy(blankToDefault(request == null ? null : request.reservedBy(), currentUsername()));
-        r.setOwnerGroup(blankToNull(request == null ? null : request.ownerGroup()));
+        r.setReservedBy(currentUsername());
+        r.setOwnerGroup(currentGroupName());
         r.setPurpose(blankToNull(request == null ? null : request.purpose()));
         r.setEnvironment(blankToNull(request == null ? null : request.environment()));
         r.setCriteria(criteria);
@@ -159,7 +172,9 @@ public class BusinessEntityReservationService {
     @Scheduled(fixedDelay = 60_000)
     @Transactional
     public void expireStale() {
-        for (BusinessEntityReservationEntity r : reservations.findByStatus("ACTIVE")) {
+        List<BusinessEntityReservationEntity> active = reservations.findByStatus("ACTIVE");
+        active.forEach(r -> entities.getDetail(r.getEntityId()));
+        for (BusinessEntityReservationEntity r : active) {
             if (r.getExpiresAt() != null && r.getExpiresAt().isBefore(Instant.now())) {
                 r.setStatus("EXPIRED");
                 r.setReleasedAt(Instant.now());
@@ -242,7 +257,10 @@ public class BusinessEntityReservationService {
     }
 
     private BusinessEntityReservationEntity get(Long id) {
-        return reservations.findById(id).orElseThrow(() -> ApiException.notFound("Business Entity reservation not found: " + id));
+        BusinessEntityReservationEntity reservation = reservations.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Business Entity reservation not found: " + id));
+        entities.getDetail(reservation.getEntityId());
+        return reservation;
     }
 
     private List<Map<String, Object>> readKeys(String raw) {
@@ -289,5 +307,13 @@ public class BusinessEntityReservationService {
 
     private static String currentUsername() {
         return AccessContext.current().map(p -> p.username()).orElse("system");
+    }
+
+    private static String currentGroupName() {
+        return AccessContext.current().stream()
+                .flatMap(p -> p.groups() == null ? java.util.stream.Stream.empty() : p.groups().stream())
+                .map(g -> g.name())
+                .filter(Objects::nonNull)
+                .findFirst().orElse(null);
     }
 }

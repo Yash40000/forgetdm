@@ -1,0 +1,44 @@
+﻿
+=== 3. Live security regression probes (http://localhost:8099) ===
+  [PASS] Admin login
+  [PASS] DEF-0002 /me returns groups
+  [PASS] Mask catalogue complete (>=43)
+  [PASS] DIRECT_LOOKUP present
+  [PASS] HASH_LOOKUP present
+  [PASS] Audit search API
+  [PASS] Audit stats API
+  [PASS] Tenant test logins
+  [PASS] RBAC-001 auditor can read policies
+  [PASS] RBAC-001 auditor cannot create policy
+  [PASS] RBAC-001 auditor denied security admin
+  [PASS] RBAC-001 unmapped write needs admin.all
+  [PASS] DEF-0007 alpha created policy
+  [PASS] DEF-0007 ownership stamped
+  [PASS] DEF-0007 beta cannot LIST alpha's policy
+  [PASS] DEF-0007 beta cannot READ alpha's policy
+  [PASS] DEF-0007 beta cannot DELETE alpha's policy
+  [PASS] DEF-0007 policy survived cross-tenant delete
+  [PASS] DEF-0007 legacy SHARED rows still visible
+  [PASS] DEF-0007 owner can delete own policy
+  [PASS] DEF-0007 denial audited as ACCESS_DENIED
+  [PASS] AUTH-001-01 login body carries no token/password
+  [PASS] AUTH-001-03 cookie HttpOnly
+  [PASS] AUTH-001-03 cookie SameSite
+  [PASS] AUTH-001-03 cookie Path=/
+  [skip] AUTH-001-03 Secure flag - only asserted on an HTTPS lane
+  [PASS] AUTH-001-04 no timing oracle (ratio < 2x)
+  [PASS] AUTH-001-05 inactive user cannot log in
+  [PASS] AUTH-001-05 reactivated user can log in
+  [PASS] AUTH-001-06 session valid before logout
+  [PASS] AUTH-001-06 replay after logout is 401
+  [PASS] AUTH-001-07 both sessions valid
+  [PASS] AUTH-001-07 logged-out session rejected
+  [PASS] AUTH-001-07 other session still valid
+  [PASS] AUTH-001-10 failed login is audited
+  [PASS] AUTH-003-07 unauthenticated API returns 401
+
+=== Summary ===
+  Passed: 35
+  Failed: 0
+
+All checks passed.

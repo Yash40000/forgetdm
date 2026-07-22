@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.forgetdm.audit.AuditService;
 import io.forgetdm.common.ApiException;
 import io.forgetdm.security.AccessContext;
+import io.forgetdm.security.GovernedReferenceGuard;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -24,6 +25,7 @@ public class BusinessEntityFlowService {
     private final BusinessEntityService entities;
     private final BusinessEntityEnterpriseService enterprise;
     private final AuditService audit;
+    private final GovernedReferenceGuard references;
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
 
     public record FlowRequest(Long id, String name, String description, String status,
@@ -38,11 +40,13 @@ public class BusinessEntityFlowService {
                              List<String> breakpoints, Map<String, Object> inputs) {}
 
     public BusinessEntityFlowService(JdbcTemplate jdbc, BusinessEntityService entities,
-                                     BusinessEntityEnterpriseService enterprise, AuditService audit) {
+                                     BusinessEntityEnterpriseService enterprise, AuditService audit,
+                                     GovernedReferenceGuard references) {
         this.jdbc = jdbc;
         this.entities = entities;
         this.enterprise = enterprise;
         this.audit = audit;
+        this.references = references;
     }
 
     public List<Map<String, Object>> listFlows(Long entityId) {
@@ -110,6 +114,7 @@ public class BusinessEntityFlowService {
         List<Map<String, Object>> edges = cleanList(request == null ? null : request.edges());
         if (nodes.isEmpty()) throw ApiException.bad("Add at least one orchestration step before saving the flow.");
         validateFlowShape(nodes, edges);
+        authorizeExecutionPlanReferences(entityId, nodes, null, false);
         Map<String, Object> canvas = new LinkedHashMap<>();
         canvas.put("nodes", nodes);
         canvas.put("edges", edges);
@@ -203,6 +208,12 @@ public class BusinessEntityFlowService {
         }
         List<Map<String, Object>> nodes = castList(flow.get("nodes"));
         List<Map<String, Object>> edges = castList(flow.get("edges"));
+        if (physicalExecution) {
+            references.dataSource(request == null ? null : request.targetDataSourceId());
+            references.policy(request == null ? null : request.policyId());
+            authorizeExecutionPlanReferences(num(flow.get("entityId")), nodes,
+                    request == null ? null : request.executionPlanId(), true);
+        }
         Map<String, Map<String, Object>> byKey = new LinkedHashMap<>();
         for (Map<String, Object> node : nodes) byKey.put(safe(node.get("key")), node);
         Map<String, List<Map<String, Object>>> outgoing = new LinkedHashMap<>();
@@ -249,6 +260,7 @@ public class BusinessEntityFlowService {
                     map(event.get("details")).put("launchResult", launched);
                     status = String.valueOf(launched.getOrDefault("status", launched.getOrDefault("engineStatus", "SUBMITTED")));
                 } catch (RuntimeException ex) {
+                    if (isAuthorizationFailure(ex)) throw ex;
                     event.put("status", "FAILED");
                     event.put("message", "Execution plan launch failed: " + ex.getMessage());
                     events.add(event);
@@ -286,6 +298,12 @@ public class BusinessEntityFlowService {
         Map<String, Object> config = map(node.get("config"));
         Long planId = firstNonNull(request == null ? null : request.executionPlanId(), num(config.get("executionPlanId")));
         if (planId == null) throw ApiException.bad("Choose an execution plan before running this flow.");
+        Map<String, Object> plan = one("SELECT entity_id AS \"entityId\" FROM be_entity_execution_plans WHERE id = ?", planId);
+        Long planEntityId = num(plan.get("entityId"));
+        entities.getDetail(planEntityId);
+        if (!Objects.equals(planEntityId, num(flow.get("entityId")))) {
+            throw ApiException.bad("Execution plan does not belong to this Business Entity flow.");
+        }
         BusinessEntityEnterpriseService.LaunchRequest launchRequest = new BusinessEntityEnterpriseService.LaunchRequest(
                 request == null ? null : request.targetDataSourceId(),
                 request == null ? null : request.targetSchema(),
@@ -304,6 +322,42 @@ public class BusinessEntityFlowService {
         out.put("executionPlanId", planId);
         out.put("flowId", flow.get("id"));
         return out;
+    }
+
+    private void authorizeExecutionPlanReferences(Long entityId, List<Map<String, Object>> nodes,
+                                                   Long overridePlanId, boolean requireConfiguredPlan) {
+        List<Map<String, Object>> planNodes = nodes.stream()
+                .filter(node -> "EXECUTION_PLAN".equals(type(node)))
+                .toList();
+        if (planNodes.isEmpty()) return;
+        if (overridePlanId != null) {
+            authorizeExecutionPlanReference(entityId, overridePlanId);
+            return;
+        }
+        for (Map<String, Object> node : planNodes) {
+            Long planId = num(map(node.get("config")).get("executionPlanId"));
+            if (planId == null) {
+                if (requireConfiguredPlan) {
+                    throw ApiException.bad("Choose an execution plan before running this flow.");
+                }
+                continue;
+            }
+            authorizeExecutionPlanReference(entityId, planId);
+        }
+    }
+
+    private void authorizeExecutionPlanReference(Long entityId, Long planId) {
+        Map<String, Object> plan = one("SELECT entity_id AS \"entityId\" FROM be_entity_execution_plans WHERE id = ?", planId);
+        Long planEntityId = num(plan.get("entityId"));
+        entities.getDetail(planEntityId);
+        if (!Objects.equals(planEntityId, entityId)) {
+            throw ApiException.bad("Execution plan does not belong to this Business Entity flow.");
+        }
+    }
+
+    private static boolean isAuthorizationFailure(RuntimeException failure) {
+        return failure instanceof ApiException api
+                && (api.getStatus().value() == 401 || api.getStatus().value() == 403);
     }
 
     private Map<String, Object> simulateStep(int sequence, Map<String, Object> node, Map<String, Object> flow, RunRequest request) {
@@ -485,22 +539,26 @@ public class BusinessEntityFlowService {
     }
 
     private Map<String, Object> getDebugRun(Long id) {
-        return debugRow(one("""
+        Map<String, Object> run = one("""
                 SELECT id, entity_id AS "entityId", flow_id AS "flowId", mode, status,
                        current_step_key AS "currentStepKey", input_json AS "inputJson",
                        events_json AS "eventsJson", created_by AS "createdBy",
                        started_at AS "startedAt", completed_at AS "completedAt"
                   FROM be_orchestration_debug_runs WHERE id = ?
-                """, id));
+                """, id);
+        entities.getDetail(num(run.get("entityId")));
+        return debugRow(run);
     }
 
     private Map<String, Object> rawFlow(Long id) {
-        return one("""
+        Map<String, Object> flow = one("""
                 SELECT id, entity_id AS "entityId", name, description, version_no AS "versionNo",
                        status, canvas_json AS "canvasJson", created_by AS "createdBy",
                        created_at AS "createdAt", updated_at AS "updatedAt"
                   FROM be_orchestration_flows WHERE id = ?
                 """, id);
+        entities.getDetail(num(flow.get("entityId")));
+        return flow;
     }
 
     private int dataScopeSliceCount(BusinessEntityService.BusinessEntityDetail detail) {

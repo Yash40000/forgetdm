@@ -5,6 +5,7 @@ import io.forgetdm.audit.AuditService;
 import io.forgetdm.config.ForgeProps;
 import io.forgetdm.core.mask.MaskingEngine;
 import io.forgetdm.filevault.ManagedFileVault;
+import io.forgetdm.security.OwnershipGuard;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -29,6 +30,7 @@ class UnstructuredMaskingServiceTest {
         when(profiles.findById(7L)).thenReturn(Optional.of(profile));
         UnstructuredMaskingService service = new UnstructuredMaskingService(profiles, mock(UnstructuredJobRepository.class),
                 mock(ManagedFileVault.class), new MaskingEngine("secret"), new ObjectMapper(), mock(AuditService.class),
+                mock(OwnershipGuard.class),
                 10_000_000, 1_000_000, 72);
 
         Map<String, Object> result = service.preview(7L, "Email jane.doe@example.com SSN 123-45-6789", "seed-a");
@@ -42,7 +44,8 @@ class UnstructuredMaskingServiceTest {
     @Test void capabilitiesExplicitlyFailClosedForUnsupportedBinaryContent() {
         UnstructuredMaskingService service = new UnstructuredMaskingService(mock(UnstructuredProfileRepository.class),
                 mock(UnstructuredJobRepository.class), mock(ManagedFileVault.class), new MaskingEngine("secret"),
-                new ObjectMapper(), mock(AuditService.class), 10_000_000, 1_000_000, 72);
+                new ObjectMapper(), mock(AuditService.class), mock(OwnershipGuard.class),
+                10_000_000, 1_000_000, 72);
         assertTrue(String.valueOf(service.capabilities().get("guarantee")).contains("fails closed"));
     }
 
@@ -56,6 +59,7 @@ class UnstructuredMaskingServiceTest {
         when(profiles.findById(8L)).thenReturn(Optional.of(profile));
         UnstructuredMaskingService service = new UnstructuredMaskingService(profiles, mock(UnstructuredJobRepository.class),
                 mock(ManagedFileVault.class), new MaskingEngine("secret"), new ObjectMapper(), mock(AuditService.class),
+                mock(OwnershipGuard.class),
                 10_000_000, 1_000_000, 72);
 
         Map<String, Object> result = service.preview(8L,
@@ -91,6 +95,7 @@ class UnstructuredMaskingServiceTest {
         ReflectionTestUtils.invokeMethod(vault, "init");
         UnstructuredMaskingService service = new UnstructuredMaskingService(profiles, jobs, vault,
                 new MaskingEngine("secret"), new ObjectMapper(), mock(AuditService.class),
+                mock(OwnershipGuard.class),
                 10_000_000, 1_000_000, 72);
 
         service.start(9L, new MockMultipartFile("file", "sample.txt", "text/plain",
@@ -127,7 +132,8 @@ class UnstructuredMaskingServiceTest {
         AuditService audit = mock(AuditService.class);
         ManagedFileVault vault = mock(ManagedFileVault.class);
         UnstructuredMaskingService service = new UnstructuredMaskingService(profiles, jobs, vault,
-                new MaskingEngine("secret"), new ObjectMapper(), audit, 10_000_000, 1_000_000, 72);
+                new MaskingEngine("secret"), new ObjectMapper(), audit, mock(OwnershipGuard.class),
+                10_000_000, 1_000_000, 72);
 
         ReflectionTestUtils.invokeMethod(service, "process", 102L, "seed-a");
 

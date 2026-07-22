@@ -14,6 +14,7 @@ import io.forgetdm.policy.MaskingRuleEntity;
 import io.forgetdm.policy.MaskingRuleRepository;
 import io.forgetdm.security.AccessContext;
 import io.forgetdm.security.AccessPrincipal;
+import io.forgetdm.security.GovernedReferenceGuard;
 import jakarta.transaction.Transactional;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -78,6 +79,7 @@ public class BusinessEntityCapsuleService {
     private final AuditService audit;
     private final JdbcTemplate jdbc;
     private final CapsuleCrypto crypto;
+    private final GovernedReferenceGuard references;
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
 
     public BusinessEntityCapsuleService(BusinessEntityService entities,
@@ -93,7 +95,8 @@ public class BusinessEntityCapsuleService {
                                         MaskingRuleRepository maskingRules,
                                         AuditService audit,
                                         JdbcTemplate jdbc,
-                                        CapsuleCrypto crypto) {
+                                        CapsuleCrypto crypto,
+                                        GovernedReferenceGuard references) {
         this.entities = entities;
         this.instances = instances;
         this.fragments = fragments;
@@ -108,6 +111,7 @@ public class BusinessEntityCapsuleService {
         this.audit = audit;
         this.jdbc = jdbc;
         this.crypto = crypto;
+        this.references = references;
     }
 
     public record MaterializeRequest(Map<String, Object> businessKey, Long policyId, String notes,
@@ -148,6 +152,8 @@ public class BusinessEntityCapsuleService {
                         "sync-on-demand refresh", instance.getSyncMode(), instance.getStaleAfterMinutes()),
                         "SYNC_ON_DEMAND");
                 instance = get(instanceId);
+            } catch (ApiException e) {
+                throw e;
             } catch (Exception e) {
                 lineage(instanceId, "SYNC_FAILED", Map.of("error", String.valueOf(e.getMessage())));
             }
@@ -165,6 +171,7 @@ public class BusinessEntityCapsuleService {
 
     @Transactional
     public CapsuleDetail materialize(Long entityId, MaterializeRequest req) {
+        entities.getDetail(entityId);
         Map<String, Object> businessKey = req == null ? null : req.businessKey();
         if (businessKey == null || businessKey.isEmpty())
             throw ApiException.bad("businessKey is required: root key column(s) -> value(s).");
@@ -191,6 +198,7 @@ public class BusinessEntityCapsuleService {
         }
         String canonicalKey = canonical(businessKey);
         Long policyId = req.policyId();
+        references.policy(policyId);
 
         // Row-locked find-or-create: concurrent materialize calls on the same capsule serialize here.
         BeEntityInstanceEntity instance = instances.findWithLockByEntityIdAndCanonicalKey(entityId, canonicalKey)
@@ -544,6 +552,7 @@ public class BusinessEntityCapsuleService {
         BeEntityAccessGrantEntity g = grants.findById(grantId)
                 .orElseThrow(() -> ApiException.notFound("Access grant not found: " + grantId));
         if (g.getInstanceId() != null) assertAccess(get(g.getInstanceId()), "MANAGE");
+        else entities.getDetail(g.getEntityId());
         g.setRevoked(true);
         g.setRevokedAt(Instant.now());
         g.setRevokedBy(currentUsername());
@@ -557,6 +566,7 @@ public class BusinessEntityCapsuleService {
     @Transactional
     public void recordLineageForKeys(Long entityId, List<Map<String, Object>> businessKeys, String eventType, String detailNote) {
         if (entityId == null || businessKeys == null || businessKeys.isEmpty()) return;
+        entities.getDetail(entityId);
         for (Map<String, Object> key : businessKeys) {
             try {
                 String canonicalKey = canonical(key);
@@ -604,6 +614,7 @@ public class BusinessEntityCapsuleService {
     @Transactional
     public void propagateFreshness(Long entityId, List<Map<String, Object>> memberResults) {
         if (entityId == null || memberResults == null || memberResults.isEmpty()) return;
+        entities.getDetail(entityId);
         List<BeEntityInstanceEntity> active = instances.findByEntityIdOrderByUpdatedAtDesc(entityId).stream()
                 .filter(i -> "ACTIVE".equalsIgnoreCase(i.getStatus())).toList();
         if (active.isEmpty()) return;
@@ -1097,7 +1108,10 @@ public class BusinessEntityCapsuleService {
     }
 
     private BeEntityInstanceEntity get(Long id) {
-        return instances.findById(id).orElseThrow(() -> ApiException.notFound("Entity capsule instance not found: " + id));
+        BeEntityInstanceEntity instance = instances.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Entity capsule instance not found: " + id));
+        entities.getDetail(instance.getEntityId());
+        return instance;
     }
 
     private BusinessEntityMemberEntity rootMember(BusinessEntityService.BusinessEntityDetail detail) {

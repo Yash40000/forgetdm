@@ -8,6 +8,7 @@ import io.forgetdm.datasource.ConnectionFactory;
 import io.forgetdm.datasource.DataSourceEntity;
 import io.forgetdm.datasource.DataSourceService;
 import io.forgetdm.query.QueryService;
+import io.forgetdm.security.OwnershipGuard;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,32 +27,37 @@ public class MappingService {
     private final ObjectMapper json;
     private final MappingVersionRepository versions;
     private final MappingFileAssetRepository assets;
+    private final OwnershipGuard ownership;
 
     public MappingService(MappingRepository repo, QueryService query, DataSourceService dataSources,
                           ConnectionFactory connections, AuditService audit, ObjectMapper json,
-                          MappingVersionRepository versions, MappingFileAssetRepository assets) {
+                          MappingVersionRepository versions, MappingFileAssetRepository assets,
+                          OwnershipGuard ownership) {
         this.repo = repo; this.query = query; this.dataSources = dataSources;
         this.connections = connections; this.audit = audit; this.json = json;
-        this.versions = versions; this.assets = assets;
+        this.versions = versions; this.assets = assets; this.ownership = ownership;
     }
 
     public List<MappingEntity> list() {
-        List<MappingEntity> all = repo.findAll();
+        List<MappingEntity> all = new ArrayList<>(repo.findAll().stream()
+                .filter(m -> ownership.canSee(m.getOwnerUserId(), m.getOwnerGroupId(), m.getVisibility()))
+                .toList());
         all.sort(Comparator.comparing(MappingEntity::getId).reversed());
         return all;
     }
 
     public MappingEntity get(Long id) {
-        return repo.findById(id).orElseThrow(() -> ApiException.notFound("Mapping " + id + " not found"));
+        MappingEntity mapping = repo.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Mapping " + id + " not found"));
+        ownership.assertCanSee("mapping", id, mapping.getOwnerUserId(), mapping.getOwnerGroupId(), mapping.getVisibility());
+        return mapping;
     }
 
     @Transactional
     public MappingEntity save(MappingEntity in) {
         if (in.getName() == null || in.getName().isBlank()) throw ApiException.bad("Mapping name is required");
         boolean creating = in.getId() == null;
-        MappingEntity m = in.getId() != null
-                ? repo.findById(in.getId()).orElseThrow(() -> ApiException.notFound("Mapping " + in.getId() + " not found"))
-                : new MappingEntity();
+        MappingEntity m = in.getId() != null ? get(in.getId()) : new MappingEntity();
         final Long mid = m.getId();
         repo.findByNameIgnoreCase(in.getName().trim()).ifPresent(other -> {
             if (!other.getId().equals(mid)) throw ApiException.bad("A mapping named '" + in.getName() + "' already exists.");
@@ -64,6 +70,14 @@ public class MappingService {
         if (!Boolean.TRUE.equals(validation.get("valid")))
             throw ApiException.bad("Mapping is not valid: " + String.join("; ", castStrings(validation.get("errors"))));
         m.setSpecJson(canonical(spec));
+        if (creating) {
+            m.setOwnerUserId(ownership.defaultOwnerUserId());
+            m.setOwnerUsername(ownership.defaultOwnerUsername());
+            m.setOwnerGroupId(ownership.defaultOwnerGroupId());
+            m.setVisibility(ownership.defaultVisibility());
+        } else if (in.getVisibility() != null && !in.getVisibility().isBlank()) {
+            m.setVisibility(normalizeVisibility(in.getVisibility()));
+        }
         m.setUpdatedAt(Instant.now());
         MappingEntity saved = repo.save(m);
         String hash = sha256(saved.getSpecJson());
@@ -131,12 +145,13 @@ public class MappingService {
                 String type = source.path("type").asText("DATABASE").toUpperCase(Locale.ROOT);
                 if ("DATABASE".equals(type)) {
                     if (!source.hasNonNull("dataSourceId")) errors.add("Source " + (i + 1) + " needs a data source");
-                    else try { dataSources.get(source.get("dataSourceId").asLong()); } catch (Exception e) { errors.add("Source " + (i + 1) + " data source does not exist"); }
+                    else validateDataSource(source.get("dataSourceId"), "Source " + (i + 1) + " data source", errors);
                     if (source.path("table").asText().isBlank() && source.path("sql").asText().isBlank())
                         errors.add("Source " + (i + 1) + " needs a table or read-only SQL");
                 } else if ("FILE".equals(type)) {
                     if (!source.hasNonNull("assetId")) errors.add("Source " + (i + 1) + " needs a managed file asset");
-                    else if (!assets.existsById(source.get("assetId").asLong())) errors.add("Source " + (i + 1) + " file asset does not exist");
+                    else try { requireVisibleAsset(source.get("assetId").asLong()); }
+                    catch (Exception e) { errors.add("Source " + (i + 1) + " file asset is not available"); }
                 } else errors.add("Source " + (i + 1) + " type must be DATABASE or FILE");
               }
               if (sources.size() > 1) {
@@ -149,6 +164,7 @@ public class MappingService {
             String targetType = target.path("type").asText("PREVIEW").toUpperCase(Locale.ROOT);
             if ("DATABASE".equals(targetType)) {
                 if (!target.hasNonNull("dataSourceId")) errors.add("Database target needs a data source");
+                else validateDataSource(target.get("dataSourceId"), "Target data source", errors);
                 if (target.path("table").asText().isBlank()) errors.add("Database target needs a table");
             } else if (!Set.of("FILE", "PREVIEW").contains(targetType)) errors.add("Target type must be DATABASE, FILE, or PREVIEW");
             Set<String> targets = new HashSet<>();
@@ -169,6 +185,8 @@ public class MappingService {
             if (errors.isEmpty()) preflightCompiledSql(spec, errors, warnings);
             if (sources.size() > 1 && !sameDatabaseSources(sources))
                 warnings.add("Cross-database/file joins use bounded federation for preview; production execution requires a saved staging/load route");
+        } else {
+            validateLegacyDataSources(spec, errors);
         }
         return Map.of("valid", errors.isEmpty(), "errors", errors, "warnings", warnings);
     }
@@ -460,6 +478,49 @@ public class MappingService {
     private JsonNode parseSpec(String value) {
         try { return json.readTree(value == null || value.isBlank() ? "{}" : value); }
         catch (Exception e) { throw ApiException.bad("Mapping specification is not valid JSON: " + e.getMessage()); }
+    }
+
+    private MappingFileAssetEntity requireVisibleAsset(Long id) {
+        MappingFileAssetEntity asset = assets.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Mapping file asset " + id + " not found"));
+        ownership.assertCanSee("mapping file asset", id, asset.getOwnerUserId(),
+                asset.getOwnerGroupId(), asset.getVisibility());
+        return asset;
+    }
+
+    private void validateLegacyDataSources(JsonNode spec, List<String> errors) {
+        validateOptionalDataSource(spec.get("srcDsId"), "Legacy source data source", errors);
+        JsonNode tables = spec.path("tables");
+        if (tables.isArray()) {
+            for (int i = 0; i < tables.size(); i++) {
+                validateOptionalDataSource(tables.get(i).get("dsId"),
+                        "Legacy table " + (i + 1) + " data source", errors);
+            }
+        }
+        validateOptionalDataSource(spec.path("target").get("dsId"), "Legacy target data source", errors);
+    }
+
+    private void validateOptionalDataSource(JsonNode id, String label, List<String> errors) {
+        if (id == null || id.isNull() || id.asText("").isBlank()) return;
+        validateDataSource(id, label, errors);
+    }
+
+    private void validateDataSource(JsonNode id, String label, List<String> errors) {
+        long value = id.asLong(0);
+        if (value <= 0) {
+            errors.add(label + " is invalid");
+            return;
+        }
+        try { dataSources.get(value); }
+        catch (Exception e) { errors.add(label + " is not available"); }
+    }
+
+    private static String normalizeVisibility(String value) {
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of(OwnershipGuard.PRIVATE, OwnershipGuard.GROUP, OwnershipGuard.SHARED).contains(normalized)) {
+            throw ApiException.bad("Visibility must be PRIVATE, GROUP, or SHARED");
+        }
+        return normalized;
     }
 
     private String canonical(JsonNode spec) {

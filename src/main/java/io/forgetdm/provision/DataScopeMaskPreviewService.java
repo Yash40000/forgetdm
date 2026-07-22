@@ -72,7 +72,7 @@ public class DataScopeMaskPreviewService {
                 .filter(c -> c != null && c.targetColumn() != null && !c.targetColumn().isBlank()).toList();
         if (cols.isEmpty()) throw ApiException.bad("At least one mapped column is required");
 
-        DataSetDefinitionEntity def = datasets.get(datasetId);
+        DataSetDefinitionEntity def = datasets.assertAuthorizedReferences(datasetId, req.policyId());
         TableProfileEntity profile = datasets.listProfiles(datasetId).stream()
                 .filter(p -> p.getTableName().equalsIgnoreCase(req.table())).findFirst().orElse(null);
         Long dsId = profile != null && profile.getSourceDataSourceId() != null

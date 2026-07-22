@@ -1,0 +1,31 @@
+﻿{
+    "story":  "RBAC-002",
+    "generatedAt":  "2026-07-21T18:22:14.3111562-04:00",
+    "focused":  {
+                    "tests":  90,
+                    "failures":  0,
+                    "errors":  0,
+                    "skipped":  0,
+                    "artifact":  "RBAC-002-FOCUSED-2026-07-21.json"
+                },
+    "live":  {
+                 "checks":  35,
+                 "failures":  0,
+                 "artifact":  "RBAC-002-LIVE-2026-07-21.txt"
+             },
+    "backendRegression":  {
+                              "command":  "mvn -q test",
+                              "suites":  101,
+                              "tests":  503,
+                              "failures":  0,
+                              "errors":  0,
+                              "skipped":  1,
+                              "skipDisposition":  "Unrelated opt-in SyntheticScenarioPackTest; no RBAC test skipped",
+                              "result":  "PASS"
+                          },
+    "frontendRegression":  {
+                               "command":  "npm.cmd run typecheck",
+                               "result":  "PASS",
+                               "details":  "Next route types generated; tsc --noEmit exited 0"
+                           }
+}

@@ -29,6 +29,14 @@ public final class AuditHash {
                 nz(e.getSeverity()),
                 String.valueOf(e.getCreatedAt() == null ? 0 : e.getCreatedAt().toEpochMilli()),
                 nz(e.getDetail()));
+        if (e.getHashVersion() != null && e.getHashVersion() >= 2) {
+            payload = payload + "|" + String.join("|",
+                    String.valueOf(e.getHashVersion()),
+                    String.valueOf(e.getOwnerUserId()),
+                    nz(e.getOwnerUsername()),
+                    String.valueOf(e.getOwnerGroupId()),
+                    nz(e.getVisibility()));
+        }
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(payload.getBytes(StandardCharsets.UTF_8));
             return Base64.getEncoder().encodeToString(digest);

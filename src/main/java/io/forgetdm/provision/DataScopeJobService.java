@@ -7,6 +7,7 @@ import io.forgetdm.audit.AuditService;
 import io.forgetdm.common.ApiException;
 import io.forgetdm.subset.SubsetService;
 import io.forgetdm.security.AccessContext;
+import io.forgetdm.security.AccessControlService;
 import io.forgetdm.security.AccessPrincipal;
 import io.forgetdm.platform.ClusterLeaseService;
 import org.springframework.dao.DuplicateKeyException;
@@ -39,14 +40,16 @@ public class DataScopeJobService {
     private final ProvisioningService provisioning;
     private final AuditService audit;
     private final ClusterLeaseService leases;
+    private final AccessControlService access;
     private final ObjectMapper json = new ObjectMapper();
 
     public DataScopeJobService(JdbcTemplate jdbc, ProvisioningService provisioning, AuditService audit,
-                               ClusterLeaseService leases) {
+                               ClusterLeaseService leases, AccessControlService access) {
         this.jdbc = jdbc;
         this.provisioning = provisioning;
         this.audit = audit;
         this.leases = leases;
+        this.access = access;
     }
 
     public record SavedJobRequest(String name, String description, JsonNode spec) {}
@@ -293,12 +296,16 @@ public class DataScopeJobService {
         List<Map<String, Object>> due;
         try {
             due = jdbc.query(
-                    "SELECT id, name, owner_username, schedule_cron, schedule_zone, next_run_at FROM datascope_saved_jobs " +
-                            "WHERE schedule_enabled = TRUE AND next_run_at IS NOT NULL AND next_run_at <= ?",
+                    "SELECT j.id, j.name, j.owner_user_id, j.owner_username, " +
+                            "j.schedule_cron, j.schedule_zone, j.next_run_at " +
+                            "FROM datascope_saved_jobs j " +
+                            "WHERE j.schedule_enabled = TRUE AND j.next_run_at IS NOT NULL AND j.next_run_at <= ?",
                     (rs, n) -> {
                         Map<String, Object> m = new HashMap<>();
                         m.put("id", rs.getString("id"));
                         m.put("name", rs.getString("name"));
+                        Object ownerUserId = rs.getObject("owner_user_id");
+                        if (ownerUserId != null) m.put("ownerUserId", rs.getLong("owner_user_id"));
                         m.put("owner", rs.getString("owner_username"));
                         m.put("cron", rs.getString("schedule_cron"));
                         m.put("zone", rs.getString("schedule_zone"));
@@ -323,7 +330,12 @@ public class DataScopeJobService {
             try {
                 Map<String, Object> saved = new HashMap<>();
                 saved.put("name", row.get("name"));
-                runInternal(id, saved, "schedule");
+                Object ownerUserId = row.get("ownerUserId");
+                if (!(ownerUserId instanceof Number number)) {
+                    throw new IllegalStateException("Saved job owner no longer exists");
+                }
+                AccessPrincipal owner = access.principal(number.longValue());
+                AccessContext.callAs(owner, null, () -> runInternal(id, saved, "schedule"));
             } catch (Exception e) {
                 audit.log("system", "DATASCOPE_JOB_SCHEDULE_FAILED", "savedJob=" + id + " error=" + e.getMessage());
             }

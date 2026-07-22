@@ -1,10 +1,13 @@
 package io.forgetdm.businessentity;
 
 import io.forgetdm.audit.AuditService;
+import io.forgetdm.common.ApiException;
+import io.forgetdm.security.GovernedReferenceGuard;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.http.HttpStatus;
 
 import java.util.List;
 import java.util.Map;
@@ -17,6 +20,7 @@ class BusinessEntityFlowServiceTest {
     private BusinessEntityService entities;
     private BusinessEntityEnterpriseService enterprise;
     private AuditService audit;
+    private GovernedReferenceGuard references;
     private BusinessEntityFlowService service;
 
     @BeforeEach
@@ -26,7 +30,8 @@ class BusinessEntityFlowServiceTest {
         entities = mock(BusinessEntityService.class);
         enterprise = mock(BusinessEntityEnterpriseService.class);
         audit = mock(AuditService.class);
-        service = new BusinessEntityFlowService(jdbc, entities, enterprise, audit);
+        references = mock(GovernedReferenceGuard.class);
+        service = new BusinessEntityFlowService(jdbc, entities, enterprise, audit, references);
 
         BusinessEntityDefinitionEntity entity = new BusinessEntityDefinitionEntity();
         entity.setId(1L);
@@ -74,6 +79,7 @@ class BusinessEntityFlowServiceTest {
         assertEquals("ACTIVE", published.get("status"));
         when(enterprise.launchExecutionPlan(eq(900L), any(BusinessEntityEnterpriseService.LaunchRequest.class)))
                 .thenReturn(Map.of("engine", "DATASCOPE_FANOUT", "runId", "be-run-1", "status", "SUBMITTED"));
+        jdbc.update("INSERT INTO be_entity_execution_plans(id, entity_id) VALUES (900, 1)");
 
         Map<String, Object> run = service.runFlow(((Number) saved.get("id")).longValue(),
                 new BusinessEntityFlowService.RunRequest("EXECUTE_APPROVED", 900L, 102L, "uat",
@@ -85,6 +91,64 @@ class BusinessEntityFlowServiceTest {
         assertTrue(events.stream().anyMatch(e -> "EXECUTION_PLAN".equals(e.get("type"))
                 && String.valueOf(e.get("message")).contains("launched")));
         verify(enterprise).launchExecutionPlan(eq(900L), any(BusinessEntityEnterpriseService.LaunchRequest.class));
+    }
+
+    @Test
+    void deniesBetaFlowRawIdBeforeReadDeleteOrDebugEvidence() {
+        Map<String, Object> starter = service.starterFlow(1L);
+        Map<String, Object> saved = service.saveFlow(1L, new BusinessEntityFlowService.FlowRequest(null,
+                "Beta-owned flow", "cross tenant", "ACTIVE", castList(starter.get("nodes")),
+                castList(starter.get("edges")), castMap(starter.get("settings"))));
+        long flowId = ((Number) saved.get("id")).longValue();
+        jdbc.update("UPDATE be_orchestration_flows SET entity_id = 2 WHERE id = ?", flowId);
+        when(entities.getDetail(2L)).thenThrow(new ApiException(HttpStatus.FORBIDDEN, "BETA entity"));
+
+        assertThrows(ApiException.class, () -> service.getFlow(flowId));
+        assertThrows(ApiException.class, () -> service.debugFlow(flowId,
+                new BusinessEntityFlowService.DebugRequest("DEBUG_DRY_RUN", null, List.of(), Map.of())));
+        assertThrows(ApiException.class, () -> service.deleteFlow(flowId));
+
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM be_orchestration_flows WHERE id = ?", Integer.class, flowId));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM be_orchestration_debug_runs WHERE flow_id = ?", Integer.class, flowId));
+    }
+
+    @Test
+    void rejectsCrossEntityExecutionPlanBeforeCreatingRunEvidence() {
+        Map<String, Object> starter = service.starterFlow(1L);
+        Map<String, Object> saved = service.saveFlow(1L, new BusinessEntityFlowService.FlowRequest(null,
+                "Alpha active flow", "preflight", "ACTIVE", castList(starter.get("nodes")),
+                castList(starter.get("edges")), castMap(starter.get("settings"))));
+        long flowId = ((Number) saved.get("id")).longValue();
+        jdbc.update("INSERT INTO be_entity_execution_plans(id, entity_id) VALUES (901, 2)");
+        when(entities.getDetail(2L)).thenThrow(new ApiException(HttpStatus.FORBIDDEN, "BETA entity"));
+
+        assertThrows(ApiException.class, () -> service.runFlow(flowId,
+                new BusinessEntityFlowService.RunRequest("EXECUTE_APPROVED", 901L, null, null,
+                        null, null, "REPLACE", "DELETE", null, null, null, "SINGLE",
+                        null, null, null, List.of(), Map.of())));
+
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM be_orchestration_debug_runs WHERE flow_id = ?", Integer.class, flowId));
+        verify(enterprise, never()).launchExecutionPlan(anyLong(), any());
+    }
+
+    @Test
+    void rejectsUnauthorizedTargetBeforeExecutionOrDebugEvidence() {
+        Map<String, Object> starter = service.starterFlow(1L);
+        Map<String, Object> saved = service.saveFlow(1L, new BusinessEntityFlowService.FlowRequest(null,
+                "Alpha target preflight", "target authorization", "ACTIVE", castList(starter.get("nodes")),
+                castList(starter.get("edges")), castMap(starter.get("settings"))));
+        long flowId = ((Number) saved.get("id")).longValue();
+        jdbc.update("INSERT INTO be_entity_execution_plans(id, entity_id) VALUES (902, 1)");
+        doThrow(new ApiException(HttpStatus.FORBIDDEN, "BETA target"))
+                .when(references).dataSource(999L);
+
+        assertThrows(ApiException.class, () -> service.runFlow(flowId,
+                new BusinessEntityFlowService.RunRequest("EXECUTE_APPROVED", 902L, 999L, "uat",
+                        null, null, "REPLACE", "DELETE", null, null, null, "SINGLE",
+                        null, null, null, List.of(), Map.of())));
+
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM be_orchestration_debug_runs WHERE flow_id = ?", Integer.class, flowId));
+        verify(enterprise, never()).launchExecutionPlan(anyLong(), any());
     }
 
     @SuppressWarnings("unchecked")
@@ -138,6 +202,11 @@ class BusinessEntityFlowServiceTest {
                   created_by VARCHAR(200),
                   started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                   completed_at TIMESTAMP)
+                """);
+        jdbc.execute("""
+                CREATE TABLE be_entity_execution_plans (
+                  id BIGINT PRIMARY KEY,
+                  entity_id BIGINT NOT NULL)
                 """);
     }
 }

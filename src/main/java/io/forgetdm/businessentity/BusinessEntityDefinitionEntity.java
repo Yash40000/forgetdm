@@ -10,7 +10,11 @@ public class BusinessEntityDefinitionEntity {
     @Column(nullable = false, unique = true) private String name;
     @Column(columnDefinition = "text") private String description;
     private String domain;
+    @Column(name = "owner_user_id") private Long ownerUserId;
     @Column(name = "owner_username") private String ownerUsername;
+    @Column(name = "owner_group_id") private Long ownerGroupId;
+    @Column(nullable = false) private String visibility = "GROUP";
+    @Transient private boolean visibilitySpecified;
     @Column(name = "primary_dataset_id") private Long primaryDatasetId;
     @Column(name = "root_table") private String rootTable;
     @Column(name = "business_key_columns", columnDefinition = "text") private String businessKeyColumns;
@@ -26,8 +30,15 @@ public class BusinessEntityDefinitionEntity {
     public void setDescription(String v) { description = v; }
     public String getDomain() { return domain; }
     public void setDomain(String v) { domain = v; }
+    public Long getOwnerUserId() { return ownerUserId; }
+    public void setOwnerUserId(Long v) { ownerUserId = v; }
     public String getOwnerUsername() { return ownerUsername; }
     public void setOwnerUsername(String v) { ownerUsername = v; }
+    public Long getOwnerGroupId() { return ownerGroupId; }
+    public void setOwnerGroupId(Long v) { ownerGroupId = v; }
+    public String getVisibility() { return visibility; }
+    public void setVisibility(String v) { visibility = v; visibilitySpecified = true; }
+    public boolean isVisibilitySpecified() { return visibilitySpecified; }
     public Long getPrimaryDatasetId() { return primaryDatasetId; }
     public void setPrimaryDatasetId(Long v) { primaryDatasetId = v; }
     public String getRootTable() { return rootTable; }

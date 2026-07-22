@@ -45,6 +45,8 @@ class SyntheticMultiSystemTargetTest {
         DataSourceService dataSources = mock(DataSourceService.class);
         when(dataSources.get(101L)).thenReturn(target(101L, TARGET_ONE_URL));
         when(dataSources.get(202L)).thenReturn(target(202L, TARGET_TWO_URL));
+        when(dataSources.getTargetCapable(101L)).thenReturn(target(101L, TARGET_ONE_URL));
+        when(dataSources.getTargetCapable(202L)).thenReturn(target(202L, TARGET_TWO_URL));
         SyntheticGenService gen = new SyntheticGenService(
                 dataSources,
                 new ConnectionFactory(),
@@ -101,6 +103,7 @@ class SyntheticMultiSystemTargetTest {
 
         DataSourceService dataSources = mock(DataSourceService.class);
         when(dataSources.get(303L)).thenReturn(target(303L, TARGET_THREE_URL));
+        when(dataSources.getTargetCapable(303L)).thenReturn(target(303L, TARGET_THREE_URL));
         SyntheticGenService gen = service(dataSources);
 
         SyntheticGenService.GenTable account = new SyntheticGenService.GenTable("account", 40L, List.of(
@@ -136,6 +139,7 @@ class SyntheticMultiSystemTargetTest {
     void planSummaryUsesStreamingReplayForLargeMultiTargetRuns() {
         DataSourceService dataSources = mock(DataSourceService.class);
         when(dataSources.get(101L)).thenReturn(target(101L, TARGET_ONE_URL));
+        when(dataSources.getTargetCapable(101L)).thenReturn(target(101L, TARGET_ONE_URL));
         SyntheticGenService gen = service(dataSources);
 
         SyntheticGenService.GenTable customer = new SyntheticGenService.GenTable("customer", 600_000L, List.of(

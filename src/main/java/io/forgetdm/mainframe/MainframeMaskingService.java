@@ -12,6 +12,7 @@ import io.forgetdm.core.mask.MaskFunction;
 import io.forgetdm.core.mask.MaskingEngine;
 import io.forgetdm.mainframe.transport.TransportFactory;
 import io.forgetdm.security.AccessContext;
+import io.forgetdm.security.OwnershipGuard;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -41,25 +42,28 @@ public class MainframeMaskingService {
     private final MaskingEngine engine;
     private final ExecutorService executor;
     private final AuditService audit;
+    private final OwnershipGuard ownership;
 
     public MainframeMaskingService(MainframeJobRepository jobs, MainframeJobFileRepository jobFiles,
                                    MainframeConnectionRepository connections, CopybookDefRepository copybooks,
                                    CopybookMaskRepository masks, TransportFactory transports,
-                                   MaskingEngine engine, ExecutorService provisioningExecutor, AuditService audit) {
+                                   MaskingEngine engine, ExecutorService provisioningExecutor, AuditService audit,
+                                   OwnershipGuard ownership) {
         this.jobs = jobs; this.jobFiles = jobFiles; this.connections = connections;
         this.copybooks = copybooks; this.masks = masks; this.transports = transports;
-        this.engine = engine; this.executor = provisioningExecutor; this.audit = audit;
+        this.engine = engine; this.executor = provisioningExecutor; this.audit = audit; this.ownership = ownership;
     }
 
     public void submitAsync(Long jobId) {
-        jobs.findById(jobId).ifPresent(job -> audit.record(job.getCreatedBy(), "MAINFRAME_JOB_QUEUED", "MASKING",
+        MainframeJobEntity job = visibleJob(jobId);
+        audit.record(job.getCreatedBy(), "MAINFRAME_JOB_QUEUED", "MASKING",
                 "MAINFRAME_JOB", String.valueOf(jobId), job.getName(), "SUCCESS",
-                "Mainframe masking job queued", "{\"files\":" + job.getFilesTotal() + "}"));
+                "Mainframe masking job queued", "{\"files\":" + job.getFilesTotal() + "}");
         executor.submit(() -> run(jobId));
     }
 
     public MainframeJobEntity cancel(Long jobId) {
-        MainframeJobEntity job = job(jobId);
+        MainframeJobEntity job = visibleJob(jobId);
         if (terminal(job.getStatus())) return job;
         job.setCancelRequested(true);
         job.setMessage("Cancellation requested; the active record batch will stop at a safe boundary");
@@ -76,16 +80,19 @@ public class MainframeMaskingService {
 
     /** A retry is a new immutable attempt; files already delivered successfully are retained as completed evidence. */
     public MainframeJobEntity retry(Long jobId) {
-        MainframeJobEntity previous = job(jobId);
+        MainframeJobEntity previous = visibleJob(jobId);
         if (!java.util.Set.of("FAILED", "COMPLETED_WITH_ERRORS", "CANCELED").contains(previous.getStatus())) {
             throw ApiException.bad("Only failed, partially completed, or canceled mainframe jobs can be retried");
         }
+        List<MainframeJobFileEntity> previousFiles = jobFiles.findByJobIdOrderByOrdinalAsc(previous.getId());
+        validateReferences(previous, previousFiles);
         MainframeJobEntity next = new MainframeJobEntity();
         next.setName(previous.getName());
         next.setSourceConnectionId(previous.getSourceConnectionId());
         next.setTargetConnectionId(previous.getTargetConnectionId());
         next.setMaskingSeed(previous.getMaskingSeed());
         next.setCreatedBy(actor());
+        stamp(next);
         next.setFilesTotal(previous.getFilesTotal());
         next.setStatus("PENDING");
         next.setMessage("Retry queued from job " + previous.getId());
@@ -93,7 +100,7 @@ public class MainframeMaskingService {
 
         int completed = 0;
         long completedRecords = 0;
-        for (MainframeJobFileEntity priorFile : jobFiles.findByJobIdOrderByOrdinalAsc(previous.getId())) {
+        for (MainframeJobFileEntity priorFile : previousFiles) {
             MainframeJobFileEntity file = copyFile(priorFile, next.getId());
             if ("COMPLETED".equals(priorFile.getStatus())) {
                 file.setStatus("COMPLETED");
@@ -128,6 +135,15 @@ public class MainframeMaskingService {
                 jobs.save(job);
                 auditTerminal(job);
             }
+            return;
+        }
+        if (MainframeOwnership.isOrphanedNonShared(
+                job.getOwnerUserId(), job.getOwnerGroupId(), job.getVisibility())) {
+            job.setStatus("FAILED");
+            job.setMessage("Mainframe job ownership is no longer valid");
+            job.setFinishedAt(Instant.now());
+            jobs.save(job);
+            auditTerminal(job);
             return;
         }
         job.setStatus("RUNNING");
@@ -179,10 +195,11 @@ public class MainframeMaskingService {
 
     private long processFile(MainframeJobEntity job, MainframeJobFileEntity file) {
         MainframeConnectionEntity src = conn(job.getSourceConnectionId(), "source");
+        CopybookDefEntity def = workerCopybook(file.getCopybookId(), file.getSourceName());
+        MainframeConnectionEntity tgt = conn(
+                file.getTargetConnectionId() != null ? file.getTargetConnectionId() : job.getTargetConnectionId(),
+                "target");
         byte[] bytes = transports.forConnection(src).fetch(src, file.getSourceName());
-
-        CopybookDefEntity def = copybooks.findById(file.getCopybookId() == null ? -1L : file.getCopybookId())
-                .orElseThrow(() -> ApiException.bad("File '" + file.getSourceName() + "' has no copybook assigned"));
         Copybook cb = CopybookSupport.parse(def.getSource());
         Field record = cb.primaryRecord();
 
@@ -226,9 +243,6 @@ public class MainframeMaskingService {
         checkCanceled(job.getId());
 
         byte[] outBytes = RecordSplitter.join(out, recfm);
-        MainframeConnectionEntity tgt = conn(
-                file.getTargetConnectionId() != null ? file.getTargetConnectionId() : job.getTargetConnectionId(),
-                "target");
         String targetName = (file.getTargetName() != null && !file.getTargetName().isBlank())
                 ? file.getTargetName() : file.getSourceName();
         transports.forConnection(tgt).put(tgt, targetName, outBytes, recfm, lrecl);
@@ -240,7 +254,7 @@ public class MainframeMaskingService {
     }
 
     private void cancelRunningJob(Long jobId, long records, int filesDone) {
-        MainframeJobEntity job = job(jobId);
+        MainframeJobEntity job = directJob(jobId);
         job.setCancelRequested(true);
         job.setStatus("CANCELED");
         job.setRecordsProcessed(records);
@@ -268,8 +282,48 @@ public class MainframeMaskingService {
                 "{\"status\":\"" + status + "\"}");
     }
 
-    private MainframeJobEntity job(Long id) {
+    private MainframeJobEntity visibleJob(Long id) {
+        MainframeJobEntity job = directJob(id);
+        MainframeOwnership.assertCanSee(ownership, "mainframe job", id, job.getOwnerUserId(),
+                job.getOwnerGroupId(), job.getVisibility());
+        return job;
+    }
+
+    private MainframeJobEntity directJob(Long id) {
         return jobs.findById(id).orElseThrow(() -> ApiException.notFound("Mainframe job " + id + " not found"));
+    }
+
+    private void validateReferences(MainframeJobEntity job, List<MainframeJobFileEntity> files) {
+        visibleConnection(job.getSourceConnectionId(), "source");
+        visibleConnection(job.getTargetConnectionId(), "target");
+        for (MainframeJobFileEntity file : files) {
+            visibleCopybook(file.getCopybookId(), file.getSourceName());
+            if (file.getTargetConnectionId() != null) visibleConnection(file.getTargetConnectionId(), "target");
+        }
+    }
+
+    private MainframeConnectionEntity visibleConnection(Long id, String role) {
+        if (id == null) throw ApiException.bad("No " + role + " connection set for the job");
+        MainframeConnectionEntity connection = connections.findById(id)
+                .orElseThrow(() -> ApiException.bad(role + " connection " + id + " not found"));
+        MainframeOwnership.assertCanSee(ownership, "mainframe connection", id, connection.getOwnerUserId(),
+                connection.getOwnerGroupId(), connection.getVisibility());
+        return connection;
+    }
+
+    private CopybookDefEntity visibleCopybook(Long id, String sourceName) {
+        CopybookDefEntity copybook = copybooks.findById(id == null ? -1L : id)
+                .orElseThrow(() -> ApiException.bad("File '" + sourceName + "' has no copybook assigned"));
+        MainframeOwnership.assertCanSee(ownership, "mainframe copybook", copybook.getId(),
+                copybook.getOwnerUserId(), copybook.getOwnerGroupId(), copybook.getVisibility());
+        return copybook;
+    }
+
+    private void stamp(MainframeJobEntity job) {
+        job.setOwnerUserId(ownership.defaultOwnerUserId());
+        job.setOwnerUsername(ownership.defaultOwnerUsername());
+        job.setOwnerGroupId(ownership.defaultOwnerGroupId());
+        job.setVisibility(ownership.defaultVisibility());
     }
 
     private static MainframeJobFileEntity copyFile(MainframeJobFileEntity source, Long jobId) {
@@ -298,7 +352,19 @@ public class MainframeMaskingService {
 
     private MainframeConnectionEntity conn(Long id, String role) {
         if (id == null) throw ApiException.bad("No " + role + " connection set for the job");
-        return connections.findById(id).orElseThrow(() -> ApiException.bad(role + " connection " + id + " not found"));
+        MainframeConnectionEntity connection = connections.findById(id)
+                .orElseThrow(() -> ApiException.bad(role + " connection " + id + " not found"));
+        MainframeOwnership.assertOwnedOrShared("mainframe connection", id, connection.getOwnerUserId(),
+                connection.getOwnerGroupId(), connection.getVisibility());
+        return connection;
+    }
+
+    private CopybookDefEntity workerCopybook(Long id, String sourceName) {
+        CopybookDefEntity copybook = copybooks.findById(id == null ? -1L : id)
+                .orElseThrow(() -> ApiException.bad("File '" + sourceName + "' has no copybook assigned"));
+        MainframeOwnership.assertOwnedOrShared("mainframe copybook", copybook.getId(),
+                copybook.getOwnerUserId(), copybook.getOwnerGroupId(), copybook.getVisibility());
+        return copybook;
     }
 
     private static String blankToNull(String s) { return s == null || s.isBlank() ? null : s; }

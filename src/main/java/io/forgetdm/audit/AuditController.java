@@ -1,5 +1,8 @@
 package io.forgetdm.audit;
 
+import io.forgetdm.common.ApiException;
+import io.forgetdm.security.AccessContext;
+import io.forgetdm.security.AccessPrincipal;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpHeaders;
@@ -16,6 +19,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 @RestController
 @RequestMapping("/api/audit")
@@ -42,7 +46,9 @@ public class AuditController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
         int pageSize = Math.min(Math.max(size, 1), 200);
-        Page<AuditEventEntity> result = repo.search(
+        AuditScope scope = scope();
+        Page<AuditEventEntity> result = repo.searchScoped(
+                scope.globalAccess(), scope.userId(), scope.groupIds(),
                 blank(actor), blank(action), blank(category), blank(outcome), blank(resourceType),
                 fromOrMin(from), toOrMax(to), blank(q), PageRequest.of(Math.max(page, 0), pageSize));
         Map<String, Object> out = new LinkedHashMap<>();
@@ -57,10 +63,11 @@ public class AuditController {
     /** Distinct values for the filter dropdowns. */
     @GetMapping("/facets")
     public Map<String, Object> facets() {
+        AuditScope scope = scope();
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("actions", repo.distinctActions());
-        out.put("categories", repo.distinctCategories());
-        out.put("actors", repo.distinctActors());
+        out.put("actions", repo.distinctActionsScoped(scope.globalAccess(), scope.userId(), scope.groupIds()));
+        out.put("categories", repo.distinctCategoriesScoped(scope.globalAccess(), scope.userId(), scope.groupIds()));
+        out.put("actors", repo.distinctActorsScoped(scope.globalAccess(), scope.userId(), scope.groupIds()));
         out.put("outcomes", List.of("SUCCESS", "FAILURE"));
         return out;
     }
@@ -68,17 +75,21 @@ public class AuditController {
     /** Headline counters. */
     @GetMapping("/stats")
     public Map<String, Object> stats() {
+        AuditScope scope = scope();
+        List<String> categories = repo.distinctCategoriesScoped(scope.globalAccess(), scope.userId(), scope.groupIds());
+        List<String> actors = repo.distinctActorsScoped(scope.globalAccess(), scope.userId(), scope.groupIds());
         Map<String, Object> out = new LinkedHashMap<>();
-        out.put("total", repo.count());
-        out.put("failures", repo.countByOutcome("FAILURE"));
-        out.put("categories", repo.distinctCategories().size());
-        out.put("actors", repo.distinctActors().size());
+        out.put("total", repo.countScoped(scope.globalAccess(), scope.userId(), scope.groupIds()));
+        out.put("failures", repo.countByOutcomeScoped("FAILURE", scope.globalAccess(), scope.userId(), scope.groupIds()));
+        out.put("categories", categories.size());
+        out.put("actors", actors.size());
         return out;
     }
 
     /** Tamper-evidence: recompute the hash chain and report integrity. */
     @GetMapping("/verify")
     public Map<String, Object> verify() {
+        requireAuditAdministrator();
         return audit.verifyChain();
     }
 
@@ -101,7 +112,9 @@ public class AuditController {
             @RequestParam(required = false) String from,
             @RequestParam(required = false) String to) {
         final int EXPORT_LIMIT = 5000;
-        Page<AuditEventEntity> result = repo.search(
+        AuditScope scope = scope();
+        Page<AuditEventEntity> result = repo.searchScoped(
+                scope.globalAccess(), scope.userId(), scope.groupIds(),
                 blank(actor), blank(action), blank(category), blank(outcome), blank(resourceType),
                 fromOrMin(from), toOrMax(to), blank(q), PageRequest.of(0, EXPORT_LIMIT));
         long matched = result.getTotalElements();
@@ -153,6 +166,24 @@ public class AuditController {
 
     // Empty string (not null) so Postgres types the bind parameter as text — a null used inside
     // lower()/like has no inferred type and Postgres defaults it to bytea, which errors.
+    private static AuditScope scope() {
+        AccessPrincipal principal = AccessContext.current()
+                .orElseThrow(() -> ApiException.forbidden("Authentication required"));
+        Long userId = principal.userId() == null ? Long.MIN_VALUE : principal.userId();
+        Set<Long> groups = principal.groupIds().isEmpty() ? Set.of(Long.MIN_VALUE) : principal.groupIds();
+        return new AuditScope(principal.isAdmin(), userId, groups);
+    }
+
+    private static void requireAuditAdministrator() {
+        AccessPrincipal principal = AccessContext.current()
+                .orElseThrow(() -> ApiException.forbidden("Authentication required"));
+        if (!principal.isAdmin()) {
+            throw ApiException.forbidden("Only an audit administrator can verify the global ledger");
+        }
+    }
+
+    private record AuditScope(boolean globalAccess, Long userId, Set<Long> groupIds) {}
+
     private static String blank(String s) { return s == null || s.isBlank() ? "" : s.trim(); }
 
     private static final Instant MIN_TS = Instant.EPOCH;

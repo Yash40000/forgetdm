@@ -88,6 +88,16 @@ public class AuditService {
     private void chainAndSave(AuditEventEntity e) {
         e.setIpAddress(currentIp());
         e.setUserAgent(currentUserAgent());
+        AccessContext.current().ifPresentOrElse(principal -> {
+            e.setOwnerUserId(principal.userId());
+            e.setOwnerUsername(principal.username());
+            e.setOwnerGroupId(principal.groupIds().stream().min(Long::compareTo).orElse(null));
+            e.setVisibility("GROUP");
+        }, () -> {
+            e.setOwnerUsername(e.getActor());
+            e.setVisibility("system".equalsIgnoreCase(e.getActor()) ? "SHARED" : "PRIVATE");
+        });
+        e.setHashVersion(2);
         try {
             writer.append(e);
         } catch (RuntimeException ex) {
@@ -251,6 +261,11 @@ public class AuditService {
         } catch (Exception e) {
             throw ApiException.bad("Unable to create audit checkpoint metadata");
         }
+        anchor.setOwnerUserId(principal.userId());
+        anchor.setOwnerUsername(principal.username());
+        anchor.setOwnerGroupId(principal.groupIds().stream().min(Long::compareTo).orElse(null));
+        anchor.setVisibility("GROUP");
+        anchor.setHashVersion(2);
         anchor.setIpAddress(currentIp());
         anchor.setUserAgent(currentUserAgent());
         AuditEventEntity saved = writer.appendAnchor(anchor);

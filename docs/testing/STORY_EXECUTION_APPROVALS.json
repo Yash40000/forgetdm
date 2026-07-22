@@ -38,6 +38,25 @@
         "Do not test against production or customer data.",
         "Retain sanitized evidence and independently review every green claim."
       ]
+    },
+    "RBAC-002": {
+      "status": "APPROVED",
+      "approvedAt": "2026-07-20T00:00:00-04:00",
+      "approvedBy": "Codex test coordinator (product-owner delegated)",
+      "allowedScopes": [
+        "SOURCE_INSPECTION",
+        "UNIT_TEST",
+        "LOCAL_BROWSER",
+        "LOCAL_TEST_DATABASE",
+        "LOCAL_TEST_FIXTURE_MUTATION"
+      ],
+      "conditions": [
+        "Use synthetic ALPHA/BETA identities and artifacts only.",
+        "Do not contact external systems or paid services.",
+        "Do not test against production or customer data.",
+        "Retain sanitized evidence and independently review every green claim.",
+        "LEGAL-001 and LEGAL-002 remain deferred to a separate qualified legal review."
+      ]
     }
   }
 }

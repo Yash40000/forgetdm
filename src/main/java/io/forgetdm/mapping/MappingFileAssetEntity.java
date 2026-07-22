@@ -20,6 +20,10 @@ public class MappingFileAssetEntity {
     @Column(name = "options_json", columnDefinition = "text", nullable = false) private String optionsJson = "{}";
     @Column(name = "schema_json", columnDefinition = "text", nullable = false) private String schemaJson = "[]";
     @Column(name = "created_by", nullable = false) private String createdBy;
+    @Column(name = "owner_user_id") private Long ownerUserId;
+    @Column(name = "owner_username") private String ownerUsername;
+    @Column(name = "owner_group_id") private Long ownerGroupId;
+    @Column(nullable = false) private String visibility = "GROUP";
     @Column(name = "created_at", nullable = false) private Instant createdAt = Instant.now();
 
     public Long getId() { return id; }
@@ -47,5 +51,13 @@ public class MappingFileAssetEntity {
     public void setSchemaJson(String v) { schemaJson = v; }
     public String getCreatedBy() { return createdBy; }
     public void setCreatedBy(String v) { createdBy = v; }
+    public Long getOwnerUserId() { return ownerUserId; }
+    public void setOwnerUserId(Long v) { ownerUserId = v; }
+    public String getOwnerUsername() { return ownerUsername; }
+    public void setOwnerUsername(String v) { ownerUsername = v; }
+    public Long getOwnerGroupId() { return ownerGroupId; }
+    public void setOwnerGroupId(Long v) { ownerGroupId = v; }
+    public String getVisibility() { return visibility; }
+    public void setVisibility(String v) { visibility = v; }
     public Instant getCreatedAt() { return createdAt; }
 }

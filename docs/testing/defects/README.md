@@ -48,6 +48,10 @@ Defects found while executing the ForgeTDM test stories. Each defect is a tracke
 | [DEF-0026](DEF-0026-cancelled-auth-redirect-latch.md) | Canceled expiry navigation left the redirect latch permanently set | MEDIUM | CLOSED | AUTH-003 (AUTH-003-05) | Bounded latch reset; two consecutive dirty-draft expiry attempts pass in Edge |
 | [DEF-0027](DEF-0027-protected-content-flash-after-logout-back.md) | Browser Back briefly rendered protected content after logout | HIGH | CLOSED | AUTH-003 (AUTH-003-08) | Gate shell children until positive authentication; hardened browser trace independently accepted |
 | [DEF-0028](DEF-0028-auth-notification-counter-navigation-reset.md) | AUTH notification counter reset during login navigation | MEDIUM (test) | CLOSED | AUTH-003 (AUTH-003-02) | Persist counter across same-origin documents; hardened trace independently accepted |
+| [DEF-0029](DEF-0029-discovery-zero-table-scope-completion.md) | Empty discovery scope was reported as a successful scan | MEDIUM | CLOSED | PII discovery regression | Reject zero-table scans before execution |
+| [DEF-0030](DEF-0030-successful-ui-login-reuses-unauthenticated-cache.md) | Successful UI login reused unauthenticated query cache | HIGH | CLOSED | AUTH-003 regression | Clear authentication-sensitive cache on login |
+| [DEF-0031](DEF-0031-auth003-guard-contract-rejected-saved-baseline.md) | AUTH-003 guard test rejected the saved baseline contract | MEDIUM (test) | CLOSED | AUTH-003 regression | Corrected test contract and retained evidence |
+| [DEF-0032](DEF-0032-rbac002-nested-and-runtime-object-isolation.md) | Nested and runtime objects bypass cross-group isolation | HIGH (S1) | CLOSED | RBAC-002 (02/03/04/05/06) | Parent/runtime/reference isolation complete; 90 focused + 35 live + 503 regression checks green |
 
 ## Mirror to GitHub
 

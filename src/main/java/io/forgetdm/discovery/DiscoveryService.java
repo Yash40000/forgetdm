@@ -313,6 +313,7 @@ public class DiscoveryService {
         if (ids == null || ids.isEmpty()) return 0;
         List<Long> uniqueIds = ids.stream().filter(Objects::nonNull).distinct().limit(10_000).toList();
         List<ClassificationEntity> rows = classifications.findAllById(uniqueIds);
+        assertClassificationSources(rows);
         rows.forEach(row -> row.setStatus(normalizedStatus));
         classifications.saveAll(rows);
         audit.log("system", "CLASSIFICATIONS_BULK_UPDATED",
@@ -406,6 +407,7 @@ public class DiscoveryService {
                                                      String suggestedParam1, String suggestedParam2) {
         ClassificationEntity e = classifications.findById(id)
                 .orElseThrow(() -> ApiException.notFound("Classification " + id + " not found"));
+        dataSources.get(e.getDataSourceId());
         if (status != null) {
             if (!status.equals("APPROVED") && !status.equals("REJECTED") && !status.equals("SUGGESTED"))
                 throw ApiException.bad("Status must be APPROVED, REJECTED or SUGGESTED");
@@ -562,10 +564,12 @@ public class DiscoveryService {
     }
 
     public List<ClassificationEntity> results(Long dataSourceId) {
+        dataSources.get(dataSourceId);
         return stableOrder(classifications.findByDataSourceId(dataSourceId));
     }
 
     public List<ClassificationEntity> results(Long dataSourceId, String schemaName) {
+        dataSources.get(dataSourceId);
         List<ClassificationEntity> rows = (schemaName == null || schemaName.isBlank())
                 ? classifications.findByDataSourceId(dataSourceId)
                 : classifications.findByDataSourceIdAndSchemaName(dataSourceId, schemaName);
@@ -580,6 +584,11 @@ public class DiscoveryService {
                         .thenComparing(e -> e.getColumnName() == null ? "" : e.getColumnName(), String.CASE_INSENSITIVE_ORDER)
                         .thenComparing(ClassificationEntity::getId))
                 .toList();
+    }
+
+    private void assertClassificationSources(Collection<ClassificationEntity> rows) {
+        rows.stream().map(ClassificationEntity::getDataSourceId).filter(Objects::nonNull).distinct()
+                .forEach(dataSources::get);
     }
 
     public List<ClassificationEntity> results(Long dataSourceId, String schemaName, String tableFilter) {

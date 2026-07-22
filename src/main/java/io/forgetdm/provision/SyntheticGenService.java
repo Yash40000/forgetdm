@@ -70,6 +70,8 @@ public class SyntheticGenService {
     private ValueListService valueLists;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private NativeLoadRegistry nativeLoaders;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private io.forgetdm.security.AccessControlService accessControl;
     private static final long STREAMING_DB_ROW_THRESHOLD = 500_000L;
     private static final int MAX_STREAMING_FK_POOL_VALUES = 200_000;
     private static final int API_GENERATOR_MAX_CONCURRENCY = 8;
@@ -263,6 +265,7 @@ public class SyntheticGenService {
     // --------------------------------------------------------------- entry point
 
     public Map<String, Object> generate(GenPlan plan) {
+        assertAuthorizedTargets(plan);
         enforceControlledTargetGovernance(plan, null);
         List<String> locks = acquireTargetLocks(plan, "(direct run)", requesterName());
         try {
@@ -422,6 +425,7 @@ public class SyntheticGenService {
     public Map<String, Object> planSummary(GenPlan plan) {
         if (plan == null || plan.tables() == null || plan.tables().isEmpty())
             throw ApiException.bad("Add at least one table");
+        assertAuthorizedTargets(plan);
         plan = hasTargetSystems(plan) ? resolveValueLists(plan) : resolveValueLists(enrichForeignKeys(plan));
         if (hasTargetSystems(plan)) return multiTargetPlanSummary(plan);
         String receiver = plan.receiver() == null ? "DB" : plan.receiver().trim().toUpperCase(Locale.ROOT);
@@ -525,6 +529,7 @@ public class SyntheticGenService {
 
     private Map<String, Object> startGenerate(GenPlan plan, SavedJobRunContext savedJob) {
         if (plan == null) throw ApiException.bad("Synthetic plan is required");
+        assertAuthorizedTargets(plan);
         enforceControlledTargetGovernance(plan, savedJob);
         cleanupSyntheticJobs();
         ConstraintCapture constraints = captureConstraintRules(plan);
@@ -1666,7 +1671,9 @@ public class SyntheticGenService {
         List<Map<String, Object>> rows = jdbc.query("SELECT * FROM synthetic_saved_jobs WHERE id = ?",
                 (rs, rowNum) -> mapSavedJobRow(rs, includePlan), id);
         if (rows.isEmpty()) throw ApiException.notFound("Saved synthetic job " + id + " not found");
-        return rows.get(0);
+        Map<String, Object> row = rows.get(0);
+        assertApprovalTenant(row);
+        return row;
     }
 
     private Map<String, Object> mapSavedJobRow(ResultSet rs, boolean includePlan) throws SQLException {
@@ -1776,6 +1783,35 @@ public class SyntheticGenService {
         return clean;
     }
 
+    /** Resolve every target id before a plan is saved, summarized, or handed to an async worker. */
+    private void assertAuthorizedTargets(GenPlan plan) {
+        if (plan == null) return;
+        String receiver = plan.receiver() == null ? "DB" : plan.receiver().trim().toUpperCase(Locale.ROOT);
+        if (!"DB".equals(receiver)) return;
+        if (hasTargetSystems(plan)) {
+            for (TargetSystem target : targetSystems(plan)) {
+                if (target.targetDataSourceId() == null) {
+                    throw ApiException.bad("Every database target system needs a target data source");
+                }
+                dataSources.getTargetCapable(target.targetDataSourceId());
+            }
+        } else if (plan.targetDataSourceId() != null) {
+            dataSources.getTargetCapable(plan.targetDataSourceId());
+        }
+    }
+
+    /** A checker may review only jobs owned by one of their groups; admin.all remains the global gate. */
+    private void assertApprovalTenant(Map<String, Object> saved) {
+        AccessPrincipal checker = requirePrincipal();
+        if (checker.isAdmin()) return;
+        String owner = String.valueOf(saved.getOrDefault("ownerUsername", ""));
+        Set<Long> ownerGroups = accessControl == null ? Set.of() : accessControl.groupIdsForUsername(owner);
+        if (ownerGroups.isEmpty() || Collections.disjoint(ownerGroups, checker.groupIds())) {
+            throw new ApiException(HttpStatus.FORBIDDEN,
+                    "Synthetic approval belongs to another group");
+        }
+    }
+
     private void validateSavedPlan(GenPlan plan) {
         if (plan == null) throw ApiException.bad("Saved job plan is required");
         if (safe(plan.tables()).isEmpty()) throw ApiException.bad("Saved job must include at least one table");
@@ -1783,6 +1819,7 @@ public class SyntheticGenService {
         if ("DB".equals(receiver) && plan.targetDataSourceId() == null && !hasTargetSystems(plan)) {
             throw ApiException.bad("Database saved jobs need a target data source so they can run later");
         }
+        assertAuthorizedTargets(plan);
     }
 
     private void enforceControlledTargetGovernance(GenPlan plan, SavedJobRunContext savedJob) {
@@ -1815,15 +1852,11 @@ public class SyntheticGenService {
     }
 
     private boolean controlledTarget(GenPlan plan) {
-        try {
-            DataSourceEntity ds = dataSources.get(plan.targetDataSourceId());
-            String env = ds.getEnvironment() == null ? "" : ds.getEnvironment().trim().toUpperCase(Locale.ROOT);
-            String tags = ds.getTags() == null ? "" : ds.getTags().trim().toLowerCase(Locale.ROOT);
-            return Set.of("PROD", "PRODUCTION", "CONTROLLED", "REGULATED").contains(env)
-                    || tags.contains("controlled") || tags.contains("regulated") || tags.contains("banking");
-        } catch (Exception e) {
-            return false;
-        }
+        DataSourceEntity ds = dataSources.getTargetCapable(plan.targetDataSourceId());
+        String env = ds.getEnvironment() == null ? "" : ds.getEnvironment().trim().toUpperCase(Locale.ROOT);
+        String tags = ds.getTags() == null ? "" : ds.getTags().trim().toLowerCase(Locale.ROOT);
+        return Set.of("PROD", "PRODUCTION", "CONTROLLED", "REGULATED").contains(env)
+                || tags.contains("controlled") || tags.contains("regulated") || tags.contains("banking");
     }
 
     private Map<String, Object> safePlanSummary(GenPlan plan) {

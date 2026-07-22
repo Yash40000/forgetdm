@@ -1,0 +1,193 @@
+﻿{
+    "story":  "RBAC-002",
+    "generatedAt":  "2026-07-21T18:14:04.1789633-04:00",
+    "source":  "Maven Surefire XML",
+    "result":  "PASS",
+    "tests":  90,
+    "failures":  0,
+    "errors":  0,
+    "skipped":  0,
+    "durationSeconds":  33.503,
+    "suites":  [
+                   {
+                       "class":  "OwnershipGuardTest",
+                       "present":  true,
+                       "tests":  7,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  0.041
+                   },
+                   {
+                       "class":  "CoreObjectIsolationTest",
+                       "present":  true,
+                       "tests":  3,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  0.443
+                   },
+                   {
+                       "class":  "DataSetChildIsolationTest",
+                       "present":  true,
+                       "tests":  6,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  2.217
+                   },
+                   {
+                       "class":  "DataSetReferenceIsolationTest",
+                       "present":  true,
+                       "tests":  5,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  0.634
+                   },
+                   {
+                       "class":  "DataScopeVersionIsolationTest",
+                       "present":  true,
+                       "tests":  3,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  1.573
+                   },
+                   {
+                       "class":  "ProvisioningTenancyTest",
+                       "present":  true,
+                       "tests":  6,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  0.779
+                   },
+                   {
+                       "class":  "DataScopeJobScheduleIsolationTest",
+                       "present":  true,
+                       "tests":  1,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  1.413
+                   },
+                   {
+                       "class":  "SyntheticTargetIsolationTest",
+                       "present":  true,
+                       "tests":  3,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  0.991
+                   },
+                   {
+                       "class":  "DiscoveryReferenceIsolationTest",
+                       "present":  true,
+                       "tests":  3,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  0.56
+                   },
+                   {
+                       "class":  "BusinessEntityTenancyTest",
+                       "present":  true,
+                       "tests":  3,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  1.765
+                   },
+                   {
+                       "class":  "BusinessEntityTenancyMigrationTest",
+                       "present":  true,
+                       "tests":  1,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  0.493
+                   },
+                   {
+                       "class":  "MappingObjectTenancyTest",
+                       "present":  true,
+                       "tests":  8,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  0.974
+                   },
+                   {
+                       "class":  "MappingExecutionTenancyTest",
+                       "present":  true,
+                       "tests":  5,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  1.638
+                   },
+                   {
+                       "class":  "MainframeServiceTenancyTest",
+                       "present":  true,
+                       "tests":  8,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  1.891
+                   },
+                   {
+                       "class":  "MainframeControllerTenancyTest",
+                       "present":  true,
+                       "tests":  8,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  2.085
+                   },
+                   {
+                       "class":  "MainframeTenancyMigrationTest",
+                       "present":  true,
+                       "tests":  3,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  0.397
+                   },
+                   {
+                       "class":  "UnstructuredMaskingTenancyTest",
+                       "present":  true,
+                       "tests":  6,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  3.891
+                   },
+                   {
+                       "class":  "ValidationTenancyTest",
+                       "present":  true,
+                       "tests":  4,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  0.737
+                   },
+                   {
+                       "class":  "AuditControllerTenancyTest",
+                       "present":  true,
+                       "tests":  5,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  7.256
+                   },
+                   {
+                       "class":  "AuditTenancyMigrationTest",
+                       "present":  true,
+                       "tests":  2,
+                       "failures":  0,
+                       "errors":  0,
+                       "skipped":  0,
+                       "time":  3.725
+                   }
+               ]
+}

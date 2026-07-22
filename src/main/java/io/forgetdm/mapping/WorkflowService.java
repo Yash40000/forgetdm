@@ -6,13 +6,19 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.forgetdm.audit.AuditService;
 import io.forgetdm.common.ApiException;
+import io.forgetdm.datasource.DataSourceService;
+import io.forgetdm.security.AccessContext;
+import io.forgetdm.security.AccessPrincipal;
+import io.forgetdm.security.OwnershipGuard;
 import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -28,28 +34,39 @@ public class WorkflowService {
 
     private final WorkflowRepository repo;
     private final MappingService mappings;
+    private final DataSourceService dataSources;
     private final AuditService audit;
+    private final OwnershipGuard ownership;
     private final ObjectMapper json = new ObjectMapper();
     private final ExecutorService runner = Executors.newFixedThreadPool(2);
     private final Map<Long, Boolean> running = new ConcurrentHashMap<>();
 
-    public WorkflowService(WorkflowRepository repo, MappingService mappings, AuditService audit) {
+    public WorkflowService(WorkflowRepository repo, MappingService mappings, DataSourceService dataSources,
+                           AuditService audit, OwnershipGuard ownership) {
         this.repo = repo;
         this.mappings = mappings;
+        this.dataSources = dataSources;
         this.audit = audit;
+        this.ownership = ownership;
     }
 
     @PreDestroy
     void shutdown() { runner.shutdownNow(); }
 
     public List<WorkflowEntity> list() {
-        List<WorkflowEntity> all = repo.findAll();
+        List<WorkflowEntity> all = new java.util.ArrayList<>(repo.findAll().stream()
+                .filter(w -> ownership.canSee(w.getOwnerUserId(), w.getOwnerGroupId(), w.getVisibility()))
+                .toList());
         all.sort(Comparator.comparing(WorkflowEntity::getName, String.CASE_INSENSITIVE_ORDER));
         return all;
     }
 
     public WorkflowEntity get(Long id) {
-        return repo.findById(id).orElseThrow(() -> ApiException.notFound("Workflow " + id + " not found"));
+        WorkflowEntity workflow = repo.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Workflow " + id + " not found"));
+        ownership.assertCanSee("mapping workflow", id, workflow.getOwnerUserId(),
+                workflow.getOwnerGroupId(), workflow.getVisibility());
+        return workflow;
     }
 
     public WorkflowEntity save(WorkflowEntity in) {
@@ -58,14 +75,30 @@ public class WorkflowService {
         JsonNode steps = parseSteps(in.getStepsJson());
         if (steps.size() == 0) throw ApiException.bad("Add at least one step");
         for (int i = 0; i < steps.size(); i++) validateStep(steps.get(i), i + 1);
-        WorkflowEntity e = in.getId() != null ? get(in.getId())
-                : repo.findByNameIgnoreCase(in.getName().trim()).orElseGet(WorkflowEntity::new);
+        WorkflowEntity e;
+        boolean creating;
+        if (in.getId() != null) {
+            e = get(in.getId());
+            creating = false;
+        } else {
+            var existing = repo.findByNameIgnoreCase(in.getName().trim());
+            e = existing.isPresent() ? get(existing.get().getId()) : new WorkflowEntity();
+            creating = existing.isEmpty();
+        }
         e.setName(in.getName().trim());
         e.setDescription(in.getDescription());
         e.setStepsJson(in.getStepsJson());
+        if (creating) {
+            e.setOwnerUserId(ownership.defaultOwnerUserId());
+            e.setOwnerUsername(ownership.defaultOwnerUsername());
+            e.setOwnerGroupId(ownership.defaultOwnerGroupId());
+            e.setVisibility(ownership.defaultVisibility());
+        } else if (in.getVisibility() != null && !in.getVisibility().isBlank()) {
+            e.setVisibility(normalizeVisibility(in.getVisibility()));
+        }
         e.setUpdatedAt(Instant.now());
         WorkflowEntity saved = repo.save(e);
-        audit.log("system", "WORKFLOW_SAVED", saved.getName() + " (" + steps.size() + " steps)");
+        audit.log(actor(), "WORKFLOW_SAVED", saved.getName() + " (" + steps.size() + " steps)");
         return saved;
     }
 
@@ -73,15 +106,16 @@ public class WorkflowService {
         WorkflowEntity e = get(id);
         if (Boolean.TRUE.equals(running.get(id))) throw ApiException.bad("Workflow is running — wait for it to finish");
         repo.deleteById(id);
-        audit.log("system", "WORKFLOW_DELETED", e.getName());
+        audit.log(actor(), "WORKFLOW_DELETED", e.getName());
     }
 
     /** Kick off a run on a background thread; poll GET /{id} for last_run_json progress. */
     public Map<String, Object> run(Long id) {
         WorkflowEntity wf = get(id);
+        JsonNode steps = parseSteps(wf.getStepsJson());
+        for (int i = 0; i < steps.size(); i++) validateStep(steps.get(i), i + 1);
         if (running.putIfAbsent(id, Boolean.TRUE) != null)
             throw ApiException.bad("Workflow '" + wf.getName() + "' is already running");
-        JsonNode steps = parseSteps(wf.getStepsJson());
         ObjectNode run = json.createObjectNode();
         run.put("status", "RUNNING");
         run.put("startedAt", Instant.now().toString());
@@ -92,8 +126,13 @@ public class WorkflowService {
             s.put("status", "PENDING");
         }
         persistRun(id, run);
-        audit.log("system", "WORKFLOW_STARTED", wf.getName());
-        runner.submit(() -> execute(id, wf.getName(), steps, run));
+        audit.log(actor(), "WORKFLOW_STARTED", wf.getName());
+        AccessPrincipal caller = AccessContext.current().orElse(null);
+        String callerToken = AccessContext.currentToken().orElse(null);
+        runner.submit(() -> AccessContext.callAs(caller, callerToken, () -> {
+            execute(id, wf.getName(), steps, run);
+            return null;
+        }));
         return Map.of("started", true, "steps", steps.size());
     }
 
@@ -159,8 +198,15 @@ public class WorkflowService {
         String type = step.path("type").asText("");
         if ("MAPPING".equalsIgnoreCase(type)) {
             if (!step.hasNonNull("mappingId")) throw ApiException.bad("Step " + n + ": pick a saved mapping");
+            long mappingId = step.get("mappingId").asLong();
+            mappings.get(mappingId);
+            Map<String, Object> plan = mappings.plan(mappingId);
+            if (!Boolean.TRUE.equals(plan.get("valid"))) {
+                throw ApiException.bad("Step " + n + ": mapping is not ready: " + plan.get("errors"));
+            }
         } else if ("SQL".equalsIgnoreCase(type)) {
             if (!step.hasNonNull("dataSourceId")) throw ApiException.bad("Step " + n + ": pick a data source");
+            dataSources.get(step.get("dataSourceId").asLong());
             String s = step.path("sql").asText("").trim().toLowerCase(java.util.Locale.ROOT);
             if (!(s.startsWith("insert") || s.startsWith("create table")))
                 throw ApiException.bad("Step " + n + ": SQL must be INSERT … SELECT or CREATE TABLE AS");
@@ -187,6 +233,18 @@ public class WorkflowService {
         } catch (Exception e) {
             throw ApiException.bad("steps_json must be a JSON array of steps");
         }
+    }
+
+    private static String normalizeVisibility(String value) {
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        if (!Set.of(OwnershipGuard.PRIVATE, OwnershipGuard.GROUP, OwnershipGuard.SHARED).contains(normalized)) {
+            throw ApiException.bad("Visibility must be PRIVATE, GROUP, or SHARED");
+        }
+        return normalized;
+    }
+
+    private static String actor() {
+        return AccessContext.current().map(p -> p.username()).orElse("system");
     }
 
     private void persistRun(Long id, ObjectNode run) {

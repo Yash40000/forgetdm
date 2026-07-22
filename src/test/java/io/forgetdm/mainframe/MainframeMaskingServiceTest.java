@@ -3,6 +3,7 @@ package io.forgetdm.mainframe;
 import io.forgetdm.audit.AuditService;
 import io.forgetdm.core.mask.MaskingEngine;
 import io.forgetdm.mainframe.transport.TransportFactory;
+import io.forgetdm.security.OwnershipGuard;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -90,9 +91,18 @@ class MainframeMaskingServiceTest {
                                                    MainframeJobFileRepository files,
                                                    ExecutorService executor,
                                                    AuditService audit) {
-        return new MainframeMaskingService(jobs, files, mock(MainframeConnectionRepository.class),
-                mock(CopybookDefRepository.class), mock(CopybookMaskRepository.class),
-                mock(TransportFactory.class), new MaskingEngine("test-secret"), executor, audit);
+        MainframeConnectionRepository connections = mock(MainframeConnectionRepository.class);
+        MainframeConnectionEntity connection = new MainframeConnectionEntity();
+        connection.setId(1L);
+        when(connections.findById(anyLong())).thenReturn(Optional.of(connection));
+        CopybookDefRepository copybooks = mock(CopybookDefRepository.class);
+        CopybookDefEntity copybook = new CopybookDefEntity();
+        copybook.setId(1L);
+        when(copybooks.findById(anyLong())).thenReturn(Optional.of(copybook));
+        return new MainframeMaskingService(jobs, files, connections,
+                copybooks, mock(CopybookMaskRepository.class),
+                mock(TransportFactory.class), new MaskingEngine("test-secret"), executor, audit,
+                mock(OwnershipGuard.class));
     }
 
     private static MainframeJobEntity job(Long id, String status) {
@@ -101,6 +111,8 @@ class MainframeMaskingServiceTest {
         job.setName("AUD mainframe");
         job.setStatus(status);
         job.setCreatedBy("admin");
+        job.setSourceConnectionId(1L);
+        job.setTargetConnectionId(1L);
         return job;
     }
 

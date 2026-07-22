@@ -139,6 +139,7 @@ public class BusinessEntityIdentityService {
     @Transactional
     public void deleteLink(Long linkId) {
         Map<String, Object> link = one("SELECT id, subject_id AS \"subjectId\", entity_id AS \"entityId\" FROM be_identity_links WHERE id = ?", linkId);
+        entities.getDetail(num(link.get("entityId")));
         jdbc.update("DELETE FROM be_identity_links WHERE id = ?", linkId);
         jdbc.update("UPDATE be_identity_subjects SET updated_at = ? WHERE id = ?", ts(Instant.now()), link.get("subjectId"));
         audit.log(currentUsername(), "BUSINESS_ENTITY_IDENTITY_LINK_DELETE", "link=" + linkId + " entity=" + link.get("entityId"));
@@ -200,6 +201,16 @@ public class BusinessEntityIdentityService {
             member = detail.members().stream()
                     .filter(m -> Objects.equals(m.getId(), request.memberId()))
                     .findFirst().orElseThrow(() -> ApiException.bad("Business Entity member not found: " + request.memberId()));
+            assertMemberCoordinates(member, request);
+        } else {
+            member = detail.members().stream()
+                    .filter(m -> request.dataSourceId() == null || Objects.equals(m.getDataSourceId(), request.dataSourceId()))
+                    .filter(m -> blank(request.systemName()) == null || same(m.getSystemName(), request.systemName()))
+                    .filter(m -> blank(request.schemaName()) == null || same(m.getSchemaName(), request.schemaName()))
+                    .filter(m -> blank(request.tableName()) == null || same(m.getTableName(), request.tableName()))
+                    .filter(m -> blank(request.logicalRole()) == null || same(m.getLogicalRole(), request.logicalRole()))
+                    .findFirst().orElseThrow(() -> ApiException.bad(
+                            "Identity link must reference a member of this Business Entity."));
         }
         String table = required(firstNonBlank(request.tableName(), member == null ? null : member.getTableName()), "Link table name");
         String system = firstNonBlank(request.systemName(), member == null ? null : member.getSystemName(),
@@ -227,6 +238,23 @@ public class BusinessEntityIdentityService {
                 table, role, keyColumns, keyValues, externalId, sha256(material), evidence);
     }
 
+    private void assertMemberCoordinates(BusinessEntityMemberEntity member, LinkRequest request) {
+        if (request.dataSourceId() != null && !Objects.equals(request.dataSourceId(), member.getDataSourceId())) {
+            throw ApiException.bad("Identity link data source does not match the selected Business Entity member.");
+        }
+        assertSameMemberValue("system", request.systemName(), member.getSystemName());
+        assertSameMemberValue("schema", request.schemaName(), member.getSchemaName());
+        assertSameMemberValue("table", request.tableName(), member.getTableName());
+        assertSameMemberValue("logical role", request.logicalRole(), member.getLogicalRole());
+        assertSameMemberValue("key columns", request.keyColumns(), member.getKeyColumns());
+    }
+
+    private void assertSameMemberValue(String label, String supplied, String expected) {
+        if (blank(supplied) != null && !same(supplied, expected)) {
+            throw ApiException.bad("Identity link " + label + " does not match the selected Business Entity member.");
+        }
+    }
+
     private Map<String, Object> withLinks(Map<String, Object> subject) {
         Map<String, Object> out = new LinkedHashMap<>(subject);
         out.put("attributes", readJsonMap(subject.get("attributesJson")));
@@ -250,7 +278,9 @@ public class BusinessEntityIdentityService {
     }
 
     private Map<String, Object> subject(Long subjectId) {
-        return one(subjectSelect() + " WHERE s.id = ?", subjectId);
+        Map<String, Object> subject = one(subjectSelect() + " WHERE s.id = ?", subjectId);
+        entities.getDetail(num(subject.get("entityId")));
+        return subject;
     }
 
     private Long findSubjectId(Long entityId, String canonicalKey) {
@@ -377,6 +407,9 @@ public class BusinessEntityIdentityService {
     }
     private static String normalize(Object value) {
         return String.valueOf(value == null ? "" : value).trim().toLowerCase(Locale.ROOT);
+    }
+    private static boolean same(String left, String right) {
+        return Objects.equals(normalize(left), normalize(right));
     }
     private static List<String> split(String csv) {
         if (csv == null || csv.isBlank()) return List.of();

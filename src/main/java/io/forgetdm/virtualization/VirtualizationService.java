@@ -97,6 +97,7 @@ public class VirtualizationService {
         long logical = snapshots.findAll().stream().mapToLong(VirtualSnapshotEntity::getLogicalBytes).sum();
         Map<String, Object> out = new LinkedHashMap<>();
         out.put("poolPath", pool.root().toAbsolutePath().toString());
+        out.put("encryptedAtRest", pool.encryptedAtRest());
         out.put("chunkCount", fs.chunkCount());
         out.put("storedBytes", fs.storedBytes());
         out.put("logicalBytes", logical);

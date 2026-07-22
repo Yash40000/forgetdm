@@ -15,6 +15,7 @@ import io.forgetdm.provision.loader.NativeLoadRegistry;
 import io.forgetdm.provision.loader.NativeLoadStrategy;
 import io.forgetdm.config.ForgeProps;
 import io.forgetdm.security.AccessContext;
+import io.forgetdm.security.GovernedReferenceGuard;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
@@ -43,6 +44,7 @@ public class BusinessEntityEnterpriseService {
     private final NativeLoadRegistry loaders;
     private final BusinessEntityCapsuleService capsules;
     private final ForgeProps props;
+    private final GovernedReferenceGuard references;
     private final ObjectMapper json = new ObjectMapper().findAndRegisterModules();
 
     private record DataScopeFanOutSlice(String sliceKey,
@@ -62,7 +64,8 @@ public class BusinessEntityEnterpriseService {
                                            SyntheticGenService synthetic,
                                            NativeLoadRegistry loaders,
                                            BusinessEntityCapsuleService capsules,
-                                           ForgeProps props) {
+                                           ForgeProps props,
+                                           GovernedReferenceGuard references) {
         this.jdbc = jdbc;
         this.entities = entities;
         this.dataSources = dataSources;
@@ -73,6 +76,7 @@ public class BusinessEntityEnterpriseService {
         this.loaders = loaders;
         this.capsules = capsules;
         this.props = props;
+        this.references = references;
     }
 
     public record IssuePackageRequest(String issueKey, String title, String severity, String sourceEnvironment,
@@ -161,6 +165,8 @@ public class BusinessEntityEnterpriseService {
 
     public Map<String, Object> createIssuePackage(Long entityId, IssuePackageRequest request) {
         BusinessEntityService.BusinessEntityDetail detail = entities.getDetail(entityId);
+        assertChildReference("business_entity_snapshots", request == null ? null : request.snapshotId(), entityId, "snapshot");
+        assertChildReference("business_entity_reservations", request == null ? null : request.reservationId(), entityId, "reservation");
         String issueKey = required(request == null ? null : request.issueKey(), "Issue key");
         String title = required(request == null ? null : request.title(), "Issue title");
         String mode = upperDefault(request == null ? null : request.recreationMode(), "MASKED_SUBSET");
@@ -256,6 +262,7 @@ public class BusinessEntityEnterpriseService {
         BusinessEntityService.BusinessEntityDetail detail = entities.getDetail(entityId);
         String objectType = upperDefault(request == null ? null : request.objectType(), "BUSINESS_ENTITY");
         Long objectId = request == null || request.objectId() == null ? entityId : request.objectId();
+        assertGovernedObjectBelongsToEntity(objectType, objectId, entityId);
         String action = upperDefault(request == null ? null : request.action(), "RELEASE");
         String requestedBy = currentUsername();
         String riskLevel = upperDefault(request == null ? null : request.riskLevel(), "MEDIUM");
@@ -319,6 +326,8 @@ public class BusinessEntityEnterpriseService {
         BusinessEntityService.BusinessEntityDetail detail = entities.getDetail(entityId);
         String operation = upperDefault(request == null ? null : request.operationType(), "SUBSET_MASK");
         String name = required(request == null ? null : request.name(), operation + " " + detail.entity().getName());
+        assertArtifactEntity(getIssuePackageOrNull(request == null ? null : request.issuePackageId()), entityId, "Issue package");
+        assertArtifactEntity(getLookalikeProfileOrNull(request == null ? null : request.lookalikeProfileId()), entityId, "Look-alike profile");
         Long approved = latestApprovedRequest(entityId, operation);
         List<Map<String, Object>> strategies = loaderStrategies(detail);
         Map<String, Object> plan = new LinkedHashMap<>();
@@ -365,6 +374,10 @@ public class BusinessEntityEnterpriseService {
 
     public Map<String, Object> launchExecutionPlan(Long planId, LaunchRequest request) {
         Map<String, Object> plan = getExecutionPlan(planId);
+        if (request != null) {
+            references.dataSource(request.targetDataSourceId());
+            references.policy(request.policyId());
+        }
         String status = safe((String) plan.get("status")).toUpperCase(Locale.ROOT);
         if (!"APPROVED".equals(status) && !"SUBMITTED".equals(status)) {
             throw ApiException.conflict("Execution plan must be approved before launch.");
@@ -429,6 +442,9 @@ public class BusinessEntityEnterpriseService {
         Long planId = request == null ? null : request.executionPlanId();
         if (planId == null) throw ApiException.bad("executionPlanId is required");
         Map<String, Object> plan = getExecutionPlan(planId);
+        if (!Objects.equals(num(plan.get("entityId")), entityId)) {
+            throw ApiException.bad("Execution plan does not belong to this Business Entity.");
+        }
         String name = required(request.name(), "Operational package");
         Map<String, Object> manifest = new LinkedHashMap<>();
         manifest.put("entity", entitySummary(detail));
@@ -455,19 +471,14 @@ public class BusinessEntityEnterpriseService {
     }
 
     public Map<String, Object> getOperationalPackage(Long id) {
-        Map<String, Object> pkg = one("""
-                SELECT id, entity_id AS "entityId", execution_plan_id AS "executionPlanId", package_type AS "packageType",
-                       name, status, manifest_json AS "manifestJson", shell_script AS "shellScript",
-                       health_check_json AS "healthCheckJson", promotion_json AS "promotionJson",
-                       created_by AS "createdBy", updated_at AS "updatedAt"
-                  FROM be_operational_packages WHERE id = ?
-                """, id);
+        Map<String, Object> pkg = getOperationalPackageRaw(id);
         pkg.put("versions", listPackageVersions(id));
         pkg.put("promotions", listPackagePromotions(id));
         return pkg;
     }
 
     public List<Map<String, Object>> listPackageVersions(Long packageId) {
+        getOperationalPackageRaw(packageId);
         return rows("""
                 SELECT id, package_id AS "packageId", entity_id AS "entityId", version_number AS "versionNumber",
                        status, artifact_hash AS "artifactHash", manifest_json AS "manifestJson",
@@ -480,6 +491,7 @@ public class BusinessEntityEnterpriseService {
     }
 
     public List<Map<String, Object>> listPackagePromotions(Long packageId) {
+        getOperationalPackageRaw(packageId);
         return rows("""
                 SELECT id, package_id AS "packageId", version_id AS "versionId",
                        from_environment AS "fromEnvironment", to_environment AS "toEnvironment", status,
@@ -605,6 +617,7 @@ public class BusinessEntityEnterpriseService {
                                                     Map<String, Object> plan,
                                                     LaunchRequest request) {
         List<DataScopeFanOutSlice> slices = dataScopeFanOutPlan(detail, request, true);
+        authorizeDataScopeSlices(slices, request);
         if (slices.size() > 1) {
             return launchDataScopeFanOut(detail, plan, request, slices);
         }
@@ -637,6 +650,7 @@ public class BusinessEntityEnterpriseService {
                     "plan=" + plan.get("id") + " fanOut=" + fanOutId + " slices=" + slices.size());
             return result;
         } catch (RuntimeException ex) {
+            if (isAuthorizationFailure(ex)) throw ex;
             result.put("runs", childRuns);
             result.put("status", "FAILED");
             result.put("message", "Fan-out launch failed after " + childRuns.size() + " submitted slice(s): " + ex.getMessage());
@@ -688,7 +702,10 @@ public class BusinessEntityEnterpriseService {
         job.setJobType("SUBSET_MASK");
         job.setSourceId(def.getDataSourceId());
         job.setTargetId(slice.targetDataSourceId());
-        job.setPolicyId(firstNonNull(request == null ? null : request.policyId(), def.getPolicyId()));
+        Long effectivePolicyId = firstNonNull(request == null ? null : request.policyId(), def.getPolicyId());
+        references.dataSource(def.getDataSourceId());
+        references.policy(effectivePolicyId);
+        job.setPolicyId(effectivePolicyId);
         job.setDatasetId(def.getId());
         job.setSpecJson(writeJson(spec));
 
@@ -722,8 +739,12 @@ public class BusinessEntityEnterpriseService {
         Long profileId = firstNonNull(request == null ? null : request.lookalikeProfileId(), num(plan.get("lookalikeProfileId")));
         if (profileId == null) throw ApiException.bad("Choose a look-alike profile before launching synthetic generation.");
         Map<String, Object> profile = getLookalikeProfile(profileId);
+        if (!Objects.equals(num(profile.get("entityId")), detail.entity().getId())) {
+            throw ApiException.bad("Look-alike profile does not belong to this Business Entity.");
+        }
         Long targetId = request == null ? null : request.targetDataSourceId();
         if (targetId == null) throw ApiException.bad("Choose a target data source before launching synthetic generation.");
+        references.dataSource(targetId);
         DataSourceEntity target = dataSources.findById(targetId)
                 .orElseThrow(() -> ApiException.notFound("Target data source " + targetId + " not found"));
         NativeLoadStrategy strategy = loaders.strategyFor(target);
@@ -821,6 +842,7 @@ public class BusinessEntityEnterpriseService {
             Long datasetId = entry.getKey();
             DataSetDefinitionEntity def = datasets.findById(datasetId)
                     .orElseThrow(() -> ApiException.notFound("DataScope blueprint " + datasetId + " not found"));
+            entities.requireAuthorizedDataset(datasetId);
             Long targetId = firstNonNull(request == null ? null : request.targetDataSourceId(), def.getTargetDataSourceId());
             if (targetId == null) {
                 if (!requireTarget) {
@@ -839,6 +861,7 @@ public class BusinessEntityEnterpriseService {
             }
             DataSourceEntity target = dataSources.findById(targetId)
                     .orElseThrow(() -> ApiException.notFound("Target data source " + targetId + " not found"));
+            references.dataSource(targetId);
             NativeLoadStrategy strategy = loaders.strategyFor(target);
             String label = sliceLabel(def, entry.getValue());
             slices.add(new DataScopeFanOutSlice(
@@ -851,6 +874,20 @@ public class BusinessEntityEnterpriseService {
                     List.copyOf(entry.getValue())));
         }
         return slices;
+    }
+
+    private void authorizeDataScopeSlices(List<DataScopeFanOutSlice> slices, LaunchRequest request) {
+        for (DataScopeFanOutSlice slice : slices) {
+            DataSetDefinitionEntity dataset = slice.dataset();
+            references.dataSource(dataset.getDataSourceId());
+            references.dataSource(slice.targetDataSourceId());
+            references.policy(firstNonNull(request == null ? null : request.policyId(), dataset.getPolicyId()));
+        }
+    }
+
+    private static boolean isAuthorizationFailure(RuntimeException failure) {
+        return failure instanceof ApiException api
+                && (api.getStatus().value() == 401 || api.getStatus().value() == 403);
     }
 
     private Map<String, Object> slicePlan(DataScopeFanOutSlice slice) {
@@ -1139,42 +1176,50 @@ public class BusinessEntityEnterpriseService {
     }
 
     private Map<String, Object> getIssuePackage(Long id) {
-        return one("""
-                SELECT id, issue_key AS "issueKey", title, severity, status, approval_status AS "approvalStatus",
+        Map<String, Object> row = one("""
+                SELECT id, entity_id AS "entityId", issue_key AS "issueKey", title, severity, status, approval_status AS "approvalStatus",
                        package_manifest_json AS "packageManifestJson", replay_instructions AS "replayInstructions"
                   FROM be_issue_packages WHERE id = ?
                 """, id);
+        authorizeArtifact(row);
+        return row;
     }
 
     private Map<String, Object> getLookalikeProfile(Long id) {
-        return one("""
-                SELECT id, name, objective, privacy_mode AS "privacyMode", row_goal AS "rowGoal",
+        Map<String, Object> row = one("""
+                SELECT id, entity_id AS "entityId", name, objective, privacy_mode AS "privacyMode", row_goal AS "rowGoal",
                        generator_plan_json AS "generatorPlanJson", safety_report_json AS "safetyReportJson", status
                   FROM be_lookalike_profiles WHERE id = ?
                 """, id);
+        authorizeArtifact(row);
+        return row;
     }
 
     private Map<String, Object> getGovernanceRequest(Long id) {
-        return one("""
+        Map<String, Object> row = one("""
                 SELECT id, entity_id AS "entityId", object_type AS "objectType", object_id AS "objectId",
                        action, requested_by AS "requestedBy", reviewer, status, risk_level AS "riskLevel",
                        comments, signed_by AS "signedBy", signed_at AS "signedAt", e_signature_hash AS "eSignatureHash"
                   FROM be_governance_requests WHERE id = ?
                 """, id);
+        authorizeArtifact(row);
+        return row;
     }
 
     private Map<String, Object> getOperationalPackageRaw(Long id) {
-        return one("""
+        Map<String, Object> row = one("""
                 SELECT id, entity_id AS "entityId", execution_plan_id AS "executionPlanId", package_type AS "packageType",
                        name, status, manifest_json AS "manifestJson", shell_script AS "shellScript",
                        health_check_json AS "healthCheckJson", promotion_json AS "promotionJson",
                        created_by AS "createdBy", updated_at AS "updatedAt"
                   FROM be_operational_packages WHERE id = ?
                 """, id);
+        authorizeArtifact(row);
+        return row;
     }
 
     private Map<String, Object> getPackageVersion(Long id) {
-        return one("""
+        Map<String, Object> row = one("""
                 SELECT id, package_id AS "packageId", entity_id AS "entityId", version_number AS "versionNumber",
                        status, artifact_hash AS "artifactHash", manifest_json AS "manifestJson",
                        shell_script AS "shellScript", health_check_json AS "healthCheckJson",
@@ -1183,10 +1228,12 @@ public class BusinessEntityEnterpriseService {
                        created_by AS "createdBy", created_at AS "createdAt"
                   FROM be_operational_package_versions WHERE id = ?
                 """, id);
+        authorizeArtifact(row);
+        return row;
     }
 
     private Map<String, Object> getPackagePromotion(Long id) {
-        return one("""
+        Map<String, Object> row = one("""
                 SELECT id, package_id AS "packageId", entity_id AS "entityId", version_id AS "versionId",
                        from_environment AS "fromEnvironment", to_environment AS "toEnvironment", status,
                        approved_request_id AS "approvedRequestId", evidence_json AS "evidenceJson",
@@ -1194,6 +1241,8 @@ public class BusinessEntityEnterpriseService {
                        created_at AS "createdAt", updated_at AS "updatedAt"
                   FROM be_operational_package_promotions WHERE id = ?
                 """, id);
+        authorizeArtifact(row);
+        return row;
     }
 
     private Long latestPackageVersionId(Long packageId) {
@@ -1205,13 +1254,71 @@ public class BusinessEntityEnterpriseService {
     }
 
     private Map<String, Object> getExecutionPlan(Long id) {
-        return one("""
+        Map<String, Object> row = one("""
                 SELECT id, entity_id AS "entityId", name, operation_type AS "operationType", mode, status,
                        issue_package_id AS "issuePackageId", lookalike_profile_id AS "lookalikeProfileId",
                        approved_request_id AS "approvedRequestId", plan_json AS "planJson",
                        validation_json AS "validationJson", loader_strategy_json AS "loaderStrategyJson"
                   FROM be_entity_execution_plans WHERE id = ?
                 """, id);
+        authorizeArtifact(row);
+        return row;
+    }
+
+    private Map<String, Object> getIssuePackageOrNull(Long id) {
+        return id == null ? null : getIssuePackage(id);
+    }
+
+    private Map<String, Object> getLookalikeProfileOrNull(Long id) {
+        return id == null ? null : getLookalikeProfile(id);
+    }
+
+    private void authorizeArtifact(Map<String, Object> artifact) {
+        if (artifact != null) entities.getDetail(num(artifact.get("entityId")));
+    }
+
+    private void assertArtifactEntity(Map<String, Object> artifact, Long entityId, String label) {
+        if (artifact != null && !Objects.equals(num(artifact.get("entityId")), entityId)) {
+            throw ApiException.bad(label + " does not belong to this Business Entity.");
+        }
+    }
+
+    private void assertChildReference(String table, Long id, Long entityId, String label) {
+        if (id == null) return;
+        if (!Set.of("business_entity_snapshots", "business_entity_reservations").contains(table)) {
+            throw ApiException.bad("Unsupported Business Entity child reference");
+        }
+        Map<String, Object> row = one("SELECT entity_id AS \"entityId\" FROM " + table + " WHERE id = ?", id);
+        Long ownerEntityId = num(row.get("entityId"));
+        entities.getDetail(ownerEntityId);
+        if (!Objects.equals(ownerEntityId, entityId)) {
+            throw ApiException.bad("Referenced " + label + " does not belong to this Business Entity.");
+        }
+    }
+
+    private void assertGovernedObjectBelongsToEntity(String type, Long objectId, Long entityId) {
+        String normalized = upperDefault(type, "BUSINESS_ENTITY");
+        switch (normalized) {
+            case "BUSINESS_ENTITY" -> {
+                entities.getDetail(objectId);
+                if (!Objects.equals(objectId, entityId)) throw ApiException.bad("Governance object belongs to another Business Entity.");
+            }
+            case "ISSUE_PACKAGE" -> assertArtifactEntity(getIssuePackage(objectId), entityId, "Issue package");
+            case "LOOKALIKE_PROFILE" -> assertArtifactEntity(getLookalikeProfile(objectId), entityId, "Look-alike profile");
+            case "EXECUTION_PLAN" -> assertArtifactEntity(getExecutionPlan(objectId), entityId, "Execution plan");
+            case "OPERATIONAL_PACKAGE" -> assertArtifactEntity(getOperationalPackageRaw(objectId), entityId, "Operational package");
+            case "PACKAGE_VERSION" -> assertArtifactEntity(getPackageVersion(objectId), entityId, "Package version");
+            case "SNAPSHOT" -> assertChildReference("business_entity_snapshots", objectId, entityId, "snapshot");
+            case "RESERVATION" -> assertChildReference("business_entity_reservations", objectId, entityId, "reservation");
+            case "CAPSULE" -> capsules.planAttachmentEvidence(entityId, objectId);
+            case "FLOW" -> {
+                Map<String, Object> row = one("SELECT entity_id AS \"entityId\" FROM be_orchestration_flows WHERE id = ?", objectId);
+                Long ownerEntityId = num(row.get("entityId"));
+                entities.getDetail(ownerEntityId);
+                if (!Objects.equals(ownerEntityId, entityId)) throw ApiException.bad("Flow does not belong to this Business Entity.");
+            }
+            default -> throw ApiException.bad("Unsupported Business Entity governance object type: " + normalized);
+        }
     }
 
     private String runnerScript(Long packageId, Long entityId, Long planId, String name) {

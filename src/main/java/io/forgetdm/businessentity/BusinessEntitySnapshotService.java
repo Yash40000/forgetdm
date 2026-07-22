@@ -56,6 +56,7 @@ public class BusinessEntitySnapshotService {
                                   Map<Long, Long> targetVdbBySnapshot, String reason, String confirmText) {}
 
     public List<BusinessEntitySnapshotEntity> list(Long entityId) {
+        entities.getDetail(entityId);
         return snapshots.findByEntityIdOrderByCreatedAtDesc(entityId);
     }
 
@@ -270,7 +271,10 @@ public class BusinessEntitySnapshotService {
     }
 
     private BusinessEntitySnapshotEntity get(Long id) {
-        return snapshots.findById(id).orElseThrow(() -> ApiException.notFound("Business Entity snapshot not found: " + id));
+        BusinessEntitySnapshotEntity snapshot = snapshots.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Business Entity snapshot not found: " + id));
+        entities.getDetail(snapshot.getEntityId());
+        return snapshot;
     }
 
     private static String normalizeMode(String mode) {

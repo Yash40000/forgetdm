@@ -26,6 +26,7 @@ import {
   IconDatabase,
   IconDatabaseSearch,
   IconDatabaseExport,
+  IconDatabaseImport,
   IconDeviceDesktop,
   IconFlask,
   IconFileCode,
@@ -136,7 +137,8 @@ const navigationGroups: NavigationGroup[] = [
         permission: requireAny('assistant.use', 'mapping.read')
       },
       { label: 'Self-Service', href: '/self-service', icon: IconForms, permission: requireAll('provision.read') },
-      { label: 'Virtualization', href: '/virtualization', icon: IconDatabaseExport, permission: requireAll('virtualization.read') }
+      { label: 'Virtualization', href: '/virtualization', icon: IconDatabaseExport, permission: requireAll('virtualization.read') },
+      { label: 'Change Data Capture', href: '/cdc', icon: IconDatabaseImport, permission: requireAll('virtualization.read') }
     ]
   },
   {

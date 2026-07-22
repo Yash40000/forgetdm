@@ -86,6 +86,13 @@ direction, authentication method, encoding, and native loader is a separate test
 - External organizational maturity such as 24x7 support, contractual SLA, analyst recognition, or partner
   coverage without the corresponding operating organization and signed process evidence.
 
+### Current campaign deferral
+
+`LEGAL-001` and `LEGAL-002` are deferred from the active engineering test campaign as of
+2026-07-20. They require a separate legal and diligence review with qualified reviewers and signed
+evidence. This deferral is not a pass, failure, HARD-PASS, or removal from the product-readiness
+catalog; neither story may be marked green from engineering evidence alone.
+
 ## 5. Test governance
 
 ### Roles

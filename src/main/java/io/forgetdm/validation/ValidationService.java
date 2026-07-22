@@ -10,6 +10,11 @@ import io.forgetdm.datasource.DataSourceEntity;
 import io.forgetdm.datasource.DataSourceService;
 import io.forgetdm.policy.MaskingRuleEntity;
 import io.forgetdm.policy.MaskingRuleRepository;
+import io.forgetdm.policy.MaskingPolicyEntity;
+import io.forgetdm.policy.MaskingPolicyRepository;
+import io.forgetdm.provision.ProvisionJobEntity;
+import io.forgetdm.provision.ProvisionJobRepository;
+import io.forgetdm.security.OwnershipGuard;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -34,21 +39,35 @@ public class ValidationService {
 
     private final ValidationReportRepository reports;
     private final MaskingRuleRepository rules;
+    private final MaskingPolicyRepository policies;
+    private final ProvisionJobRepository jobs;
     private final DataSourceService dataSources;
     private final ConnectionFactory connections;
     private final AuditService audit;
+    private final OwnershipGuard ownership;
     private final ObjectMapper json = new ObjectMapper();
 
     public ValidationService(ValidationReportRepository reports, MaskingRuleRepository rules,
-                             DataSourceService dataSources, ConnectionFactory connections, AuditService audit) {
-        this.reports = reports; this.rules = rules; this.dataSources = dataSources;
-        this.connections = connections; this.audit = audit;
+                             MaskingPolicyRepository policies, ProvisionJobRepository jobs,
+                             DataSourceService dataSources, ConnectionFactory connections,
+                             AuditService audit, OwnershipGuard ownership) {
+        this.reports = reports; this.rules = rules; this.policies = policies; this.jobs = jobs;
+        this.dataSources = dataSources; this.connections = connections; this.audit = audit;
+        this.ownership = ownership;
     }
 
     public ValidationReportEntity validate(Long sourceId, Long targetId, Long policyId, Long jobId) {
         DataSourceEntity src = sourceId == null ? null : dataSources.get(sourceId);
         DataSourceEntity tgt = dataSources.get(targetId);
-        List<MaskingRuleEntity> policyRules = policyId == null ? List.of() : rules.findByPolicyId(policyId);
+        ProvisionJobEntity linkedJob = jobId == null ? null : requireVisibleJob(jobId);
+        Long effectivePolicyId = policyId;
+        if (linkedJob != null) {
+            validateJobReferences(linkedJob, sourceId, targetId, policyId);
+            if (effectivePolicyId == null) effectivePolicyId = linkedJob.getPolicyId();
+        }
+        if (effectivePolicyId != null) requireVisiblePolicy(effectivePolicyId);
+        List<MaskingRuleEntity> policyRules = effectivePolicyId == null
+                ? List.of() : rules.findByPolicyId(effectivePolicyId);
 
         List<Map<String, Object>> findings = new ArrayList<>();
         int fails = 0, warns = 0;
@@ -135,12 +154,17 @@ public class ValidationService {
         ValidationReportEntity rep = new ValidationReportEntity();
         rep.setJobId(jobId);
         rep.setDataSourceId(targetId);
-        rep.setPolicyId(policyId);
+        rep.setPolicyId(effectivePolicyId);
         rep.setResult(fails > 0 ? "FAIL" : warns > 0 ? "WARN" : "PASS");
+        rep.setOwnerUserId(ownership.defaultOwnerUserId());
+        rep.setOwnerUsername(ownership.defaultOwnerUsername());
+        rep.setOwnerGroupId(ownership.defaultOwnerGroupId());
+        rep.setVisibility(ownership.defaultVisibility());
         try { rep.setFindingsJson(json.writeValueAsString(findings)); }
         catch (Exception e) { throw new IllegalStateException(e); }
         ValidationReportEntity saved = reports.save(rep);
-        audit.log("system", "VALIDATION_" + saved.getResult(), "target=" + tgt.getName() + " findings=" + findings.size());
+        audit.log(ownership.defaultOwnerUsername() == null ? "system" : ownership.defaultOwnerUsername(),
+                "VALIDATION_" + saved.getResult(), "target=" + tgt.getName() + " findings=" + findings.size());
         return saved;
     }
 
@@ -266,9 +290,45 @@ public class ValidationService {
     }
 
     public List<ValidationReportEntity> list() {
-        List<ValidationReportEntity> all = reports.findAll();
+        List<ValidationReportEntity> all = new ArrayList<>(reports.findAll().stream()
+                .filter(report -> ownership.canSee(
+                        report.getOwnerUserId(), report.getOwnerGroupId(), report.getVisibility()))
+                .toList());
         all.sort(Comparator.comparing(ValidationReportEntity::getId).reversed());
         return all;
+    }
+
+    ValidationReportEntity getReport(Long id) {
+        ValidationReportEntity report = reports.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Validation report " + id + " not found"));
+        ownership.assertCanSee("validation report", id,
+                report.getOwnerUserId(), report.getOwnerGroupId(), report.getVisibility());
+        return report;
+    }
+
+    MaskingPolicyEntity requireVisiblePolicy(Long id) {
+        MaskingPolicyEntity policy = policies.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Policy " + id + " not found"));
+        ownership.assertCanSee("policy", id,
+                policy.getOwnerUserId(), policy.getOwnerGroupId(), policy.getVisibility());
+        return policy;
+    }
+
+    private ProvisionJobEntity requireVisibleJob(Long id) {
+        ProvisionJobEntity job = jobs.findById(id)
+                .orElseThrow(() -> ApiException.notFound("Job " + id + " not found"));
+        ownership.assertCanSee("provision job", id,
+                job.getOwnerUserId(), job.getOwnerGroupId(), job.getVisibility());
+        return job;
+    }
+
+    private static void validateJobReferences(ProvisionJobEntity job, Long sourceId, Long targetId, Long policyId) {
+        if (job.getTargetId() != null && !Objects.equals(job.getTargetId(), targetId))
+            throw ApiException.bad("Validation target does not match provision job " + job.getId());
+        if (sourceId != null && job.getSourceId() != null && !Objects.equals(job.getSourceId(), sourceId))
+            throw ApiException.bad("Validation source does not match provision job " + job.getId());
+        if (policyId != null && job.getPolicyId() != null && !Objects.equals(job.getPolicyId(), policyId))
+            throw ApiException.bad("Validation policy does not match provision job " + job.getId());
     }
 
     private static String q(String ident) {

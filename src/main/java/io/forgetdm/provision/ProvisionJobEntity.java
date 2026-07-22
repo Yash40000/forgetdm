@@ -23,6 +23,11 @@ public class ProvisionJobEntity {
     @Column(name = "finished_at") private Instant finishedAt;
     // Maker-checker approval (V29): NOT_REQUIRED | PENDING_APPROVAL | APPROVED | REJECTED
     @Column(name = "created_by") private String createdBy;
+    // Tenancy (V65 / RBAC-002). visibility: PRIVATE | GROUP | SHARED; legacy rows are SHARED.
+    @Column(name = "owner_user_id") private Long ownerUserId;
+    @Column(name = "owner_username") private String ownerUsername;
+    @Column(name = "owner_group_id") private Long ownerGroupId;
+    @Column(name = "visibility") private String visibility = "GROUP";
     @Column(name = "approval_status", nullable = false) private String approvalStatus = "NOT_REQUIRED";
     @Column(name = "approval_requested_at") private Instant approvalRequestedAt;
     @Column(name = "approved_at") private Instant approvedAt;
@@ -61,6 +66,14 @@ public class ProvisionJobEntity {
     public void setFinishedAt(Instant v) { finishedAt = v; }
     public String getCreatedBy() { return createdBy; }
     public void setCreatedBy(String v) { createdBy = v; }
+    public Long getOwnerUserId() { return ownerUserId; }
+    public void setOwnerUserId(Long v) { ownerUserId = v; }
+    public String getOwnerUsername() { return ownerUsername; }
+    public void setOwnerUsername(String v) { ownerUsername = v; }
+    public Long getOwnerGroupId() { return ownerGroupId; }
+    public void setOwnerGroupId(Long v) { ownerGroupId = v; }
+    public String getVisibility() { return visibility; }
+    public void setVisibility(String v) { visibility = v; }
     public String getApprovalStatus() { return approvalStatus; }
     public void setApprovalStatus(String v) { approvalStatus = v; }
     public Instant getApprovalRequestedAt() { return approvalRequestedAt; }

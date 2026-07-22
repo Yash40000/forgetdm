@@ -51,6 +51,7 @@ public class AuditWriter {
         if (e.getOutcome() == null)   e.setOutcome("SUCCESS");
         if (e.getSeverity() == null)  e.setSeverity("INFO");
         if (e.getCategory() == null)  e.setCategory("GENERAL");
+        resolveBackgroundOwner(e);
 
         e.setSeq(nextSeq());
         e.setPrevHash(currentHead());
@@ -79,6 +80,36 @@ public class AuditWriter {
     private Long nextSeq() {
         Long seq = jdbc.queryForObject("SELECT nextval('audit_event_seq')", Long.class);
         return seq == null ? 1L : seq;
+    }
+
+    /** Async workers retain the human actor string but not the request ThreadLocal. */
+    private void resolveBackgroundOwner(AuditEventEntity event) {
+        if (event.getOwnerUserId() != null || event.getOwnerGroupId() != null) return;
+        String actor = event.getOwnerUsername() == null ? event.getActor() : event.getOwnerUsername();
+        if (actor == null || actor.isBlank() || "system".equalsIgnoreCase(actor)) {
+            event.setVisibility("SHARED");
+            return;
+        }
+        try {
+            var rows = jdbc.query(
+                    "SELECT u.id, (SELECT MIN(ug.group_id) FROM forge_user_groups ug WHERE ug.user_id=u.id) " +
+                            "FROM forge_users u WHERE LOWER(u.username)=LOWER(?)",
+                    (rs, rowNum) -> new Long[] { rs.getLong(1),
+                            rs.getObject(2) == null ? null : rs.getLong(2) }, actor);
+            if (!rows.isEmpty()) {
+                event.setOwnerUserId(rows.get(0)[0]);
+                event.setOwnerGroupId(rows.get(0)[1]);
+                event.setOwnerUsername(actor);
+                event.setVisibility("GROUP");
+                return;
+            }
+        } catch (RuntimeException ignored) {
+            // Security tables may not exist during the earliest bootstrap audit writes.
+        }
+        // An unresolved human actor must fail closed. Administrators can still inspect
+        // the event, but it must not become visible to every tenant by accident.
+        event.setOwnerUsername(actor);
+        event.setVisibility("PRIVATE");
     }
 
     /** Hash of the newest committed event — the parent this event chains onto ("" for genesis). */

@@ -2,13 +2,19 @@ package io.forgetdm.audit;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.forgetdm.security.AccessContext;
 import io.forgetdm.security.AccessControlFilter;
+import io.forgetdm.security.AccessControlService;
+import io.forgetdm.security.AccessPrincipal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+
+import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -75,5 +81,27 @@ class AuditContextTest {
         assertEquals("synthetic-job-approval", event.getValue().getResourceType());
         assertEquals("job-987", event.getValue().getResourceId());
         assertEquals("nightly-customer-load", event.getValue().getResourceName());
+    }
+
+    @Test
+    void requestAuditEventCarriesCallerTenantAndHashVersion() {
+        AuditWriter writer = mock(AuditWriter.class);
+        AuditService service = new AuditService(mock(AuditEventRepository.class), writer, mapper);
+        AccessPrincipal alpha = new AccessPrincipal(7L, "alpha", "Alpha User",
+                Set.of("OPERATOR"), Set.of("audit.read"),
+                List.of(new AccessControlService.GroupLite(11L, "Alpha Group")));
+
+        AccessContext.callAs(alpha, null, () -> {
+            service.log("alpha", "POLICY_UPDATED", "policy=14");
+            return null;
+        });
+
+        ArgumentCaptor<AuditEventEntity> event = ArgumentCaptor.forClass(AuditEventEntity.class);
+        verify(writer).append(event.capture());
+        assertEquals(7L, event.getValue().getOwnerUserId());
+        assertEquals("alpha", event.getValue().getOwnerUsername());
+        assertEquals(11L, event.getValue().getOwnerGroupId());
+        assertEquals("GROUP", event.getValue().getVisibility());
+        assertEquals(2, event.getValue().getHashVersion());
     }
 }

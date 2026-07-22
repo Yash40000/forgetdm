@@ -13,6 +13,8 @@ import io.forgetdm.datasource.DataSourceService;
 import io.forgetdm.datasource.SqlDialect;
 import io.forgetdm.filevault.ManagedFileVault;
 import io.forgetdm.security.AccessContext;
+import io.forgetdm.security.AccessPrincipal;
+import io.forgetdm.security.OwnershipGuard;
 import io.forgetdm.subset.SubsetService;
 import jakarta.annotation.PreDestroy;
 import org.apache.commons.csv.CSVFormat;
@@ -48,6 +50,7 @@ public class MappingExecutionService {
     private final MaskingEngine masking;
     private final ObjectMapper json;
     private final AuditService audit;
+    private final OwnershipGuard ownership;
     private final ExecutorService executor = Executors.newFixedThreadPool(3, r -> {
         Thread t = new Thread(r, "forgetdm-mapping-run"); t.setDaemon(true); return t;
     });
@@ -56,10 +59,10 @@ public class MappingExecutionService {
                                    MappingVersionRepository versions, MappingFileService files,
                                    DataSourceService dataSources, ConnectionFactory connections,
                                    ManagedFileVault vault, MaskingEngine masking, ObjectMapper json,
-                                   AuditService audit) {
+                                   AuditService audit, OwnershipGuard ownership) {
         this.runs = runs; this.mappings = mappings; this.versions = versions; this.files = files;
         this.dataSources = dataSources; this.connections = connections; this.vault = vault;
-        this.masking = masking; this.json = json; this.audit = audit;
+        this.masking = masking; this.json = json; this.audit = audit; this.ownership = ownership;
     }
 
     @PreDestroy void shutdown() { executor.shutdownNow(); }
@@ -78,18 +81,27 @@ public class MappingExecutionService {
                 .findFirst().map(MappingVersionEntity::getVersionNo).orElse(1);
         MappingRunEntity run = new MappingRunEntity();
         run.setMappingId(mappingId); run.setMappingVersion(version); run.setCreatedBy(actor());
+        run.setOwnerUserId(ownership.defaultOwnerUserId());
+        run.setOwnerUsername(ownership.defaultOwnerUsername());
+        run.setOwnerGroupId(ownership.defaultOwnerGroupId());
+        run.setVisibility(ownership.defaultVisibility());
         run.setRequestJson(request == null ? "{}" : request.toString());
         run.setMessage("Queued for governed execution");
         run = runs.save(run);
         Long runId = run.getId();
         audit.record(actor(), "MAPPING_RUN_QUEUED", "MAPPING", "MAPPING_RUN", String.valueOf(runId),
                 mapping.getName(), "SUCCESS", "version=" + version, null);
-        submitAfterCommit(runId);
+        AccessPrincipal caller = AccessContext.current().orElse(null);
+        String callerToken = AccessContext.currentToken().orElse(null);
+        submitAfterCommit(runId, caller, callerToken);
         return run;
     }
 
-    private void submitAfterCommit(Long runId) {
-        Runnable submit = () -> executor.submit(() -> execute(runId));
+    private void submitAfterCommit(Long runId, AccessPrincipal caller, String callerToken) {
+        Runnable submit = () -> executor.submit(() -> AccessContext.callAs(caller, callerToken, () -> {
+            execute(runId);
+            return null;
+        }));
         if (TransactionSynchronizationManager.isSynchronizationActive()) {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override public void afterCommit() { submit.run(); }
@@ -100,23 +112,19 @@ public class MappingExecutionService {
     }
 
     public List<MappingRunEntity> list() {
-        List<MappingRunEntity> all = runs.findTop100ByOrderByCreatedAtDesc();
-        return AccessContext.current().filter(p -> !p.hasPermission("mapping.manage") && !p.roles().contains("AUDITOR"))
-                .map(p -> all.stream().filter(run -> p.username().equalsIgnoreCase(run.getCreatedBy())).toList()).orElse(all);
+        return runs.findTop100ByOrderByCreatedAtDesc().stream()
+                .filter(run -> ownership.canSee(run.getOwnerUserId(), run.getOwnerGroupId(), run.getVisibility()))
+                .toList();
     }
     public MappingRunEntity get(Long id) {
         MappingRunEntity run = runs.findById(id).orElseThrow(() -> ApiException.notFound("Mapping run " + id + " not found"));
-        AccessContext.current().ifPresent(p -> {
-            if (!p.username().equalsIgnoreCase(run.getCreatedBy()) && !p.hasPermission("mapping.manage") && !p.roles().contains("AUDITOR"))
-                throw ApiException.forbidden("This mapping run belongs to another user");
-        });
+        ownership.assertCanSee("mapping run", id, run.getOwnerUserId(), run.getOwnerGroupId(), run.getVisibility());
         return run;
     }
 
     @Transactional
     public MappingRunEntity cancel(Long id) {
         MappingRunEntity run = get(id);
-        requirePayloadAccess(run);
         if (Set.of("COMPLETED", "FAILED", "CANCELED").contains(run.getStatus())) return run;
         run.setCancelRequested(true); run.setMessage("Cancellation requested; current database batch will finish safely");
         MappingEntity mapping = mappings.get(run.getMappingId());
@@ -128,7 +136,6 @@ public class MappingExecutionService {
     @Transactional
     public MappingRunEntity retry(Long id) {
         MappingRunEntity previous = get(id);
-        requirePayloadAccess(previous);
         if (!Set.of("FAILED", "CANCELED").contains(previous.getStatus())) {
             throw ApiException.bad("Only failed or canceled mapping runs can be retried");
         }
@@ -148,7 +155,6 @@ public class MappingExecutionService {
 
     public InputStreamDownload output(Long id) {
         MappingRunEntity run = get(id);
-        requirePayloadAccess(run);
         if (!"COMPLETED".equals(run.getStatus()) || run.getOutputStorageKey() == null)
             throw ApiException.bad("This mapping run has no completed file output");
         return new InputStreamDownload(run.getOutputName(), contentType(run.getOutputFormat()),
@@ -590,12 +596,6 @@ public class MappingExecutionService {
     private static String safeError(Exception e) { return clip(e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage(), 4000); }
     private static String clip(String s, int max) { return s != null && s.length() > max ? s.substring(0, max) : s; }
     private static String actor() { return AccessContext.current().map(p -> p.username()).orElse("system"); }
-    private static void requirePayloadAccess(MappingRunEntity run) {
-        AccessContext.current().ifPresent(p -> {
-            if (!p.username().equalsIgnoreCase(run.getCreatedBy()) && !p.hasPermission("mapping.manage"))
-                throw ApiException.forbidden("Only the run owner or a mapping manager can access this output");
-        });
-    }
     private static String contentType(String format) { return "JSON".equalsIgnoreCase(format) || "JSONL".equalsIgnoreCase(format) ? "application/json" : "text/csv"; }
     private static final class Canceled extends RuntimeException {}
 }

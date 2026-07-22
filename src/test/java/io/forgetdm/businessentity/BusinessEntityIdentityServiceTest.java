@@ -6,6 +6,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import org.springframework.http.HttpStatus;
 
 import java.util.List;
 import java.util.Map;
@@ -68,6 +69,38 @@ class BusinessEntityIdentityServiceTest {
                 new BusinessEntityIdentityService.CrosswalkRequest("CUST-20000", "CUSTOMER", "ACTIVE", 1.0,
                         Map.of(), List.of(link(11L, "10025", "SOURCE_DB2_PK")))));
         assertTrue(ex.getMessage().contains("already linked"));
+    }
+
+    @Test
+    void deniesBetaSubjectAndRawLinkIdsBeforeAnyDeletion() {
+        jdbc.update("""
+                INSERT INTO be_identity_subjects(id, entity_id, canonical_key, identity_type, status, confidence, attributes_json)
+                VALUES (200, 2, 'BETA-1', 'CUSTOMER', 'ACTIVE', 1.0, '{}')
+                """);
+        jdbc.update("""
+                INSERT INTO be_identity_links(id, entity_id, subject_id, table_name, key_values_json, external_id,
+                    identity_key_hash, confidence, status)
+                VALUES (201, 2, 200, 'customers', '{}', 'BETA-1', 'beta-hash', 1.0, 'ACTIVE')
+                """);
+        when(entities.getDetail(2L)).thenThrow(new ApiException(HttpStatus.FORBIDDEN, "BETA entity"));
+
+        assertThrows(ApiException.class, () -> service.get(200L));
+        assertThrows(ApiException.class, () -> service.deleteLink(201L));
+        assertThrows(ApiException.class, () -> service.deleteSubject(200L));
+
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM be_identity_subjects WHERE id = 200", Integer.class));
+        assertEquals(1, jdbc.queryForObject("SELECT COUNT(*) FROM be_identity_links WHERE id = 201", Integer.class));
+        verify(audit, never()).log(any(), contains("DELETE"), any());
+    }
+
+    @Test
+    void rejectsPhysicalCoordinateOverrideForSelectedMember() {
+        ApiException ex = assertThrows(ApiException.class, () -> service.resolve(1L,
+                new BusinessEntityIdentityService.ResolveRequest(11L, "Core DB2", 102L,
+                        null, "customers", "customer_id", null, "10025")));
+
+        assertTrue(ex.getMessage().contains("data source"));
+        assertEquals(0, jdbc.queryForObject("SELECT COUNT(*) FROM be_identity_links", Integer.class));
     }
 
     private BusinessEntityIdentityService.LinkRequest link(Long memberId, String externalId, String rule) {

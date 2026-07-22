@@ -65,8 +65,15 @@ class Rbac001ControllerInventoryTest {
             assertNotNull(permission, route + " has no authorization contract");
             assertTrue(knownPermissions.contains(permission), route + " uses undocumented permission " + permission);
 
-            Result allowed = execute(endpoint, Set.of(permission), true);
-            assertEquals(1, allowed.chainCalls(), route + " rejected its exact permission " + permission);
+            Set<String> routePermissions = new LinkedHashSet<>(Set.of(permission));
+            String additionalPermission = policy.requiredAdditionalPermission(endpoint.method(), endpoint.path());
+            if (additionalPermission != null) {
+                assertTrue(knownPermissions.contains(additionalPermission),
+                        route + " uses undocumented additional permission " + additionalPermission);
+                routePermissions.add(additionalPermission);
+            }
+            Result allowed = execute(endpoint, routePermissions, true);
+            assertEquals(1, allowed.chainCalls(), route + " rejected its declared permissions " + routePermissions);
 
             Result denied = execute(endpoint, Set.of("irrelevant.permission"), true);
             assertEquals(0, denied.chainCalls(), route + " reached a controller without " + permission);

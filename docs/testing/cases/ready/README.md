@@ -22,7 +22,7 @@ This directory contains the executable specifications for the ten stories curren
 | AUTH-001 | [Valid login, logout, and session identity](AUTH-001.md) | Authentication contract | 10 | COMPLETE - 10/10 pass on physical HTTP + HTTPS at `9f9ca02`; independently accepted |
 | AUTH-003 | [Expired-session recovery](AUTH-003.md) | Safe UI recovery | 8 | COMPLETE - 8/8 directly proven and independently accepted |
 | RBAC-001 | [Role and group permission matrix](RBAC-001.md) | Authorization coverage | 10 | COMPLETE - 10/10 pass at `6614e22`; 21/21 Edge cases; independently accepted |
-| RBAC-002 | [Cross-group isolation](RBAC-002.md) | Object-level isolation | 9 | Executed; S1 found, fixed, and reverified |
+| RBAC-002 | [Cross-group isolation](RBAC-002.md) | Object-level isolation | 9 | COMPLETE - 9/9 pass; DEF-0007 and DEF-0032 closed; independently reconciled |
 | AUD-001 | [Material action audit](AUD-001.md) | Traceability and integrity | 10 | 6 pass / 2 partial / 2 not executed |
 | DSRC-001 | [Data-source lifecycle](DSRC-001.md) | Connector configuration | 9 | COMPLETE WITH HARD-PASS EXCEPTIONS - PostgreSQL, Oracle, MySQL, and H2 live; DB2, SQL Server, and Teradata not live-certified |
 | DSRC-002 | [Connection diagnostics](DSRC-002.md) | Failure handling and TLS | 10 | COMPLETE WITH HARD-PASS EXCEPTIONS - 7 pass; TLS trust, TLS identity, and low-privilege fixtures not certified |
