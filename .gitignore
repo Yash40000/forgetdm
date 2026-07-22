@@ -13,6 +13,7 @@ run-ai*.log
 run.log
 target/
 frontend/.next/
+frontend/next-*-build/
 frontend/node_modules/
 frontend/out/
 frontend/.env*.local

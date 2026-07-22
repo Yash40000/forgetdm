@@ -1,0 +1,17 @@
+{
+  "story": "MASK-001",
+  "status": "COMPLETE",
+  "acceptanceCases": { "passed": 5, "total": 5 },
+  "catalogFunctions": { "passed": 43, "total": 43 },
+  "focusedRegression": { "passed": 73, "failures": 0, "errors": 0 },
+  "ui": {
+    "browser": "Microsoft Edge",
+    "passed": 1,
+    "total": 1,
+    "catalogCards": 43,
+    "validPreview": "SSN",
+    "invalidFeedback": "NUMERIC_NOISE"
+  },
+  "closedDefects": ["DEF-0034"],
+  "hardPass": []
+}

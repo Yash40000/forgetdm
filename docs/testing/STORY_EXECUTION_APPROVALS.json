@@ -75,6 +75,21 @@
         "Do not test against production or customer data.",
         "Retain sanitized evidence and independently review every green claim."
       ]
+    },
+    "MASK-001": {
+      "status": "APPROVED",
+      "approvedAt": "2026-07-22T15:08:00-04:00",
+      "approvedBy": "Codex test coordinator (product-owner delegated)",
+      "allowedScopes": [
+        "SOURCE_INSPECTION",
+        "UNIT_TEST",
+        "REFERENCE_ENGINE"
+      ],
+      "conditions": [
+        "Use synthetic reference values only.",
+        "Do not contact external systems or paid services.",
+        "Execute every catalog function and retain a compact result summary."
+      ]
     }
   }
 }
