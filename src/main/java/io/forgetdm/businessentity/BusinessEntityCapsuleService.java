@@ -1032,8 +1032,8 @@ public class BusinessEntityCapsuleService {
     }
 
     /** Mask fetched rows against a policy's rules for this table. Columns with no rule pass through
-     *  unmasked (same semantics as the rest of ForgeTDM's MASK_COPY path). EMAIL rules run in a second
-     *  pass so they can see already-masked first_name/last_name siblings (MaskingEngine's NAME_SAFE mode). */
+     *  unmasked (same semantics as the rest of ForgeTDM's MASK_COPY path). Derived rules run in a second
+     *  pass so they can see already-masked sibling values in the row context. */
     private List<Map<String, Object>> maskRows(List<Map<String, Object>> rows, List<Map<String, String>> textRows,
                                                List<MaskingRuleEntity> rules, String table) {
         if (rules.isEmpty()) return rows;
@@ -1047,17 +1047,22 @@ public class BusinessEntityCapsuleService {
             Map<String, Object> outRow = new LinkedHashMap<>(rows.get(i));
             for (String col : text.keySet()) {
                 MaskingRuleEntity rule = ruleByCol.get(col);
-                if (rule == null || "EMAIL".equalsIgnoreCase(rule.getFunction()) || text.get(col) == null) continue;
+                if (rule == null || isDerivedRule(rule) || text.get(col) == null) continue;
                 outRow.put(col, applyRule(rule, table, col, text.get(col), ctx));
             }
             for (String col : text.keySet()) {
                 MaskingRuleEntity rule = ruleByCol.get(col);
-                if (rule == null || !"EMAIL".equalsIgnoreCase(rule.getFunction()) || text.get(col) == null) continue;
+                if (rule == null || !isDerivedRule(rule) || text.get(col) == null) continue;
                 outRow.put(col, applyRule(rule, table, col, text.get(col), ctx));
             }
             out.add(outRow);
         }
         return out;
+    }
+
+    private static boolean isDerivedRule(MaskingRuleEntity rule) {
+        String function = rule.getFunction() == null ? "" : rule.getFunction().toUpperCase(Locale.ROOT);
+        return function.equals("FULL_NAME") || function.equals("EMAIL") || function.equals("SCRIPT");
     }
 
     private String applyRule(MaskingRuleEntity rule, String table, String col, String value, MaskContext ctx) {

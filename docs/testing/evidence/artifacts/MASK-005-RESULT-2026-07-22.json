@@ -1,0 +1,10 @@
+{
+  "story": "MASK-005",
+  "status": "COMPLETE",
+  "acceptanceCases": { "passed": 8, "total": 8 },
+  "focusedNameAndOrder": { "passed": 43, "failures": 0, "errors": 0 },
+  "backendRegression": { "passed": 541, "failures": 0, "errors": 0, "skipped": 6 },
+  "executionPaths": ["MASK_COPY", "IN_PLACE_KEYED", "IN_PLACE_REBUILD", "DATASCOPE_PREVIEW", "BUSINESS_ENTITY_CAPSULE"],
+  "closedDefects": ["DEF-0038"],
+  "hardPass": []
+}

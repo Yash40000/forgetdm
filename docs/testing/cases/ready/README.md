@@ -33,6 +33,7 @@ This directory contains the executable specifications for the ten stories curren
 | MASK-002 | [Boundary and datatype-fit behavior](MASK-002.md) | Unicode and target fit | 7 | COMPLETE - 7/7; 108 regression tests plus PostgreSQL, Oracle, and MySQL live SQL; DEF-0035/0036 closed |
 | MASK-003 | [Seeded deterministic replay](MASK-003.md) | Cross-connector checksum | 9 | COMPLETE - 9/9; all 43 functions plus PostgreSQL, Oracle, and MySQL checksum replay pass |
 | MASK-004 | [Cross-table and cross-database consistency](MASK-004.md) | Join preservation | 10 | COMPLETE - 10/10; 48/48 joins per PostgreSQL, Oracle, and MySQL; DEF-0037 closed |
+| MASK-005 | [Derived full-name row consistency](MASK-005.md) | Row-context composition | 8 | COMPLETE - 8/8; 43 focused and 541 regression tests green; DEF-0038 closed |
 
 `CODE-VERIFIED` is not verified. A correct-looking implementation can still fail in transaction, browser, driver, or vendor behavior. Only direct retained execution evidence supports a pass claim.
 

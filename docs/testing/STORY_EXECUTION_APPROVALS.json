@@ -143,6 +143,21 @@
         "Retain only join counts, checksums, test counts, and sanitized defect evidence.",
         "Prove both positive consistency and negative separation before marking green."
       ]
+    },
+    "MASK-005": {
+      "status": "APPROVED",
+      "approvedAt": "2026-07-22T18:40:00-04:00",
+      "approvedBy": "Codex test coordinator (product-owner delegated)",
+      "allowedScopes": [
+        "SOURCE_INSPECTION",
+        "UNIT_TEST",
+        "REFERENCE_ENGINE"
+      ],
+      "conditions": [
+        "Use synthetic names only.",
+        "Assert exact row-level composition and preserve independent null behavior.",
+        "Do not mark connector-specific behavior certified without direct connector evidence."
+      ]
     }
   }
 }

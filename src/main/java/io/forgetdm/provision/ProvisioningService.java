@@ -1257,8 +1257,29 @@ public class ProvisioningService {
         static ColumnShape varchar() { return new ColumnShape(Types.VARCHAR, 0, -1); }
     }
 
-    private record ColumnPlan(String targetColumn, String sourceColumn,
-                              ColumnOverrideEntity override, int sqlType, int size, int scale) {}
+    record ColumnPlan(String targetColumn, String sourceColumn,
+                      ColumnOverrideEntity override, int sqlType, int size, int scale) {}
+
+    static List<Integer> maskingEvaluationOrder(List<ColumnPlan> plans,
+                                                 Map<String, MaskingRuleEntity> ruleByCol) {
+        List<Integer> order = new ArrayList<>();
+        for (int i = 0; i < plans.size(); i++) order.add(i);
+        order.sort(Comparator.comparingInt((Integer i) -> maskingPriority(plans.get(i), ruleByCol))
+                .thenComparingInt(Integer::intValue));
+        return order;
+    }
+
+    private static int maskingPriority(ColumnPlan plan, Map<String, MaskingRuleEntity> ruleByCol) {
+        MaskingRuleEntity rule = null;
+        if (ruleByCol != null && plan.sourceColumn() != null)
+            rule = ruleByCol.get(plan.sourceColumn().toLowerCase(Locale.ROOT));
+        if (rule == null && ruleByCol != null)
+            rule = ruleByCol.get(plan.targetColumn().toLowerCase(Locale.ROOT));
+        String function = rule == null || rule.getFunction() == null ? "" : rule.getFunction().toUpperCase(Locale.ROOT);
+        if (function.equals("FIRST_NAME") || function.equals("LAST_NAME")) return 0;
+        if (function.equals("FULL_NAME") || function.equals("EMAIL") || function.equals("SCRIPT")) return 2;
+        return 1;
+    }
 
     /** Parallelism for the copy/subset load path. Env FORGETDM_COPY_PARALLELISM; default 1 (sequential, unchanged). */
     private int copyParallelism() {
@@ -1519,7 +1540,7 @@ public class ProvisioningService {
                             boolean[] condFlags = new boolean[condExprs.size()];
                             for (int f = 0; f < condExprs.size(); f++)
                                 condFlags[f] = rs.getInt(selectCols.size() + 1 + f) == 1;
-                            for (int i = 0; i < columnPlans.size(); i++) {
+                            for (int i : maskingEvaluationOrder(columnPlans, ruleByCol)) {
                                 ColumnPlan plan = columnPlans.get(i);
                                 ColumnOverrideEntity override = plan.override();
                                 String overrideType = override == null ? "USE_POLICY" : override.getOverrideType();
@@ -1926,6 +1947,7 @@ public class ProvisioningService {
         }
         if (updatePlans.isEmpty()) { progressMessage(job, "In-place: nothing to mask on " + table); return 0; }
         List<String> updateCols = updatePlans.stream().map(ColumnPlan::targetColumn).toList();
+        List<Integer> updateEvaluationOrder = maskingEvaluationOrder(updatePlans, ruleByCol);
 
         Set<String> uniqueCols = uniqueIndexedColumns(out, schema, table);
         List<String> blocked = updateCols.stream()
@@ -2077,7 +2099,7 @@ public class ProvisioningService {
                             Object[] row = new Object[stageCols.size()];
                             for (int j = 0; j < joinKeys.size(); j++)
                                 row[j] = rawBySource.get(joinKeys.get(j).toLowerCase(Locale.ROOT));
-                            for (int u = 0; u < updatePlans.size(); u++) {
+                            for (int u : updateEvaluationOrder) {
                                 ColumnPlan p = updatePlans.get(u);
                                 String ot = p.override() == null ? "USE_POLICY" : p.override().getOverrideType();
                                 Integer flag = planToFlag.get(u);
@@ -2094,6 +2116,8 @@ public class ProvisioningService {
                                 val = fitValueForTarget(val, schema, table, p.targetColumn(),
                                         p.sqlType(), p.size(), p.scale());
                                 row[joinKeys.size() + u] = val;
+                                if (val instanceof String masked)
+                                    ctx.masked.put(p.targetColumn().toLowerCase(Locale.ROOT), masked);
                             }
                             staged.add(row);
                         }
@@ -2264,6 +2288,7 @@ public class ProvisioningService {
         if (!anyTransform) { progressMessage(job, "In-place: nothing to mask on " + table); return 0; }
 
         List<String> updateCols = workPlans.stream().map(ColumnPlan::targetColumn).toList();
+        List<Integer> workEvaluationOrder = maskingEvaluationOrder(workPlans, ruleByCol);
 
         // Conditional masking: free-form expressions pushed to SQL as flags; structured evaluated in Java.
         List<String> condExprs = new ArrayList<>();
@@ -2362,7 +2387,7 @@ public class ProvisioningService {
                             condFlags[f] = rs.getInt(readCols.size() + 1 + f) == 1;
 
                         Map<String, Object> outByCol = new HashMap<>();
-                        for (int c = 0; c < workPlans.size(); c++) {
+                        for (int c : workEvaluationOrder) {
                             ColumnPlan p = workPlans.get(c);
                             String ot = p.override() == null ? "USE_POLICY" : p.override().getOverrideType();
                             Integer flag = planToFlag.get(c);

@@ -174,7 +174,8 @@ public class DataScopeMaskPreviewService {
     private static int maskOrder(MaskingRuleEntity rule) {
         if (rule == null) return 1;
         return switch (rule.getFunction()) {
-            case "FIRST_NAME", "LAST_NAME", "FULL_NAME" -> 0;
+            case "FIRST_NAME", "LAST_NAME" -> 0;
+            case "FULL_NAME", "EMAIL", "SCRIPT" -> 2;
             default -> 1;
         };
     }

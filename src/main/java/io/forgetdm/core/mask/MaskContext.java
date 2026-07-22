@@ -1,7 +1,9 @@
 package io.forgetdm.core.mask;
 
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 /** Row-level context: lets composite functions (EMAIL, FULL_NAME) stay consistent with sibling columns. */
 public class MaskContext {
@@ -16,6 +18,32 @@ public class MaskContext {
 
     public String original(String col) { return col == null ? null : row.get(col.toLowerCase()); }
     public String maskedOf(String col) { return col == null ? null : masked.get(col.toLowerCase()); }
+
+    public String maskedFirstName() {
+        return maskedNamePart(List.of("first_name", "firstname", "fname", "given_name", "givenname"));
+    }
+
+    public String maskedLastName() {
+        return maskedNamePart(List.of("last_name", "lastname", "lname", "surname", "family_name", "familyname"));
+    }
+
+    private String maskedNamePart(List<String> aliases) {
+        for (String alias : aliases) {
+            String value = masked.get(alias);
+            if (value != null && !value.isBlank()) return value;
+        }
+        // Target columns often carry a business prefix (customer_first_name, party_surname).
+        // Sorting removes HashMap iteration order from the selection when more than one alias exists.
+        for (Map.Entry<String, String> entry : new TreeMap<>(masked).entrySet()) {
+            String key = entry.getKey();
+            String value = entry.getValue();
+            if (value == null || value.isBlank()) continue;
+            for (String alias : aliases) {
+                if (key.endsWith("_" + alias)) return value;
+            }
+        }
+        return null;
+    }
 
     public void useSharedDateShiftRange(int minDays, int maxDays) {
         this.sharedDateShiftMinDays = minDays;

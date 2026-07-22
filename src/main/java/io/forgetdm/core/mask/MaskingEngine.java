@@ -116,7 +116,7 @@ public class MaskingEngine {
             case FIRST_NAME: return applyCase(pick("first_names.txt", salt, value), caseMode(param1, param2));
             case LAST_NAME:  return applyCase(pick("last_names.txt", salt, value), caseMode(param1, param2));
             case COMPANY:    return applyCase(pick("companies.txt", salt, value), caseMode(param1, param2));
-            case FULL_NAME:  return fullName(salt, value, param1, param2);
+            case FULL_NAME:  return fullName(salt, value, param1, param2, ctx);
             case EMAIL:      return email(salt, value, param1, param2, ctx);
             case PHONE:      return phone(salt, value, param1, param2);
             case SSN:        return ssn(salt, value, param1, param2);
@@ -372,12 +372,14 @@ public class MaskingEngine {
         return SeedLists.get(seedlist);
     }
 
-    private String fullName(String salt, String value, String format, String outputCase) {
+    private String fullName(String salt, String value, String format, String outputCase, MaskContext ctx) {
         String firstRaw = firstToken(value);
         String middleRaw = middleToken(value);
         String lastRaw = lastToken(value);
-        String first = pick("first_names.txt", "name.first", firstRaw);
-        String last  = pick("last_names.txt",  "name.last",  lastRaw);
+        String contextualFirst = ctx == null ? null : ctx.maskedFirstName();
+        String contextualLast = ctx == null ? null : ctx.maskedLastName();
+        String first = contextualFirst != null ? contextualFirst : pick("first_names.txt", "name.first", firstRaw);
+        String last  = contextualLast != null ? contextualLast : pick("last_names.txt", "name.last", lastRaw);
         String middleSeed = middleRaw.isBlank() ? firstRaw + "|" + lastRaw : middleRaw;
         String middle = pick("first_names.txt", "name.middle", middleSeed);
         String out = formatName(format, first, middleRaw.isBlank() ? "" : middle, last);

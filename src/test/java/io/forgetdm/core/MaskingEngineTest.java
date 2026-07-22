@@ -41,6 +41,35 @@ class MaskingEngineTest {
         assertEquals(Character.toUpperCase(firstLast.charAt(0)), firstLast.charAt(0));
     }
 
+    @Test void fullNameUsesAlreadyMaskedSiblingNames() {
+        MaskContext row = new MaskContext(7);
+        row.masked.put("first_name", "Avery");
+        row.masked.put("last_name", "Stone");
+
+        assertEquals("Avery Stone", engine.mask(MaskFunction.FULL_NAME, "name.full",
+                "Jane Doe", "FIRST LAST", "PROPER", row));
+        assertEquals("STONE, AVERY", engine.mask(MaskFunction.FULL_NAME, "name.full",
+                "Jane Doe", "LAST, FIRST", "UPPER", row));
+    }
+
+    @Test void fullNameRecognizesCommonSiblingAliases() {
+        MaskContext row = new MaskContext(8);
+        row.masked.put("customer_fname", "Morgan");
+        row.masked.put("customer_surname", "Reed");
+
+        assertEquals("Reed, Morgan", engine.mask(MaskFunction.FULL_NAME, "name.full",
+                "Jane Doe", "LAST, FIRST", "PROPER", row));
+    }
+
+    @Test void independentFullNameStillFallsBackAndNullStaysNull() {
+        String independent = engine.mask(MaskFunction.FULL_NAME, "name.full",
+                "Jane Doe", "FIRST LAST", "PROPER", new MaskContext(9));
+        assertNotEquals("Jane Doe", independent);
+        assertEquals(2, independent.split("\\s+").length);
+        assertNull(engine.mask(MaskFunction.FULL_NAME, "name.full", null,
+                "FIRST LAST", "PROPER", new MaskContext(10)));
+    }
+
     @Test void nameCaseCanBeSelectedForAtomicNameFields() {
         String lower = engine.mask(MaskFunction.FIRST_NAME, "name.first", "Yash", null, "LOWER", ctx);
         String upper = engine.mask(MaskFunction.FIRST_NAME, "name.first", "Yash", null, "UPPER", ctx);

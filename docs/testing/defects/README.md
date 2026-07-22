@@ -57,6 +57,7 @@ Defects found while executing the ForgeTDM test stories. Each defect is a tracke
 | [DEF-0035](DEF-0035-format-preserve-leaked-non-ascii-letters.md) | Format-preserving masking leaked non-ASCII letters | HIGH | CLOSED | MASK-002 (03/04) | Unicode code-point masking preserves script, category, width, and valid surrogate pairs |
 | [DEF-0036](DEF-0036-masked-values-bypassed-target-datatype-fit.md) | Masked values bypassed target datatype-fit validation | HIGH | CLOSED | MASK-002 (05/06) | Target metadata guard validates length, precision, scale, and scalar conversion before JDBC batching |
 | [DEF-0037](DEF-0037-key-consistency-salt-depended-on-edge-order.md) | Key-consistency salt depended on relationship iteration order | HIGH | CLOSED | MASK-004 (03/04) | Canonical union representative; focused and live three-engine join retest green |
+| [DEF-0038](DEF-0038-derived-full-name-ignored-masked-row-context.md) | Derived full name ignored masked row context | HIGH | CLOSED | MASK-005 (02/05/06/07) | Component-first evaluation and contextual FULL_NAME composition; 541-test regression green |
 
 ## Mirror to GitHub
 
