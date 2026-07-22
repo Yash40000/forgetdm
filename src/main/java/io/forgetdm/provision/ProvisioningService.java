@@ -3972,15 +3972,15 @@ public class ProvisioningService {
      *    accidentally collide into the same masked space.
      */
     /** One key relationship edge (parent key column ↔ child key column), lower-cased. */
-    private record KeyEdge(String parentTable, String parentColumn, String childTable, String childColumn) {}
+    record KeyEdge(String parentTable, String parentColumn, String childTable, String childColumn) {}
 
     /**
      * Collect key relationship edges among the run's tables: DB-catalog FKs PLUS custom soft-FK relationships
      * (DataScope user relationships + RI registry edges, passed in as {@code softEdges}). Composite edges are
      * expanded per aligned column pair upstream, so each UserRelEdge is already a single column pair.
      */
-    private List<KeyEdge> collectKeyEdges(Connection in, String schema, java.util.Collection<String> tables,
-                                          java.util.Collection<SubsetService.UserRelEdge> softEdges) {
+    List<KeyEdge> collectKeyEdges(Connection in, String schema, java.util.Collection<String> tables,
+                                  java.util.Collection<SubsetService.UserRelEdge> softEdges) {
         Set<String> inRun = new HashSet<>();
         for (String t : tables) if (t != null) inRun.add(t.toLowerCase(Locale.ROOT));
         List<KeyEdge> edges = new ArrayList<>();
@@ -4011,7 +4011,7 @@ public class ProvisioningService {
      * columns are unioned; each column then maps to a stable shared salt ("ri:&lt;root&gt;"). Masking both sides
      * with the same function therefore yields the same masked value for the same input → joins survive.
      */
-    private Map<String, String> buildKeyConsistencySalts(List<KeyEdge> edges) {
+    static Map<String, String> buildKeyConsistencySalts(List<KeyEdge> edges) {
         Map<String, String> uf = new HashMap<>();
         for (KeyEdge e : edges)
             ufUnion(uf, e.parentTable() + "." + e.parentColumn(), e.childTable() + "." + e.childColumn());
@@ -4025,7 +4025,7 @@ public class ProvisioningService {
      * not, or both masked with different functions. Either case silently breaks joins, and it can't be auto-
      * reconciled (the engine can't know which side is authoritative), so it's surfaced rather than fixed.
      */
-    private List<String> keyMaskWarnings(List<KeyEdge> edges,
+    List<String> keyMaskWarnings(List<KeyEdge> edges,
             Map<String, List<MaskingRuleEntity>> ruleMap,
             Map<Long, Map<String, List<MaskingRuleEntity>>> profileRuleCache,
             Map<String, TableProfileEntity> profileByTable,
@@ -4088,7 +4088,13 @@ public class ProvisioningService {
 
     private static void ufUnion(Map<String, String> uf, String a, String b) {
         String ra = ufFind(uf, a), rb = ufFind(uf, b);
-        if (!ra.equals(rb)) uf.put(ra, rb);
+        if (!ra.equals(rb)) {
+            // Metadata and user-defined relationships have no guaranteed iteration order. A canonical
+            // representative keeps the shared masking salt stable when tables or edges are reordered.
+            String root = ra.compareTo(rb) <= 0 ? ra : rb;
+            String other = root.equals(ra) ? rb : ra;
+            uf.put(other, root);
+        }
     }
 
     static String saltFor(MaskingRuleEntity rule, String table, String col, Map<String, String> keySalt) {

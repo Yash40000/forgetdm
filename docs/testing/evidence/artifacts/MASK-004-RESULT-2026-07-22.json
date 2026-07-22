@@ -1,0 +1,18 @@
+{
+  "story": "MASK-004",
+  "status": "COMPLETE",
+  "acceptanceCases": { "passed": 10, "total": 10 },
+  "focusedConsistency": { "passed": 8, "failures": 0, "errors": 0 },
+  "liveJoinProof": {
+    "passed": 3,
+    "total": 3,
+    "engines": ["POSTGRES", "ORACLE", "MYSQL"],
+    "parentRows": 16,
+    "childRows": 48,
+    "joinCountPerEngine": 48,
+    "canonicalSha256": "1bf131c89c1d97fc342c7e5d1b63005e758b817e0b527828a81b4c77e74c92cb"
+  },
+  "compatibilityRegression": { "passed": 125, "failures": 0, "errors": 0, "skipped": 0 },
+  "closedDefects": ["DEF-0037"],
+  "hardPass": []
+}

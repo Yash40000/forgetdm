@@ -125,6 +125,24 @@
         "Never retain database mutations or credentials in evidence.",
         "Prove identical canonical checksums for equal seeds and changed checksums for different seeds."
       ]
+    },
+    "MASK-004": {
+      "status": "APPROVED",
+      "approvedAt": "2026-07-22T19:15:00-04:00",
+      "approvedBy": "Codex test coordinator (product-owner delegated)",
+      "allowedScopes": [
+        "SOURCE_INSPECTION",
+        "UNIT_TEST",
+        "REFERENCE_ENGINE",
+        "LOCAL_TEST_DATABASE",
+        "LOCAL_TEST_FIXTURE_MUTATION"
+      ],
+      "conditions": [
+        "Use synthetic relationship keys and local non-production connectors only.",
+        "Use disposable objects or rollback-only transactions and remove every fixture.",
+        "Retain only join counts, checksums, test counts, and sanitized defect evidence.",
+        "Prove both positive consistency and negative separation before marking green."
+      ]
     }
   }
 }
