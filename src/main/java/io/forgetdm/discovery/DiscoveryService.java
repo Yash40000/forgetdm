@@ -15,9 +15,14 @@ import io.forgetdm.policy.MaskingRuleRepository;
 import io.forgetdm.policy.PolicyNameRules;
 import jakarta.transaction.Transactional;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.sql.*;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Pattern;
 
 /**
@@ -29,6 +34,7 @@ import java.util.regex.Pattern;
  */
 @Service
 public class DiscoveryService {
+    private static final ConcurrentMap<String, ReentrantLock> SCAN_SCOPE_LOCKS = new ConcurrentHashMap<>();
 
     /**
      * A scope rejection is intentionally distinct from a connection or scan failure.  Callers can
@@ -130,6 +136,8 @@ public class DiscoveryService {
             String schema = DataSourceService.normalizeSchema(c, schemaName);
             resolvedSchema = schema;
             validateRequestedSchemaVisible(c, schemaName, schema);
+            ScanScopeLease scanScope = acquireScanScope(dataSourceId, schema);
+            try {
             scanProgress.schemaResolved(schema);
             // Preserve human decisions across re-scans: keep APPROVED / REJECTED / manual classifications,
             // refresh only the machine SUGGESTED ones. (A re-scan must not wipe an analyst's review work.)
@@ -204,6 +212,9 @@ public class DiscoveryService {
             // Suggestions still present were in scope but were not rediscovered. Reviewed and
             // out-of-scope classifications were locked above and are never removed here.
             if (!refreshable.isEmpty()) classifications.deleteAll(refreshable.values());
+            } finally {
+                scanScope.close();
+            }
         } catch (ScanScopeException e) {
             auditRejectedScope(dataSourceId, resolvedSchema == null ? schemaName : resolvedSchema, e);
             throw e;
@@ -213,6 +224,43 @@ public class DiscoveryService {
         audit.log("system", "DISCOVERY_SCAN", "datasource=" + ds.getName() + " schema=" + schemaName
                 + " piiTypes=" + selected + " tables=" + selectedTableKeys + " findings=" + found.size());
         return found;
+    }
+
+    /**
+     * A physical column has one classification row. Keep overlapping rescans serialized until the
+     * transaction commits so two direct API calls cannot both observe a missing row and race into
+     * the unique key. Unrelated data-source/schema scopes still scan concurrently.
+     */
+    private static ScanScopeLease acquireScanScope(Long dataSourceId, String schema) {
+        String key = dataSourceId + "\u0000" + normalizeName(schema);
+        ReentrantLock lock = SCAN_SCOPE_LOCKS.computeIfAbsent(key, ignored -> new ReentrantLock(true));
+        lock.lock();
+        boolean transactionManaged = TransactionSynchronizationManager.isSynchronizationActive();
+        if (transactionManaged) {
+            try {
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCompletion(int status) {
+                        releaseScanScope(lock);
+                    }
+                });
+            } catch (RuntimeException e) {
+                releaseScanScope(lock);
+                throw e;
+            }
+        }
+        return new ScanScopeLease(lock, transactionManaged);
+    }
+
+    private static void releaseScanScope(ReentrantLock lock) {
+        lock.unlock();
+    }
+
+    private record ScanScopeLease(ReentrantLock lock, boolean transactionManaged) implements AutoCloseable {
+        @Override
+        public void close() {
+            if (!transactionManaged) releaseScanScope(lock);
+        }
     }
 
     public List<String> validateScanScope(Long dataSourceId, String schemaName, Set<String> selectedTables) {

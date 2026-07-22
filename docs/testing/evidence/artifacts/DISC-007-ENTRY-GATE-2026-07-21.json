@@ -1,0 +1,21 @@
+﻿{
+    "schemaVersion":  1,
+    "storyId":  "DISC-007",
+    "decision":  "APPROVED",
+    "checkedAt":  "2026-07-22T02:47:17.9351115-04:00",
+    "approvalRecordedAt":  "2026-07-21T18:30:00-04:00",
+    "approvedBy":  "Codex test coordinator (product-owner delegated)",
+    "requestedScopes":  [
+                            "SOURCE_INSPECTION",
+                            "UNIT_TEST",
+                            "LOCAL_TEST_DATABASE",
+                            "LOCAL_TEST_FIXTURE_MUTATION"
+                        ],
+    "storySpecification":  "D:\\forgetdm - Copy\\docs\\testing\\cases\\ready\\DISC-007.md",
+    "conditions":  [
+                       "Use a namespaced disposable PostgreSQL discovery fixture only.",
+                       "Do not contact external systems or paid services.",
+                       "Do not test against production or customer data.",
+                       "Retain sanitized evidence and independently review every green claim."
+                   ]
+}

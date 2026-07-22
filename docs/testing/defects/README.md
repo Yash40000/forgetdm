@@ -52,6 +52,7 @@ Defects found while executing the ForgeTDM test stories. Each defect is a tracke
 | [DEF-0030](DEF-0030-successful-ui-login-reuses-unauthenticated-cache.md) | Successful UI login reused unauthenticated query cache | HIGH | CLOSED | AUTH-003 regression | Clear authentication-sensitive cache on login |
 | [DEF-0031](DEF-0031-auth003-guard-contract-rejected-saved-baseline.md) | AUTH-003 guard test rejected the saved baseline contract | MEDIUM (test) | CLOSED | AUTH-003 regression | Corrected test contract and retained evidence |
 | [DEF-0032](DEF-0032-rbac002-nested-and-runtime-object-isolation.md) | Nested and runtime objects bypass cross-group isolation | HIGH (S1) | CLOSED | RBAC-002 (02/03/04/05/06) | Parent/runtime/reference isolation complete; 90 focused + 35 live + 503 regression checks green |
+| [DEF-0033](DEF-0033-concurrent-discovery-rescan-unique-key-race.md) | Concurrent direct rescans can race the physical-column unique key | HIGH | CLOSED | DISC-007 (08/09) | Fair per-source/schema lock retained through transaction completion; 10/10 live acceptance and 503-test regression green |
 
 ## Mirror to GitHub
 

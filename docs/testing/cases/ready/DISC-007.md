@@ -3,7 +3,7 @@
 **Priority:** P0
 
 **Lane:** Reference connector
-**Execution status:** NOT RUN
+**Execution status:** COMPLETE - 10/10 acceptance cases passed on local PostgreSQL and Edge, 2026-07-22
 
 ## Objective
 
@@ -31,5 +31,11 @@ Prove that rescanning refreshes machine suggestions in place, preserves analyst 
 
 ## Automation and Exit
 
-- Add PostgreSQL integration tests around `DiscoveryService.scan`, including concurrent and rollback lanes.
-- Pass requires repeated scans without `uq_class` failures and zero loss of approved/rejected/manual decisions.
+- Repeatable PostgreSQL/API lane: `docs/testing/run-disc-007-acceptance.ps1`.
+- Browser lane: `frontend/e2e/disc-007/discovery-rescan-ui.spec.ts`.
+- Closure evidence: `docs/testing/evidence/DISC-007-EVIDENCE.md`.
+- Result: all 10 cases passed, including concurrent same-scope scans, injected transaction rollback,
+  analyst-decision durability, focused scopes, findings UI parity, and CSV download parity.
+- Regression: 503 backend tests passed with zero failures/errors (one unrelated opt-in skip); the
+  production frontend build and TypeScript gate passed.
+- Defect `DEF-0033` is closed. No DISC-007 case is deferred or HARD-PASS.

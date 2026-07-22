@@ -1,0 +1,26 @@
+{
+  "story": "DISC-007",
+  "generatedAt": "2026-07-22T19:04:13Z",
+  "backend": {
+    "command": "mvn -q test",
+    "suites": 101,
+    "tests": 503,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "skipScope": "unrelated opt-in SyntheticScenarioPackTest"
+  },
+  "frontend": {
+    "command": "npm.cmd run build",
+    "compiled": true,
+    "typescript": "PASS",
+    "staticRoutes": 28
+  },
+  "browser": {
+    "command": "npx.cmd playwright test --config=playwright.disc007.config.ts",
+    "expected": 1,
+    "unexpected": 0,
+    "skipped": 0,
+    "durationMs": 29806.427
+  }
+}

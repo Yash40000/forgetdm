@@ -1,0 +1,67 @@
+﻿{
+    "story":  "DISC-007",
+    "generatedAt":  "2026-07-22T19:00:42.0314820Z",
+    "baseUrl":  "http://localhost:8099",
+    "fixture":  {
+                    "dataSourceId":  10,
+                    "schema":  "disc007_acceptance",
+                    "database":  "sourcedb"
+                },
+    "totals":  {
+                   "passed":  10,
+                   "failed":  0,
+                   "expected":  10
+               },
+    "cases":  [
+                  {
+                      "case":  "DISC-007-01",
+                      "status":  "PASS",
+                      "evidence":  "Two identical scans retained 6 unique physical-column rows and stable IDs."
+                  },
+                  {
+                      "case":  "DISC-007-02",
+                      "status":  "PASS",
+                      "evidence":  "Suggestion id 397 refreshed in place from SSN to EMAIL."
+                  },
+                  {
+                      "case":  "DISC-007-03",
+                      "status":  "PASS",
+                      "evidence":  "Approved analyst decision and TOKENIZE override survived source-data change and rescan."
+                  },
+                  {
+                      "case":  "DISC-007-04",
+                      "status":  "PASS",
+                      "evidence":  "Rejected and manual decisions retained their IDs/statuses with one row per physical column."
+                  },
+                  {
+                      "case":  "DISC-007-05",
+                      "status":  "PASS",
+                      "evidence":  "Only the stale machine suggestion was removed; reviewed rows remained."
+                  },
+                  {
+                      "case":  "DISC-007-06",
+                      "status":  "PASS",
+                      "evidence":  "Excluded SSN suggestion was preserved and absent from EMAIL-scoped scan/results."
+                  },
+                  {
+                      "case":  "DISC-007-07",
+                      "status":  "PASS",
+                      "evidence":  "Focused rescan touched only scope_a and left scope_b byte-for-byte stable at the API contract level."
+                  },
+                  {
+                      "case":  "DISC-007-08",
+                      "status":  "PASS",
+                      "evidence":  "Concurrent statuses=200,200; 5 physical keys remained unique; neither response contained a duplicate-key error."
+                  },
+                  {
+                      "case":  "DISC-007-09",
+                      "status":  "PASS",
+                      "evidence":  "Injected database failure rolled the entire rescan back; clean rerun then discovered candidate_fail."
+                  },
+                  {
+                      "case":  "DISC-007-10",
+                      "status":  "PASS",
+                      "evidence":  "Results API and downloadable CSV projection both contain 6 current rows; database uniqueness audit found zero duplicate keys. UI parity is retained separately."
+                  }
+              ]
+}

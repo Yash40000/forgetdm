@@ -1,0 +1,15 @@
+<testsuites id="" name="" tests="1" failures="0" skipped="0" errors="0" time="29.806427">
+<testsuite name="discovery-rescan-ui.spec.ts" timestamp="2026-07-22T18:41:48.767Z" hostname="" tests="1" failures="0" skipped="0" time="23.932" errors="0">
+<testcase name="findings workspace and CSV agree with the current rescan results" classname="discovery-rescan-ui.spec.ts" time="23.932">
+<system-out>
+<![CDATA[
+[[ATTACHMENT|artifacts\discovery-rescan-ui-findin-4d048--the-current-rescan-results\test-finished-1.png]]
+
+[[ATTACHMENT|artifacts\discovery-rescan-ui-findin-4d048--the-current-rescan-results\test-finished-2.png]]
+
+[[ATTACHMENT|artifacts\discovery-rescan-ui-findin-4d048--the-current-rescan-results\trace.zip]]
+]]>
+</system-out>
+</testcase>
+</testsuite>
+</testsuites>
