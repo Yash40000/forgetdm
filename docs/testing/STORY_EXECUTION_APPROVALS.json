@@ -107,6 +107,24 @@
         "Do not contact external systems or paid services.",
         "Prove null, empty, Unicode, maximum-length, and JDBC datatype-fit behavior before marking green."
       ]
+    },
+    "MASK-003": {
+      "status": "APPROVED",
+      "approvedAt": "2026-07-22T18:00:00-04:00",
+      "approvedBy": "Codex test coordinator (product-owner delegated)",
+      "allowedScopes": [
+        "SOURCE_INSPECTION",
+        "UNIT_TEST",
+        "REFERENCE_ENGINE",
+        "LOCAL_TEST_DATABASE",
+        "LOCAL_TEST_FIXTURE_MUTATION"
+      ],
+      "conditions": [
+        "Use synthetic reference values and local non-production connectors only.",
+        "Do not contact external systems or paid services.",
+        "Never retain database mutations or credentials in evidence.",
+        "Prove identical canonical checksums for equal seeds and changed checksums for different seeds."
+      ]
     }
   }
 }

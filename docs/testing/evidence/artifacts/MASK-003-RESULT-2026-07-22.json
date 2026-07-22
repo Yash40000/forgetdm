@@ -1,0 +1,17 @@
+{
+  "story": "MASK-003",
+  "status": "COMPLETE",
+  "acceptanceCases": { "passed": 9, "total": 9 },
+  "maskingFunctions": { "replayed": 43, "total": 43 },
+  "focusedSeedTests": { "passed": 9, "failures": 0, "errors": 0 },
+  "compatibilityRegression": { "passed": 117, "failures": 0, "errors": 0, "skipped": 0 },
+  "liveChecksum": {
+    "passed": 1,
+    "total": 1,
+    "engines": ["POSTGRES", "ORACLE", "MYSQL"],
+    "baseSeedSha256": "2b84dc70d52b7334041bbf47b75115b60f06f6c9be38e02d0ac1f486c1d6098c",
+    "alternateSeedSha256": "fd99372398b7695c0c48dee3b1f73267048eeba4dcce85990e9d7307a287b9c8"
+  },
+  "closedDefects": [],
+  "hardPass": []
+}
