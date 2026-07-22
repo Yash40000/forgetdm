@@ -54,6 +54,8 @@ Defects found while executing the ForgeTDM test stories. Each defect is a tracke
 | [DEF-0032](DEF-0032-rbac002-nested-and-runtime-object-isolation.md) | Nested and runtime objects bypass cross-group isolation | HIGH (S1) | CLOSED | RBAC-002 (02/03/04/05/06) | Parent/runtime/reference isolation complete; 90 focused + 35 live + 503 regression checks green |
 | [DEF-0033](DEF-0033-concurrent-discovery-rescan-unique-key-race.md) | Concurrent direct rescans can race the physical-column unique key | HIGH | CLOSED | DISC-007 (08/09) | Fair per-source/schema lock retained through transaction completion; 10/10 live acceptance and 503-test regression green |
 | [DEF-0034](DEF-0034-masking-invalid-parameters-silently-accepted.md) | Masking functions silently accepted malformed parameters | HIGH | CLOSED | MASK-001 (03) | Central preflight validation now rejects invalid modes, ranges, maps, regexes, splits, and formats |
+| [DEF-0035](DEF-0035-format-preserve-leaked-non-ascii-letters.md) | Format-preserving masking leaked non-ASCII letters | HIGH | CLOSED | MASK-002 (03/04) | Unicode code-point masking preserves script, category, width, and valid surrogate pairs |
+| [DEF-0036](DEF-0036-masked-values-bypassed-target-datatype-fit.md) | Masked values bypassed target datatype-fit validation | HIGH | CLOSED | MASK-002 (05/06) | Target metadata guard validates length, precision, scale, and scalar conversion before JDBC batching |
 
 ## Mirror to GitHub
 

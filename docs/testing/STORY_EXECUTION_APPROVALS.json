@@ -90,6 +90,23 @@
         "Do not contact external systems or paid services.",
         "Execute every catalog function and retain a compact result summary."
       ]
+    },
+    "MASK-002": {
+      "status": "APPROVED",
+      "approvedAt": "2026-07-22T16:30:00-04:00",
+      "approvedBy": "Codex test coordinator (product-owner delegated)",
+      "allowedScopes": [
+        "SOURCE_INSPECTION",
+        "UNIT_TEST",
+        "REFERENCE_ENGINE",
+        "LOCAL_TEST_DATABASE",
+        "LOCAL_TEST_FIXTURE_MUTATION"
+      ],
+      "conditions": [
+        "Use synthetic boundary values and disposable local database objects only.",
+        "Do not contact external systems or paid services.",
+        "Prove null, empty, Unicode, maximum-length, and JDBC datatype-fit behavior before marking green."
+      ]
     }
   }
 }

@@ -50,6 +50,61 @@ class MaskingFunctionCatalogAcceptanceTest {
                 invocation::run, function.name() + " accepted malformed parameters"));
     }
 
+    @Test
+    void everyFunctionHasAnExplicitNullAndEmptyInputContract() {
+        EnumSet<MaskFunction> sourceCreating = EnumSet.of(
+                MaskFunction.FIXED,
+                MaskFunction.NULLIFY,
+                MaskFunction.SEQUENCE,
+                MaskFunction.SCRIPT);
+        EnumSet<MaskFunction> lookupReserved = EnumSet.of(
+                MaskFunction.DIRECT_LOOKUP,
+                MaskFunction.HASH_LOOKUP);
+        EnumSet<MaskFunction> sourcePreserving = EnumSet.allOf(MaskFunction.class);
+        sourcePreserving.removeAll(sourceCreating);
+        sourcePreserving.removeAll(lookupReserved);
+
+        EnumSet<MaskFunction> classified = EnumSet.copyOf(sourcePreserving);
+        classified.addAll(sourceCreating);
+        classified.addAll(lookupReserved);
+        assertEquals(EnumSet.allOf(MaskFunction.class), classified,
+                "Every function must belong to exactly one null/empty contract");
+
+        Map<MaskFunction, ValidCase> cases = validCases();
+        sourcePreserving.forEach(function -> {
+            ValidCase testCase = cases.get(function);
+            assertNull(engine.mask(function, "mask002.null", null,
+                    testCase.param1(), testCase.param2(), referenceContext()), function.name());
+            assertEquals("", engine.mask(function, "mask002.empty", "",
+                    testCase.param1(), testCase.param2(), referenceContext()), function.name());
+        });
+
+        assertEquals("MASKED", engine.mask(MaskFunction.FIXED, "mask002.fixed", null,
+                "MASKED", null, referenceContext()));
+        assertNull(engine.mask(MaskFunction.NULLIFY, "mask002.nullify", "",
+                null, null, referenceContext()));
+        assertEquals("CUS-7", engine.mask(MaskFunction.SEQUENCE, "mask002.sequence", null,
+                "CUS-", null, referenceContext()));
+        assertEquals("", engine.mask(MaskFunction.SCRIPT, "mask002.script", "",
+                "mask001-script", "reference", referenceContext()));
+
+        String direct = "<NULL>=>NULL_ROW|<EMPTY>=>EMPTY_ROW|<SPACES>=>SPACE_ROW|A=>ALPHA";
+        assertEquals("NULL_ROW", engine.mask(MaskFunction.DIRECT_LOOKUP, "mask002.direct", null,
+                direct, null, referenceContext()));
+        assertEquals("EMPTY_ROW", engine.mask(MaskFunction.DIRECT_LOOKUP, "mask002.direct", "",
+                direct, null, referenceContext()));
+        assertEquals("SPACE_ROW", engine.mask(MaskFunction.DIRECT_LOOKUP, "mask002.direct", "   ",
+                direct, null, referenceContext()));
+
+        String hashed = "-1=>NULL_ROW|-2=>SPACE_ROW|-3=>EMPTY_ROW|1=>ALPHA|2=>BETA";
+        assertEquals("NULL_ROW", engine.mask(MaskFunction.HASH_LOOKUP, "mask002.hash", null,
+                hashed, null, referenceContext()));
+        assertEquals("EMPTY_ROW", engine.mask(MaskFunction.HASH_LOOKUP, "mask002.hash", "",
+                hashed, null, referenceContext()));
+        assertEquals("SPACE_ROW", engine.mask(MaskFunction.HASH_LOOKUP, "mask002.hash", "   ",
+                hashed, null, referenceContext()));
+    }
+
     private Map<MaskFunction, ValidCase> validCases() {
         Map<MaskFunction, ValidCase> cases = new EnumMap<>(MaskFunction.class);
         add(cases, MaskFunction.FIRST_NAME, "Jane", null, "PROPER");

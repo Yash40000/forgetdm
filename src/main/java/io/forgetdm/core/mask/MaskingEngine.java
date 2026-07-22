@@ -20,6 +20,7 @@ import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.TreeMap;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -35,6 +36,9 @@ import java.util.regex.Pattern;
  *  6. Never emits deliverable email domains or real-looking SSN groups where avoidable
  */
 public class MaskingEngine {
+
+    private static final int UNICODE_NEARBY_RADIUS = 256;
+    private static final Map<UnicodeFormatClass, int[]> SPARSE_UNICODE_ALPHABETS = new ConcurrentHashMap<>();
 
     private static final Set<String> US_STATES = Set.of(
             "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID", "IL", "IN",
@@ -1388,7 +1392,7 @@ public class MaskingEngine {
         return index == generated.length() ? out.toString() : generated;
     }
 
-    /** FPE-style: every digit -> digit, letter -> letter (case preserved); punctuation/length untouched.
+    /** FPE-style: every digit -> digit, letter -> letter (case/script preserved); punctuation/length untouched.
      *  Phone mode (keepCountryCode) preserves a leading '+' AND its country-code digit group so
      *  routing/locale logic in the application under test keeps working. */
     private String formatPreserve(String salt, String value, boolean keepCountryCode) {
@@ -1399,15 +1403,83 @@ public class MaskingEngine {
             while (preserveUpTo < value.length() && Character.isDigit(value.charAt(preserveUpTo))) preserveUpTo++;
         }
         StringBuilder out = new StringBuilder(value.length());
-        for (int i = 0; i < value.length(); i++) {
-            char c = value.charAt(i);
-            if (i < preserveUpTo) { out.append(c); continue; }
-            if (c >= '0' && c <= '9') out.append((char) ('0' + r.nextInt(10)));
-            else if (c >= 'a' && c <= 'z') out.append((char) ('a' + r.nextInt(26)));
-            else if (c >= 'A' && c <= 'Z') out.append((char) ('A' + r.nextInt(26)));
-            else out.append(c);
+        for (int offset = 0; offset < value.length();) {
+            int codePoint = value.codePointAt(offset);
+            if (offset < preserveUpTo || !Character.isLetterOrDigit(codePoint)) {
+                out.appendCodePoint(codePoint);
+            } else {
+                out.appendCodePoint(maskFormatCodePoint(codePoint, r));
+            }
+            offset += Character.charCount(codePoint);
         }
         return out.toString();
+    }
+
+    private static int maskFormatCodePoint(int codePoint, Random random) {
+        if (codePoint >= '0' && codePoint <= '9')
+            return '0' + Math.floorMod(codePoint - '0' + 1 + random.nextInt(9), 10);
+        if (codePoint >= 'a' && codePoint <= 'z')
+            return 'a' + Math.floorMod(codePoint - 'a' + 1 + random.nextInt(25), 26);
+        if (codePoint >= 'A' && codePoint <= 'Z')
+            return 'A' + Math.floorMod(codePoint - 'A' + 1 + random.nextInt(25), 26);
+
+        UnicodeFormatClass key = new UnicodeFormatClass(
+                Character.UnicodeScript.of(codePoint),
+                Character.getType(codePoint),
+                Character.charCount(codePoint));
+        int direction = random.nextBoolean() ? 1 : -1;
+        int rank = 1 + random.nextInt(8);
+        int nearby = nearbyFormatCodePoint(codePoint, key, direction, rank);
+        if (nearby >= 0) return nearby;
+
+        int[] alphabet = SPARSE_UNICODE_ALPHABETS.computeIfAbsent(key, MaskingEngine::buildUnicodeAlphabet);
+        if (alphabet == null || alphabet.length < 2) return codePoint;
+
+        int index = Arrays.binarySearch(alphabet, codePoint);
+        if (index < 0) return codePoint;
+        int shift = 1 + random.nextInt(alphabet.length - 1);
+        return alphabet[(index + shift) % alphabet.length];
+    }
+
+    private record UnicodeFormatClass(Character.UnicodeScript script, int category, int utf16Width) {}
+
+    private static int nearbyFormatCodePoint(int codePoint,
+                                             UnicodeFormatClass key,
+                                             int preferredDirection,
+                                             int rank) {
+        int firstMatch = -1;
+        int matches = 0;
+        for (int pass = 0; pass < 2; pass++) {
+            int direction = pass == 0 ? preferredDirection : -preferredDirection;
+            for (int distance = 1; distance <= UNICODE_NEARBY_RADIUS; distance++) {
+                int candidate = codePoint + direction * distance;
+                if (candidate < Character.MIN_CODE_POINT || candidate > Character.MAX_CODE_POINT) break;
+                if (!matchesUnicodeFormatClass(candidate, key)) continue;
+                if (firstMatch < 0) firstMatch = candidate;
+                if (++matches == rank) return candidate;
+            }
+        }
+        return firstMatch;
+    }
+
+    private static int[] buildUnicodeAlphabet(UnicodeFormatClass key) {
+        int count = 0;
+        for (int codePoint = 128; codePoint <= Character.MAX_CODE_POINT; codePoint++) {
+            if (matchesUnicodeFormatClass(codePoint, key)) count++;
+        }
+        int[] alphabet = new int[count];
+        int position = 0;
+        for (int codePoint = 128; codePoint <= Character.MAX_CODE_POINT; codePoint++) {
+            if (matchesUnicodeFormatClass(codePoint, key)) alphabet[position++] = codePoint;
+        }
+        return alphabet;
+    }
+
+    private static boolean matchesUnicodeFormatClass(int codePoint, UnicodeFormatClass key) {
+        return Character.isLetterOrDigit(codePoint)
+                && Character.UnicodeScript.of(codePoint) == key.script()
+                && Character.getType(codePoint) == key.category()
+                && Character.charCount(codePoint) == key.utf16Width();
     }
 
     private String redactKeepLast4(String value) {

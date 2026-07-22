@@ -30,6 +30,7 @@ This directory contains the executable specifications for the ten stories curren
 | DISC-006 | [Zero-table scan rejection](DISC-006.md) | Preflight safety | 8 | COMPLETE WITH HARD-PASS EXCEPTION - 7 pass; metadata-restricted-account behavior not certified |
 | DISC-007 | [Idempotent discovery rescan](DISC-007.md) | Classification durability | 10 | COMPLETE - 10/10 live PostgreSQL/API plus Edge UI/CSV pass; DEF-0033 closed |
 | MASK-001 | [Built-in masking function contracts](MASK-001.md) | Function matrix | 5 | COMPLETE - 43/43 functions exercised; 73 focused tests and Edge UI pass; DEF-0034 closed |
+| MASK-002 | [Boundary and datatype-fit behavior](MASK-002.md) | Unicode and target fit | 7 | COMPLETE - 7/7; 108 regression tests plus PostgreSQL, Oracle, and MySQL live SQL; DEF-0035/0036 closed |
 
 `CODE-VERIFIED` is not verified. A correct-looking implementation can still fail in transaction, browser, driver, or vendor behavior. Only direct retained execution evidence supports a pass claim.
 

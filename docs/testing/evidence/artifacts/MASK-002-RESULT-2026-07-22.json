@@ -1,0 +1,19 @@
+{
+  "story": "MASK-002",
+  "status": "COMPLETE",
+  "acceptanceCases": { "passed": 7, "total": 7 },
+  "functionInputContracts": { "classified": 43, "total": 43 },
+  "focusedIntegration": { "passed": 56, "failures": 0, "errors": 0 },
+  "compatibilityRegression": { "passed": 108, "failures": 0, "errors": 0, "skipped": 0 },
+  "liveSql": {
+    "passed": 3,
+    "total": 3,
+    "engines": [
+      { "engine": "POSTGRES", "mode": "disposable table" },
+      { "engine": "ORACLE", "mode": "disposable table" },
+      { "engine": "MYSQL", "mode": "rollback-only existing-row update" }
+    ]
+  },
+  "closedDefects": ["DEF-0035", "DEF-0036"],
+  "hardPass": []
+}

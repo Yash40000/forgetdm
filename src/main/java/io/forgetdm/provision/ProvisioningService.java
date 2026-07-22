@@ -30,6 +30,7 @@ import java.time.Instant;
 import java.util.*;
 import java.util.Locale;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -1252,8 +1253,12 @@ public class ProvisioningService {
 
     // -------------------- shared copy/mask plumbing --------------------
 
+    private record ColumnShape(int sqlType, int size, int scale) {
+        static ColumnShape varchar() { return new ColumnShape(Types.VARCHAR, 0, -1); }
+    }
+
     private record ColumnPlan(String targetColumn, String sourceColumn,
-                              ColumnOverrideEntity override, int sqlType) {}
+                              ColumnOverrideEntity override, int sqlType, int size, int scale) {}
 
     /** Parallelism for the copy/subset load path. Env FORGETDM_COPY_PARALLELISM; default 1 (sequential, unchanged). */
     private int copyParallelism() {
@@ -1408,9 +1413,10 @@ public class ProvisioningService {
                         : colOverrides.values().stream().map(ColumnOverrideEntity::getColumnName).toList();
             }
         }
-        Map<String, Integer> targetTypes = columnTypes(out, targetSchema, targetTable);
+        Map<String, ColumnShape> targetShapes = columnShapes(out, targetSchema, targetTable);
+        Map<String, Integer> targetTypes = columnTypes(targetShapes);
         List<ColumnPlan> columnPlans = buildColumnPlans(sourceTable, targetTable, sourceCols, targetCols,
-                targetTypes, colOverrides);
+                targetShapes, colOverrides);
         if (columnPlans.isEmpty()) return 0;
 
         List<String> writerCols = columnPlans.stream().map(ColumnPlan::targetColumn).toList();
@@ -1525,7 +1531,7 @@ public class ProvisioningService {
                                     String sk = plan.sourceColumn() == null ? null : plan.sourceColumn().toLowerCase(Locale.ROOT);
                                     values[i] = sk == null ? null : rawBySource.get(sk);
                                 } else if ("LITERAL".equals(overrideType)) {
-                                    values[i] = coerce(override.getLiteralValue(), plan.sqlType());
+                                    values[i] = override.getLiteralValue();
                                 } else if ("NULL_OUT".equals(overrideType)) {
                                     values[i] = null;
                                 } else if (plan.sourceColumn() == null) {
@@ -1533,9 +1539,11 @@ public class ProvisioningService {
                                 } else {
                                     String sourceKey = plan.sourceColumn().toLowerCase(Locale.ROOT);
                                     values[i] = applyPolicyMask(eng, sourceTable, plan.sourceColumn(), plan.targetColumn(),
-                                            rawBySource.get(sourceKey), textBySource.get(sourceKey), plan.sqlType(),
+                                            rawBySource.get(sourceKey), textBySource.get(sourceKey),
                                             ruleByCol, ctx);
                                 }
+                                values[i] = fitValueForTarget(values[i], targetSchema, targetTable,
+                                        plan.targetColumn(), plan.sqlType(), plan.size(), plan.scale());
                                 if (values[i] instanceof String masked)
                                     ctx.masked.put(plan.targetColumn().toLowerCase(Locale.ROOT), masked);
                             }
@@ -1895,9 +1903,10 @@ public class ProvisioningService {
         SqlDialect dialect = SqlDialect.fromConnection(out);
         List<String> sourceCols = columnsOf(in, schema, table);
         if (sourceCols.isEmpty()) return 0;
-        Map<String, Integer> types = columnTypes(in, schema, table);
+        Map<String, ColumnShape> shapes = columnShapes(in, schema, table);
+        Map<String, Integer> types = columnTypes(shapes);
 
-        List<ColumnPlan> plans = buildColumnPlans(table, table, sourceCols, sourceCols, types, colOverrides);
+        List<ColumnPlan> plans = buildColumnPlans(table, table, sourceCols, sourceCols, shapes, colOverrides);
         if (plans.isEmpty()) return 0;
 
         List<String> joinKeys = inPlaceJoinKeysOrEmpty(out, schema, table, sourceCols, customPkMap, spec);
@@ -2077,11 +2086,13 @@ public class ProvisioningService {
                                 String sk = p.sourceColumn() == null ? null : p.sourceColumn().toLowerCase(Locale.ROOT);
                                 Object val;
                                 if (!apply) val = sk == null ? null : rawBySource.get(sk);
-                                else if ("LITERAL".equals(ot)) val = coerce(p.override().getLiteralValue(), p.sqlType());
+                                else if ("LITERAL".equals(ot)) val = p.override().getLiteralValue();
                                 else if ("NULL_OUT".equals(ot)) val = null;
                                 else if (sk == null) val = null;
                                 else val = applyPolicyMask(eng, table, p.sourceColumn(), p.targetColumn(),
-                                            rawBySource.get(sk), textBySource.get(sk), p.sqlType(), ruleByCol, ctx);
+                                            rawBySource.get(sk), textBySource.get(sk), ruleByCol, ctx);
+                                val = fitValueForTarget(val, schema, table, p.targetColumn(),
+                                        p.sqlType(), p.size(), p.scale());
                                 row[joinKeys.size() + u] = val;
                             }
                             staged.add(row);
@@ -2360,11 +2371,13 @@ public class ProvisioningService {
                             String sk = p.sourceColumn() == null ? null : p.sourceColumn().toLowerCase(Locale.ROOT);
                             Object val;
                             if (!apply) val = sk == null ? null : rawBySource.get(sk);
-                            else if ("LITERAL".equals(ot)) val = coerce(p.override().getLiteralValue(), p.sqlType());
+                            else if ("LITERAL".equals(ot)) val = p.override().getLiteralValue();
                             else if ("NULL_OUT".equals(ot)) val = null;
                             else if (sk == null) val = null;
                             else val = applyPolicyMask(eng, table, p.sourceColumn(), p.targetColumn(),
-                                        rawBySource.get(sk), textBySource.get(sk), p.sqlType(), ruleByCol, ctx);
+                                        rawBySource.get(sk), textBySource.get(sk), ruleByCol, ctx);
+                            val = fitValueForTarget(val, schema, table, p.targetColumn(),
+                                    p.sqlType(), p.size(), p.scale());
                             if (val instanceof String masked) ctx.masked.put(p.targetColumn().toLowerCase(Locale.ROOT), masked);
                             outByCol.put(p.targetColumn().toLowerCase(Locale.ROOT), val);
                         }
@@ -2765,7 +2778,7 @@ public class ProvisioningService {
 
     private List<ColumnPlan> buildColumnPlans(String sourceTable, String targetTable,
                                               List<String> sourceCols, List<String> targetCols,
-                                              Map<String, Integer> targetTypes,
+                                              Map<String, ColumnShape> targetShapes,
                                               Map<String, ColumnOverrideEntity> overrides) {
         Map<String, String> sourceByLower = canonicalColumns(sourceCols);
         List<ColumnPlan> plans = new ArrayList<>();
@@ -2789,8 +2802,9 @@ public class ProvisioningService {
                 sourceCol = sourceByLower.get(targetCol.toLowerCase(Locale.ROOT));
 
             if (sourceCol == null && !"LITERAL".equals(overrideType) && !"NULL_OUT".equals(overrideType)) continue;
+            ColumnShape shape = targetShapes.getOrDefault(targetCol.toLowerCase(Locale.ROOT), ColumnShape.varchar());
             plans.add(new ColumnPlan(targetCol, sourceCol, override,
-                    targetTypes.getOrDefault(targetCol.toLowerCase(Locale.ROOT), Types.VARCHAR)));
+                    shape.sqlType(), shape.size(), shape.scale()));
         }
         return plans;
     }
@@ -2806,7 +2820,7 @@ public class ProvisioningService {
 
     /** Apply a policy masking rule to a mapped source value, or pass through if no rule applies. */
     private Object applyPolicyMask(MaskingEngine eng, String table, String sourceCol, String targetCol,
-                                   Object original, String originalText, int sqlType,
+                                   Object original, String originalText,
                                    Map<String, MaskingRuleEntity> ruleByCol, MaskContext ctx) {
         MaskingRuleEntity rule = ruleByCol.get(sourceCol.toLowerCase(Locale.ROOT));
         if (rule == null) rule = ruleByCol.get(targetCol.toLowerCase(Locale.ROOT));
@@ -2815,7 +2829,7 @@ public class ProvisioningService {
                 saltFor(rule, table, rule.getColumnName() != null ? rule.getColumnName() : sourceCol, keySaltTL.get()),
                 originalText, rule.getParam1(), rule.getParam2(), ctx);
         ctx.masked.put(targetCol.toLowerCase(Locale.ROOT), masked);
-        return masked == null ? null : coerce(masked, sqlType);
+        return masked;
     }
 
     static MaskContext maskContext(long rowIndex, List<MaskingRuleEntity> rules) {
@@ -3542,6 +3556,30 @@ public class ProvisioningService {
         return out;
     }
 
+    private Map<String, ColumnShape> columnShapes(Connection c, String schema, String table) throws SQLException {
+        Map<String, ColumnShape> out = new LinkedHashMap<>();
+        try (ResultSet rs = c.getMetaData().getColumns(null, schema, table, "%")) {
+            while (rs.next()) {
+                String column = rs.getString("COLUMN_NAME");
+                if (column == null) continue;
+                int sqlType = rs.getInt("DATA_TYPE");
+                int size = rs.getInt("COLUMN_SIZE");
+                if (rs.wasNull()) size = 0;
+                int scale = rs.getInt("DECIMAL_DIGITS");
+                if (rs.wasNull()) scale = -1;
+                out.put(column.toLowerCase(Locale.ROOT), new ColumnShape(
+                        sqlType, Math.max(0, size), scale));
+            }
+        }
+        return out;
+    }
+
+    private static Map<String, Integer> columnTypes(Map<String, ColumnShape> shapes) {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        shapes.forEach((column, shape) -> out.put(column, shape.sqlType()));
+        return out;
+    }
+
     private static int[] sqlTypes(ResultSetMetaData md) throws SQLException {
         int[] out = new int[md.getColumnCount()];
         for (int i = 1; i <= md.getColumnCount(); i++) out[i - 1] = md.getColumnType(i);
@@ -4100,6 +4138,90 @@ public class ProvisioningService {
                 default -> value;
             };
         } catch (Exception e) { return value; }
+    }
+
+    /**
+     * Final target guard for values produced by masking and column overrides. Conversion failures are
+     * reported with the physical target column instead of being deferred to an opaque JDBC batch error.
+     */
+    static Object fitValueForTarget(Object value, String schema, String table, String column,
+                                    int sqlType, int size, int scale) {
+        if (value == null) return null;
+        String target = String.join(".", Stream.of(schema, table, column)
+                .filter(Objects::nonNull).filter(s -> !s.isBlank()).toList());
+        try {
+            if (isCharacterType(sqlType)) {
+                if (!(value instanceof CharSequence text) || size <= 0 || isUnboundedTextType(sqlType)) return value;
+                return truncateCodePoints(text.toString(), size);
+            }
+            if (value instanceof String text) {
+                String trimmed = text.trim();
+                return switch (sqlType) {
+                    case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> Integer.valueOf(trimmed);
+                    case Types.BIGINT -> Long.valueOf(trimmed);
+                    case Types.NUMERIC, Types.DECIMAL -> fitDecimal(trimmed, size, scale, target);
+                    case Types.DOUBLE, Types.FLOAT, Types.REAL -> Double.valueOf(trimmed);
+                    case Types.DATE -> java.sql.Date.valueOf(datePart(text));
+                    case Types.TIME -> java.sql.Time.valueOf(timePart(text));
+                    case Types.TIMESTAMP, ORACLE_TIMESTAMP_WITH_LOCAL_TIME_ZONE ->
+                            java.sql.Timestamp.valueOf(timestampText(text));
+                    case Types.BOOLEAN, Types.BIT -> parseBooleanStrict(trimmed);
+                    default -> value;
+                };
+            }
+            if (value instanceof java.math.BigDecimal decimal
+                    && (sqlType == Types.NUMERIC || sqlType == Types.DECIMAL))
+                return fitDecimal(decimal.toPlainString(), size, scale, target);
+            return value;
+        } catch (ApiException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw ApiException.bad("Value produced for target " + target + " does not fit JDBC type "
+                    + jdbcTypeName(sqlType) + ": " + e.getMessage());
+        }
+    }
+
+    private static java.math.BigDecimal fitDecimal(String text, int precision, int scale, String target) {
+        java.math.BigDecimal decimal = new java.math.BigDecimal(text);
+        if (scale >= 0) {
+            try {
+                decimal = decimal.setScale(scale, java.math.RoundingMode.UNNECESSARY);
+            } catch (ArithmeticException e) {
+                throw ApiException.bad("Value produced for target " + target + " has more than " + scale
+                        + " decimal place(s): " + text);
+            }
+        }
+        if (precision > 0 && decimal.precision() > precision)
+            throw ApiException.bad("Value produced for target " + target + " exceeds precision " + precision
+                    + " and scale " + scale + ": " + text);
+        return decimal;
+    }
+
+    private static Boolean parseBooleanStrict(String text) {
+        if ("true".equalsIgnoreCase(text) || "1".equals(text)) return Boolean.TRUE;
+        if ("false".equalsIgnoreCase(text) || "0".equals(text)) return Boolean.FALSE;
+        throw new IllegalArgumentException("expected true, false, 1, or 0");
+    }
+
+    private static boolean isCharacterType(int sqlType) {
+        return sqlType == Types.CHAR || sqlType == Types.VARCHAR || sqlType == Types.LONGVARCHAR
+                || sqlType == Types.NCHAR || sqlType == Types.NVARCHAR || sqlType == Types.LONGNVARCHAR
+                || sqlType == Types.CLOB || sqlType == Types.NCLOB || sqlType == Types.SQLXML;
+    }
+
+    private static boolean isUnboundedTextType(int sqlType) {
+        return sqlType == Types.LONGVARCHAR || sqlType == Types.LONGNVARCHAR
+                || sqlType == Types.CLOB || sqlType == Types.NCLOB || sqlType == Types.SQLXML;
+    }
+
+    private static String truncateCodePoints(String value, int maxCodePoints) {
+        if (maxCodePoints <= 0 || value.codePointCount(0, value.length()) <= maxCodePoints) return value;
+        return value.substring(0, value.offsetByCodePoints(0, maxCodePoints));
+    }
+
+    private static String jdbcTypeName(int sqlType) {
+        try { return JDBCType.valueOf(sqlType).getName(); }
+        catch (IllegalArgumentException e) { return Integer.toString(sqlType); }
     }
 
     private static String datePart(String value) {

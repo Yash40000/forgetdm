@@ -402,6 +402,59 @@ class MaskingEngineTest {
                 .mask(MaskFunction.SCRIPT, "custom", "abc", "suffix", "ok", ctx));
     }
 
+    @Test void formatPreserveMasksUnicodeWithoutChangingScriptCaseOrPunctuation() {
+        String original = "\u00C9lodie \u03A9\u03BC\u03AD\u03B3\u03B1 \u041F\u0440\u0438\u0432\u0435\u0442 "
+                + "\u0928\u092E\u0938\u094D\u0924\u0947 \u6771\u4EAC \u0661\u0662\u0663 "
+                + "\uD801\uDC00\uD801\uDC28\uD801\uDCA0 \uD83D\uDE00-_/";
+
+        String masked = engine.mask(MaskFunction.FORMAT_PRESERVE, "unicode.pii", original, null, null, ctx);
+        assertEquals(masked,
+                engine.mask(MaskFunction.FORMAT_PRESERVE, "unicode.pii", original, null, null, ctx));
+        assertEquals(original.length(), masked.length(), "UTF-16 width must remain stable");
+
+        int[] sourcePoints = original.codePoints().toArray();
+        int[] maskedPoints = masked.codePoints().toArray();
+        assertEquals(sourcePoints.length, maskedPoints.length, "code-point count must remain stable");
+        for (int i = 0; i < sourcePoints.length; i++) {
+            int source = sourcePoints[i];
+            int replacement = maskedPoints[i];
+            if (Character.isLetterOrDigit(source)) {
+                assertNotEquals(source, replacement, "sensitive code point leaked at index " + i);
+                assertEquals(Character.UnicodeScript.of(source), Character.UnicodeScript.of(replacement));
+                assertEquals(Character.getType(source), Character.getType(replacement));
+                assertEquals(Character.charCount(source), Character.charCount(replacement));
+            } else {
+                assertEquals(source, replacement, "punctuation or symbol changed at index " + i);
+            }
+        }
+        assertTrue(hasOnlyWellFormedSurrogates(masked));
+    }
+
+    @Test void formatPreserveNeverLeavesAsciiLettersOrDigitsUnchanged() {
+        String original = "AaZz-0199@example.test";
+        String masked = engine.mask(MaskFunction.FORMAT_PRESERVE, "ascii.pii", original, null, null, ctx);
+        assertEquals(original.length(), masked.length());
+        for (int i = 0; i < original.length(); i++) {
+            char source = original.charAt(i);
+            char replacement = masked.charAt(i);
+            if (Character.isLetterOrDigit(source)) assertNotEquals(source, replacement);
+            else assertEquals(source, replacement);
+        }
+    }
+
+    @Test void formatPreserveHandlesLargeMixedUnicodeValuesDeterministically() {
+        String unit = "Acct-\u00C9\u03A9\u0416\u6771\u0667-\uD801\uDC00-\uD83D\uDE00|";
+        String original = unit.repeat(2_000);
+        String masked = engine.mask(MaskFunction.FORMAT_PRESERVE, "large.unicode", original, null, null, ctx);
+
+        assertEquals(original.length(), masked.length());
+        assertEquals(original.codePointCount(0, original.length()), masked.codePointCount(0, masked.length()));
+        assertNotEquals(original, masked);
+        assertEquals(masked,
+                engine.mask(MaskFunction.FORMAT_PRESERVE, "large.unicode", original, null, null, ctx));
+        assertTrue(hasOnlyWellFormedSurrogates(masked));
+    }
+
     @Test void secretRotationChangesOutput() {
         MaskingEngine other = new MaskingEngine("another-secret");
         assertNotEquals(
@@ -454,5 +507,17 @@ class MaskingEngineTest {
             alternate = !alternate;
         }
         return sum % 10 == 0;
+    }
+
+    private static boolean hasOnlyWellFormedSurrogates(String value) {
+        for (int i = 0; i < value.length(); i++) {
+            char current = value.charAt(i);
+            if (Character.isHighSurrogate(current)) {
+                if (i + 1 >= value.length() || !Character.isLowSurrogate(value.charAt(++i))) return false;
+            } else if (Character.isLowSurrogate(current)) {
+                return false;
+            }
+        }
+        return true;
     }
 }
