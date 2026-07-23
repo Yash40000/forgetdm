@@ -378,8 +378,9 @@ public class MaskingEngine {
         String lastRaw = lastToken(value);
         String contextualFirst = ctx == null ? null : ctx.maskedFirstName();
         String contextualLast = ctx == null ? null : ctx.maskedLastName();
-        String first = contextualFirst != null ? contextualFirst : pick("first_names.txt", "name.first", firstRaw);
-        String last  = contextualLast != null ? contextualLast : pick("last_names.txt", "name.last", lastRaw);
+        boolean deriveFromSiblings = contextualFirst != null && contextualLast != null;
+        String first = deriveFromSiblings ? contextualFirst : pick("first_names.txt", "name.first", firstRaw);
+        String last  = deriveFromSiblings ? contextualLast : pick("last_names.txt", "name.last", lastRaw);
         String middleSeed = middleRaw.isBlank() ? firstRaw + "|" + lastRaw : middleRaw;
         String middle = pick("first_names.txt", "name.middle", middleSeed);
         String out = formatName(format, first, middleRaw.isBlank() ? "" : middle, last);

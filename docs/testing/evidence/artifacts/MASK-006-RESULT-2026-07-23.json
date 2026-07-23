@@ -1,0 +1,9 @@
+{
+  "story": "MASK-006",
+  "status": "COMPLETE",
+  "acceptanceCases": { "passed": 7, "total": 7 },
+  "focusedIndependentName": { "passed": 49, "failures": 0, "errors": 0 },
+  "backendRegression": { "passed": 547, "failures": 0, "errors": 0, "skipped": 6 },
+  "closedDefects": ["DEF-0039"],
+  "hardPass": []
+}

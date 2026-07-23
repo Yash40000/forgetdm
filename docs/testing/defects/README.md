@@ -58,6 +58,7 @@ Defects found while executing the ForgeTDM test stories. Each defect is a tracke
 | [DEF-0036](DEF-0036-masked-values-bypassed-target-datatype-fit.md) | Masked values bypassed target datatype-fit validation | HIGH | CLOSED | MASK-002 (05/06) | Target metadata guard validates length, precision, scale, and scalar conversion before JDBC batching |
 | [DEF-0037](DEF-0037-key-consistency-salt-depended-on-edge-order.md) | Key-consistency salt depended on relationship iteration order | HIGH | CLOSED | MASK-004 (03/04) | Canonical union representative; focused and live three-engine join retest green |
 | [DEF-0038](DEF-0038-derived-full-name-ignored-masked-row-context.md) | Derived full name ignored masked row context | HIGH | CLOSED | MASK-005 (02/05/06/07) | Component-first evaluation and contextual FULL_NAME composition; 541-test regression green |
+| [DEF-0039](DEF-0039-partial-name-context-mixed-masking-modes.md) | Partial name context mixed independent and derived masking modes | HIGH | CLOSED | MASK-006 (03/04) | Require both masked sibling names before derived composition; 547-test regression green |
 
 ## Mirror to GitHub
 

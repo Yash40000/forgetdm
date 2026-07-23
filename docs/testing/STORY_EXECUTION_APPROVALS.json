@@ -158,6 +158,21 @@
         "Assert exact row-level composition and preserve independent null behavior.",
         "Do not mark connector-specific behavior certified without direct connector evidence."
       ]
+    },
+    "MASK-006": {
+      "status": "APPROVED",
+      "approvedAt": "2026-07-23T02:25:00-04:00",
+      "approvedBy": "Codex test coordinator (product-owner delegated)",
+      "allowedScopes": [
+        "SOURCE_INSPECTION",
+        "UNIT_TEST",
+        "REFERENCE_ENGINE"
+      ],
+      "conditions": [
+        "Use synthetic names only.",
+        "Assert exact independent values and incomplete-context behavior.",
+        "Preserve null, empty, formatting, and case contracts."
+      ]
     }
   }
 }
